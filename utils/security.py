@@ -1,7 +1,7 @@
 """
 security.py
 
-This module contains all security-related functions and decorators for the Nyota Digital application.
+This module contains all security-related functions and decorators for the Nyota ✨ application.
 It handles route protection for both Creators (Admins) and Customers (Users), as well as
 the generation and verification of authentication tokens.
 """
@@ -97,7 +97,7 @@ def get_totp_uri(username, secret):
     """
     return pyotp.totp.TOTP(secret).provisioning_uri(
         name=username,
-        issuer_name="Nyota Digital"  # Customized for our application
+        issuer_name="Nyota ✨"  # Customized for our application
     )
 
 def verify_totp(secret, token):

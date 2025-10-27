@@ -2,7 +2,7 @@
 translator.py
 
 This module provides a simple, robust function for handling internationalization (i18n)
-on the Python/backend side of the Nyota Digital application. It allows us to translate
+on the Python/backend side of the Nyota ✨ application. It allows us to translate
 strings used in flash messages, API responses, and other server-generated content.
 
 It works in tandem with Flask-Babel, which handles translations within Jinja2 templates.

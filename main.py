@@ -1,7 +1,7 @@
 """
 main.py
 
-This is the application factory for the Nyota Digital project.
+This is the application factory for the Nyota ✨ project.
 """
 
 import os
@@ -64,7 +64,7 @@ def create_app(config_class=Config):
     @app.context_processor
     def inject_global_vars():
         return dict(
-            store_name="Nyota Digital",
+            store_name="Nyota ✨",
             currency_symbol="TZS"
         )
         

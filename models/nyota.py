@@ -1,7 +1,7 @@
 """
 nyota.py
 
-This file defines the entire database schema for the Nyota Digital application using SQLAlchemy.
+This file defines the entire database schema for the Nyota ✨ application using SQLAlchemy.
 It includes models for Creators, Customers, Digital Assets, Purchases, Subscriptions, and more,
 all designed to support the core features outlined in the project vision.
 """
@@ -50,7 +50,7 @@ class TicketStatus(enum.Enum):
 
 class Creator(db.Model):
     """
-    Represents the Creator/Admin of the Nyota Digital store.
+    Represents the Creator/Admin of the Nyota ✨ store.
     Authentication is handled via TOTP, not passwords.
     """
     __tablename__ = 'creator'

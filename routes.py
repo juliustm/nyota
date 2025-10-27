@@ -1,7 +1,7 @@
 """
 routes.py
 
-Defines all web routes for the Nyota Digital application, organized into blueprints
+Defines all web routes for the Nyota ✨ application, organized into blueprints
 for public-facing pages (main_bp) and the creator's hub (admin_bp).
 Includes Server-Sent Events (SSE) for real-time updates.
 """
@@ -23,7 +23,10 @@ from flask import (
 from models.nyota import db, Creator
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
-from mock_data import mock_assets, mock_purchased_assets
+from mock_data import (
+    mock_assets, mock_purchased_assets, dashboard_stats, 
+    recent_activity, mock_supporters, mock_admin_assets
+)
 
 # --- Real-time Event Manager for Asynchronous Tasks ---
 class SseManager:
@@ -206,27 +209,69 @@ def setup():
         return redirect(url_for('admin.login'))
 
     if request.method == 'POST':
-        username = request.form.get('username')
-        if not username:
-            flash(translate('username_required'), 'danger')
-            return render_template('admin/setup.html', setup_complete=False)
+        action = request.form.get('action')
 
-        totp_secret = generate_totp_secret()
-        new_creator = Creator(username=username, totp_secret=totp_secret)
-        db.session.add(new_creator)
-        db.session.commit()
+        # Action 1: Create the user and show the QR code
+        if action == 'create_user':
+            username = request.form.get('username')
+            if not username:
+                flash(translate('username_required'), 'danger')
+                return render_template('admin/setup.html', stage=1)
 
-        totp_uri = get_totp_uri(username, totp_secret)
-        img = qrcode.make(totp_uri)
-        buf = io.BytesIO()
-        img.save(buf)
-        buf.seek(0)
-        qr_code_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-        
-        flash(translate('creator_account_created'), 'success')
-        return render_template('admin/setup.html', setup_complete=True, qr_code=qr_code_b64, username=username)
+            totp_secret = generate_totp_secret()
+            
+            # Store temporary setup info in the session
+            session['setup_info'] = {
+                'username': username,
+                'totp_secret': totp_secret
+            }
 
-    return render_template('admin/setup.html', setup_complete=False)
+            totp_uri = get_totp_uri(username, totp_secret)
+            img = qrcode.make(totp_uri)
+            buf = io.BytesIO()
+            img.save(buf)
+            buf.seek(0)
+            qr_code_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+            
+            flash(translate('scan_qr_and_verify'), 'info')
+            return render_template('admin/setup.html', stage=2, qr_code=qr_code_b64, username=username)
+
+        # Verify the TOTP code and finalize setup 
+        elif action == 'verify_totp':
+            setup_info = session.get('setup_info')
+            token = request.form.get('token')
+            if not setup_info or not token:
+                flash(translate('session_expired_setup'), 'danger')
+                session.pop('setup_info', None) # Clean up session
+                return redirect(url_for('admin.setup'))
+            
+            # Verify the code the user entered
+            if verify_totp(setup_info['totp_secret'], token):
+                # On success, create the Creator record in the database
+                new_creator = Creator(
+                    username=setup_info['username'],
+                    totp_secret=setup_info['totp_secret']
+                )
+                db.session.add(new_creator)
+                db.session.commit()
+                
+                session.pop('setup_info', None) # Clean up session
+                flash(translate('setup_complete_success'), 'success')
+                return redirect(url_for('admin.login'))
+            else:
+                # If verification fails, re-render the verification page with an error
+                flash(translate('invalid_2fa_token'), 'danger')
+                # We need to regenerate the QR code to show it again
+                totp_uri = get_totp_uri(setup_info['username'], setup_info['totp_secret'])
+                img = qrcode.make(totp_uri)
+                buf = io.BytesIO()
+                img.save(buf)
+                buf.seek(0)
+                qr_code_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                return render_template('admin/setup.html', stage=2, qr_code=qr_code_b64, username=setup_info['username'])
+
+    # Default GET request shows the first stage
+    return render_template('admin/setup.html', stage=1)
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -272,7 +317,65 @@ def logout():
 @admin_bp.route('/dashboard')
 @creator_login_required
 def dashboard():
-    return render_template('admin/dashboard.html')
+    """The main dashboard showing key metrics and recent activity."""
+    return render_template(
+        'admin/dashboard.html',
+        stats=dashboard_stats,
+        activity=recent_activity
+    )
+
+@admin_bp.route('/assets')
+@creator_login_required
+def assets():
+    """Renders the main list of all digital assets."""
+    return render_template('admin/assets.html', assets=mock_admin_assets)
+
+@admin_bp.route('/assets/new', methods=['GET', 'POST'])
+@creator_login_required
+def asset_new():
+    """Displays the form for creating a new asset and handles the submission."""
+    
+    if request.method == 'POST':
+        title = request.form.get('title', 'Untitled Asset')
+        flash(f"New asset '{title}' created successfully!", "success")
+        return redirect(url_for('admin.assets'))
+        
+    blank_asset = {'id': None, 'title': '', 'description': '', 'revenue': 0.0}
+    return render_template('admin/asset_form.html', asset=blank_asset, currency_symbol="$")
+
+@admin_bp.route('/assets/<int:asset_id>/edit', methods=['GET', 'POST'])
+@creator_login_required
+def asset_edit(asset_id):
+    """Handles both displaying and processing the editing of an existing asset."""
+    asset = next((a for a in mock_admin_assets if a['id'] == asset_id), None)
+    if not asset:
+        flash("Asset not found.", "danger")
+        return redirect(url_for('admin.assets'))
+
+    if request.method == 'POST':
+        # In a real app, you would find the asset in the DB and update it here.
+        title = request.form.get('title', 'Untitled Asset')
+        flash(f"Asset '{title}' updated successfully!", "success")
+        return redirect(url_for('admin.assets'))
+
+    # For GET requests, show the form pre-populated with the asset's data.
+    return render_template('admin/asset_form.html', asset=asset)
+
+
+@admin_bp.route('/assets/<int:asset_id>')
+@creator_login_required
+def asset_detail_admin(asset_id):
+    # ... (this route is unchanged) ...
+    asset = next((a for a in mock_admin_assets if a['id'] == asset_id), None)
+    if not asset:
+        return redirect(url_for('admin.assets'))
+    return render_template('admin/asset_detail_admin.html', asset=asset, recent_supporters=mock_supporters[:3])
+
+@admin_bp.route('/supporters')
+@creator_login_required
+def supporters():
+    """Page for the creator to manage their supporters and affiliates."""
+    return render_template('admin/supporters.html', supporters=mock_supporters)
 
 @admin_bp.route('/settings', methods=['GET', 'POST'])
 @creator_login_required

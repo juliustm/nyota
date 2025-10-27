@@ -1,0 +1,125 @@
+{% extends "user/base.html" %}
+
+{% block title %}My Library{% endblock %}
+
+{% block content %}
+<script type="application/json" id="library-data">{{ assets|tojson|safe }}</script>
+
+<div x-data="userLibrary('{{ currency_symbol }}')" x-init="init()">
+    
+    <!-- Simplified Header -->
+    <div class="mb-8 fade-in">
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3">My Library</h1>
+        <p class="text-lg text-gray-600 dark:text-gray-300">All your purchased content, ready for you to access.</p>
+    </div>
+
+    <!-- Simplified Navigation Tabs -->
+    <div class="mb-8 border-b border-gray-200 dark:border-gray-700 fade-in" style="animation-delay: 0.1s;">
+        <nav class="-mb-px flex space-x-4 overflow-x-auto">
+            <button @click="setTab('all')" 
+                    :class="activeTab === 'all' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'" 
+                    class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+                All Content
+            </button>
+            <button @click="setTab('video-series')" 
+                    :class="activeTab === 'video-series' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'" 
+                    class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+                Courses
+            </button>
+            <button @click="setTab('ticket')" 
+                    :class="activeTab === 'ticket' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'" 
+                    class="whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+                Tickets
+            </button>
+            <a href="{{ url_for('main.landing_page') }}" 
+               class="whitespace-nowrap py-3 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 font-medium text-sm transition-colors">
+                Discover More →
+            </a>
+        </nav>
+    </div>
+
+    <!-- Purchased Assets Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <template x-for="(asset, index) in filteredAssets" :key="asset.id">
+            <article class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col transition-all duration-300 hover:shadow-md fade-in" 
+                     :style="`animation-delay: ${index * 100}ms`">
+                
+                <!-- Image -->
+                <a :href="`{{ url_for('main.asset_detail', slug='') }}${asset.slug}`" class="block">
+                    <img :src="asset.cover_image_url" :alt="asset.title" class="w-full h-48 object-cover">
+                </a>
+                
+                <!-- Content -->
+                <div class="p-5 flex-1 flex flex-col">
+                    <div class="mb-1">
+                        <span class="text-xs font-medium text-indigo-600 dark:text-indigo-400 uppercase" x-text="asset.asset_type.replace('-', ' ')"></span>
+                    </div>
+                    
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2" x-text="asset.title"></h3>
+                    <p class="text-gray-600 dark:text-gray-400 text-base mb-4" x-text="asset.details_line"></p>
+                    
+                    <!-- Progress for Video Courses -->
+                    <template x-if="asset.asset_type === 'video-series'">
+                        <div class="mb-4">
+                            <div class="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
+                                <span>Progress</span>
+                                <span>3/12 Lessons</span>
+                            </div>
+                            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                <div class="bg-green-500 h-2 rounded-full" style="width: 25%"></div>
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <!-- Action Buttons -->
+                    <div class="mt-auto space-y-3">
+                        <!-- Primary Action -->
+                        <template x-if="asset.asset_type === 'video-series'">
+                            <a href="#" class="w-full text-center font-semibold text-white bg-indigo-600 hover:bg-indigo-500 px-4 py-3 rounded-lg transition-colors text-base">
+                                Continue Watching
+                            </a>
+                        </template>
+                        <template x-if="asset.asset_type === 'ticket'">
+                            <a href="#" class="w-full text-center font-semibold text-white bg-indigo-600 hover:bg-indigo-500 px-4 py-3 rounded-lg transition-colors text-base">
+                                View Ticket Details
+                            </a>
+                        </template>
+                        <template x-if="!['video-series', 'ticket'].includes(asset.asset_type)">
+                            <a href="#" class="w-full text-center font-semibold text-white bg-indigo-600 hover:bg-indigo-500 px-4 py-3 rounded-lg transition-colors text-base">
+                                Download Files
+                            </a>
+                        </template>
+                        
+                        <!-- Secondary Actions -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <a :href="`{{ url_for('main.asset_detail', slug='') }}${asset.slug}`" 
+                               class="text-center font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 px-3 py-2 rounded-lg transition-colors text-sm">
+                                Details
+                            </a>
+                            <a href="#" 
+                               class="text-center font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 px-3 py-2 rounded-lg transition-colors text-sm">
+                                Support
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </template>
+    </div>
+
+    <!-- Empty State -->
+    <div x-show="!filteredAssets.length" class="text-center py-16 fade-in" x-cloak>
+        <div class="max-w-md mx-auto">
+            <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+            <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-3">Your library is empty</h3>
+            <p class="text-gray-600 dark:text-gray-400 mb-6">Items you purchase will appear here</p>
+            <a href="{{ url_for('main.landing_page') }}" 
+               class="inline-block font-semibold text-white bg-indigo-600 hover:bg-indigo-500 px-6 py-3 rounded-lg transition-colors">
+                Start Exploring
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

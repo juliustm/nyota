@@ -1,0 +1,199 @@
+{% extends "user/base.html" %}
+
+{% block title %}{{ asset.title }} | {{ store_name }}{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<script type="application/json" id="asset-data">{{ asset|tojson|safe }}</script>
+
+<div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()" class="max-w-4xl mx-auto pb-32 lg:pb-0">
+    <div class="space-y-8">
+
+        <!-- 1. Simplified Header & Hero Section -->
+        <section class="fade-in">
+            <!-- Back Navigation Link -->
+            <div class="mb-6">
+                <a href="{{ url_for('main.landing_page') }}" class="inline-flex items-center text-xl font-medium text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors">
+                    <svg class="w-8 h-8 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                    Back to All Assets
+                </a>
+            </div>
+            
+            <!-- Simplified Hero Image -->
+            <div class="relative rounded-xl overflow-hidden mb-6">
+                <img :src="asset.cover_image_url" :alt="asset.title" 
+                     class="w-full h-64 md:h-80 object-cover">
+            </div>
+
+            <!-- Price Display - Mobile First -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                        <span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span>
+                    </div>
+                    <template x-if="asset.purchase_type === 'subscription'">
+                        <div class="text-base text-gray-600 dark:text-gray-400" x-text="`per ${asset.subscription_interval}`"></div>
+                    </template>
+                    <template x-if="asset.asset_type === 'ticket'">
+                        <div class="text-base font-medium text-yellow-600 dark:text-yellow-400 mt-2" x-text="`Only ${asset.tickets_left} tickets left!`"></div>
+                    </template>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Simplified Story Section -->
+        <section x-if="asset.story_snippet" class="fade-in" style="animation-delay: 0.1s;">
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">The Story Behind This Creation</h2>
+                <div class="prose prose-lg dark:prose-invert max-w-none">
+                    <div class="text-gray-700 dark:text-gray-300 leading-relaxed text-base" x-html="renderMarkdown(asset.story_snippet)"></div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 3. Simplified Social Proof Section -->
+        <section x-if="asset.reviews && asset.reviews.length > 0" class="fade-in" style="animation-delay: 0.2s;">
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">Customer Reviews</h2>
+                <div class="inline-flex items-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-5 py-3 rounded-lg">
+                    <div class="flex items-center gap-3">
+                        <div class="flex -space-x-2">
+                            <template x-for="review in asset.reviews.slice(0, 3)" :key="review.author">
+                                <img :src="review.avatar" :alt="review.author" class="w-8 h-8 rounded-full border-2 border-white dark:border-gray-800">
+                            </template>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                            </svg>
+                            <span class="font-bold text-lg" x-text="averageRating"></span>
+                            <span class="text-gray-500 dark:text-gray-400">/ 5</span>
+                            <span class="text-gray-600 dark:text-gray-300" x-text="`(${asset.reviews.length} reviews)`"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="space-y-6">
+                <template x-for="review in asset.reviews.slice(0, visibleReviews)" :key="review.author">
+                    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
+                        <div class="flex items-start gap-4">
+                            <img :src="review.avatar" :alt="review.author" class="w-10 h-10 rounded-lg flex-shrink-0">
+                            <div class="flex-1">
+                                <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3">
+                                    <div>
+                                        <p class="font-semibold text-gray-900 dark:text-white text-base" x-text="review.author"></p>
+                                        <div class="flex items-center mt-1">
+                                            <template x-for="i in 5">
+                                                <svg class="w-4 h-4" :class="i <= review.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                                                </svg>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <span class="text-sm text-gray-500 dark:text-gray-400" x-text="new Date().toLocaleDateString()"></span>
+                                </div>
+                                <p class="text-gray-700 dark:text-gray-300 text-base leading-relaxed" x-text="review.text"></p>
+                                
+                                <div x-show="review.replies.length > 0" x-cloak class="mt-4 pl-4 border-l-2 border-gray-200 dark:border-gray-600 space-y-3">
+                                    <template x-for="reply in review.replies">
+                                        <div class="flex items-start gap-3">
+                                            <img :src="reply.avatar" class="w-8 h-8 rounded-lg flex-shrink-0">
+                                            <div>
+                                                <p class="text-sm font-semibold text-gray-800 dark:text-gray-200" x-text="reply.author"></p>
+                                                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1" x-text="reply.text"></p>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            
+            <div x-show="visibleReviews < asset.reviews.length" class="text-center mt-6">
+                <button @click="showMoreReviews()" class="px-5 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Load More Reviews
+                </button>
+            </div>
+        </section>
+
+        <!-- 4. Simplified Deliverables Section -->
+        <section x-if="asset.deliverables && asset.deliverables.length > 0" class="fade-in" style="animation-delay: 0.3s;">
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
+                <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">What You'll Get</h3>
+                <div class="space-y-3">
+                    <template x-for="item in asset.deliverables" :key="item">
+                        <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                            <svg class="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <span class="text-gray-700 dark:text-gray-300 text-base" x-text="item"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 5. Simplified Creator Section -->
+        <section class="fade-in" style="animation-delay: 0.4s;">
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6">
+                <div class="flex flex-col sm:flex-row items-center gap-6">
+                    <div class="flex-shrink-0">
+                        <img src="https://i.pravatar.cc/128?u=creator" alt="Creator Avatar" class="w-16 h-16 rounded-xl">
+                    </div>
+                    <div class="text-center sm:text-left">
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-white">Created by Amina</h3>
+                        <p class="text-gray-600 dark:text-gray-300 mt-1">Digital Photographer & Educator</p>
+                        <p class="text-gray-500 dark:text-gray-400 mt-3 text-base leading-relaxed">
+                            With over 8 years of experience in digital photography and education, I'm passionate about sharing knowledge and helping creators excel.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Simplified STICKY FOOTER CTA -->
+    <div class="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg">
+        <div class="max-w-4xl mx-auto px-4 py-4">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="text-center sm:text-left">
+                    <p class="text-2xl font-bold text-gray-900 dark:text-white">
+                        <span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span>
+                        <template x-if="asset.purchase_type === 'subscription'">
+                            <span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1" x-text="`/ ${asset.subscription_interval}`"></span>
+                        </template>
+                    </p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-1" x-text="asset.title"></p>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <template x-if="asset.asset_type === 'ticket'">
+                        <div class="text-center">
+                            <div class="text-sm font-medium text-yellow-600 dark:text-yellow-400" x-text="`${asset.tickets_left} left`"></div>
+                        </div>
+                    </template>
+                    
+                    <template x-if="asset.purchase_type === 'subscription'">
+                        <a :href="`{{ url_for('main.checkout', slug='') }}${asset.slug}`" 
+                           class="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-lg transition-colors text-base">
+                            Subscribe Now
+                        </a>
+                    </template>
+                    <template x-if="asset.purchase_type === 'onetime'">
+                        <a :href="`{{ url_for('main.checkout', slug='') }}${asset.slug}`" 
+                           class="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg transition-colors text-base">
+                            Get It Now
+                        </a>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

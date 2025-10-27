@@ -1,0 +1,41 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Store Setup{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto">
+    <div class="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <div class="text-center">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Welcome to Nyota Digital!</h1>
+            <p class="text-gray-600 dark:text-gray-400 mt-2">Let's set up your primary creator account.</p>
+        </div>
+
+        {% if setup_complete %}
+            <div class="mt-8 text-center p-6 border-2 border-dashed border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 rounded-xl">
+                <h2 class="text-xl font-semibold text-green-800 dark:text-green-300">Step 2: Secure Your Account</h2>
+                <p class="text-gray-700 dark:text-gray-300 my-4">
+                    Scan this QR code with an authenticator app (like Google Authenticator, Authy, or 1Password). This is your passwordless key to your hub.
+                </p>
+                <img src="data:image/png;base64,{{ qr_code }}" alt="TOTP QR Code" class="mx-auto rounded-lg shadow-md border dark:border-gray-600">
+                <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">This code is for user: <strong>{{ username }}</strong></p>
+            </div>
+            <a href="{{ url_for('admin.login') }}" class="mt-6 w-full inline-block text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+                Proceed to Login
+            </a>
+        {% else %}
+            <form method="POST" class="mt-8 space-y-6">
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Creator Username</label>
+                    <input type="text" name="username" id="username" required autofocus
+                           class="mt-1 w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 dark:bg-gray-700"
+                           placeholder="e.g., amina_photos">
+                    <p class="text-xs text-gray-500 mt-1">Choose a simple, memorable username.</p>
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">
+                    Create Account & Generate QR Code
+                </button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

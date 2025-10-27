@@ -1,0 +1,50 @@
+/*
+    styles.css for Nyota Digital User Interface
+    Contains keyframe animations and utility classes.
+*/
+
+/* --- Keyframe Animations --- */
+.fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(15px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.pulse-glow {
+    animation: pulseGlow 2.5s infinite;
+}
+
+@keyframes pulseGlow {
+    0%, 100% {
+        box-shadow: 0 0 8px rgba(99, 102, 241, 0.4); /* indigo-500 */
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(99, 102, 241, 0.7);
+    }
+}
+
+/* --- Global Styles for Native App Feel --- */
+html, body {
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+    scroll-behavior: smooth;
+}
+
+body {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+input, textarea {
+    -webkit-user-select: auto;
+    -moz-user-select: auto;
+    -ms-user-select: auto;
+    user-select: auto;
+}

@@ -1,0 +1,152 @@
+{% extends "salesperson/base.html" %}
+{% block title %}{{ _('welcome') }}{% endblock %}
+
+{% block content %}
+<div class="p-4 md:p-6 flex items-center justify-center min-h-screen" x-data="onboardScreen()" x-init="init()">
+
+    <!-- Data Island for secure data transfer -->
+    <script id="user-data" type="application/json">
+        {{ user_data_json|safe }}
+    </script>
+
+    <div class="w-full max-w-md">
+        <!-- Main Content (hidden while loading) -->
+        <div x-show="!isLoading" x-transition x-cloak>
+            <h1 class="text-3xl text-center font-bold text-gray-800 dark:text-gray-200 mb-2">{{ _('welcome') }}, <span x-text="userData?.name"></span>!</h1>
+            <p class="text-center text-gray-600 dark:text-gray-400 mb-8">{{ _('one_last_step') }}</p>
+            
+            <div class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg">
+                <!-- Create Passkey Step -->
+                <div x-show="step === 'create'">
+                    <h2 class="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{{ _('set_your_5_digit_passkey') }}</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('passkey_explanation') }}</p>
+                    
+                    <div class="flex items-center space-x-4">
+                        <div class="flex-shrink-0">
+                            <svg class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                        </div>
+                        <input type="password" inputmode="numeric" x-model="passkey1" @input="handleInput" maxlength="5" class="w-full text-center text-3xl tracking-[1em] bg-gray-100 dark:bg-gray-700 rounded-lg p-4 border-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" :class="error ? 'border-red-500' : 'border-gray-200 dark:border-gray-600'">
+                    </div>
+                </div>
+                
+                <!-- Confirm Passkey Step -->
+                <div x-show="step === 'confirm'" x-cloak>
+                    <h2 class="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{{ _('confirm_your_passkey') }}</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">{{ _('re_enter_passkey') }}</p>
+                    
+                     <div class="flex items-center space-x-4">
+                        <div class="flex-shrink-0">
+                            <svg class="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                        </div>
+                        <input type="password" inputmode="numeric" x-model="passkey2" @input="handleInput" maxlength="5" class="w-full text-center text-3xl tracking-[1em] bg-gray-100 dark:bg-gray-700 rounded-lg p-4 border-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" :class="error ? 'border-red-500' : 'border-gray-200 dark:border-gray-600'">
+                    </div>
+                </div>
+
+                <p x-show="error" x-text="error" class="text-red-500 text-sm mt-4 text-center" x-cloak></p>
+
+                <button @click="handleSubmit" :disabled="isDisabled()" class="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed text-lg">
+                    <span x-show="step === 'create'">{{ _('next') }}</span>
+                    <span x-show="step === 'confirm'">{{ _('finish_setup') }}</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div x-show="isLoading" class="text-center py-16" x-cloak>
+            <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <p class="text-lg font-medium text-gray-700 dark:text-gray-300">{{ _('loading') }}...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('onboardScreen', () => ({
+            isLoading: true,
+            step: 'create',
+            userData: null,
+            passkey1: '',
+            passkey2: '',
+            error: '',
+
+            init() {
+                try {
+                    const userDataElement = document.getElementById('user-data');
+                    const userDataJson = userDataElement.textContent;
+                    this.userData = JSON.parse(userDataJson);
+                    this.isLoading = false;
+                } catch(e) {
+                    console.error("Failed to parse user data:", e);
+                    this.error = "Error loading user data. Please try the link again.";
+                    this.isLoading = false;
+                }
+            },
+            
+            handleInput(event) {
+                event.target.value = event.target.value.replace(/[^0-9]/g, '');
+                this.error = '';
+            },
+
+            isDisabled() {
+                if (this.step === 'create') return this.passkey1.length !== 5;
+                if (this.step === 'confirm') return this.passkey2.length !== 5;
+                return true;
+            },
+
+            handleSubmit() {
+                if (this.step === 'create') {
+                    if (this.passkey1.length === 5) {
+                        this.step = 'confirm';
+                        this.$nextTick(() => {
+                            const passkeyInput2 = document.querySelector('input[x-model="passkey2"]');
+                            if(passkeyInput2) passkeyInput2.focus();
+                        });
+                    }
+                } else if (this.step === 'confirm') {
+                    if (this.passkey1 === this.passkey2) {
+                        this.saveProfileAndLogin();
+                    } else {
+                        this.error = '{{ _('passkeys_do_not_match') }}';
+                        this.passkey2 = '';
+                    }
+                }
+            },
+            
+            saveProfileAndLogin() {
+                if (!this.userData || !this.userData.session_key) {
+                    this.error = "Critical error: Session key is missing.";
+                    return;
+                }
+
+                const passkey = this.passkey1;
+                
+                // It now correctly uses the global VALIDATION_KEY and simpleCipher
+                const encryptedKey = btoa(simpleCipher(passkey, this.userData.session_key));
+                const encryptedValidation = btoa(simpleCipher(passkey, VALIDATION_KEY));
+
+                const newProfile = {
+                    id: this.userData.id,
+                    name: this.userData.name,
+                    encrypted_key: encryptedKey,
+                    validation_key: encryptedValidation
+                };
+
+                let profiles = JSON.parse(localStorage.getItem('userProfiles') || '[]');
+                profiles = profiles.filter(p => p.id !== newProfile.id);
+                profiles.push(newProfile);
+                localStorage.setItem('userProfiles', JSON.stringify(profiles));
+
+                const activeProfile = {
+                    id: this.userData.id,
+                    name: this.userData.name,
+                    session_key: this.userData.session_key
+                };
+                sessionStorage.setItem('activeProfile', JSON.stringify(activeProfile));
+                window.location.href = "{{ url_for('main.salesperson_dashboard') }}";
+            }
+        }));
+    });
+</script>
+{% endblock %}

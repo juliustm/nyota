@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    container_name: nyota_app
+    ports:
+      - "80:80"
+    volumes:
+      - .:/app
+      - db_data:/app/data
+    environment:
+      - FLASK_APP=main.py
+      - FLASK_DEBUG=1
+      - FLASK_RUN_HOST=0.0.0.0
+    # Override the default command for development with hot-reloading
+    command: gunicorn --bind 0.0.0.0:80 --workers 1 --threads 8 --reload "wsgi:app"
+
+volumes:
+  db_data:

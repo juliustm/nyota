@@ -1,8 +1,8 @@
 """Initial complete database schema
 
-Revision ID: b68a0d24f9bd
+Revision ID: 26243d285767
 Revises: 
-Create Date: 2025-10-27 16:29:49.435052
+Create Date: 2025-11-16 10:46:29.127467
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'b68a0d24f9bd'
+revision = '26243d285767'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -22,15 +22,17 @@ def upgrade():
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('username', sa.String(length=80), nullable=False),
     sa.Column('totp_secret', sa.String(length=32), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('store_name', sa.String(length=120), nullable=True),
-    sa.Column('currency_symbol', sa.String(length=10), nullable=True),
+    sa.Column('store_handle', sa.String(length=80), nullable=True),
     sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('store_handle'),
     sa.UniqueConstraint('username')
     )
     op.create_table('customer',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('whatsapp_number', sa.String(length=25), nullable=False),
-    sa.Column('is_verified', sa.Boolean(), nullable=True),
+    sa.Column('xp_points', sa.Integer(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
@@ -50,6 +52,19 @@ def upgrade():
     with op.batch_alter_table('ambassador', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_ambassador_affiliate_code'), ['affiliate_code'], unique=True)
 
+    op.create_table('creator_setting',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('creator_id', sa.Integer(), nullable=False),
+    sa.Column('key', sa.String(length=128), nullable=False),
+    sa.Column('value', sa.JSON(), nullable=True),
+    sa.ForeignKeyConstraint(['creator_id'], ['creator.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('creator_id', 'key', name='_creator_key_uc')
+    )
+    with op.batch_alter_table('creator_setting', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_creator_setting_creator_id'), ['creator_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_creator_setting_key'), ['key'], unique=False)
+
     op.create_table('digital_asset',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('creator_id', sa.Integer(), nullable=False),
@@ -58,25 +73,34 @@ def upgrade():
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('story', sa.Text(), nullable=True),
     sa.Column('cover_image_url', sa.String(length=512), nullable=True),
-    sa.Column('asset_type', sa.Enum('DIGITAL_PRODUCT', 'VIDEO_SERIES', 'AUDIO_ALBUM', 'EBOOK', 'PHOTO_PACK', 'TEMPLATE', 'TICKET', name='assettype'), nullable=False),
+    sa.Column('asset_type', sa.Enum('VIDEO_SERIES', 'TICKET', 'DIGITAL_PRODUCT', 'SUBSCRIPTION', 'NEWSLETTER', name='assettype'), nullable=False),
     sa.Column('price', sa.Numeric(precision=10, scale=2), nullable=False),
-    sa.Column('is_published', sa.Boolean(), nullable=True),
-    sa.Column('release_date', sa.DateTime(), nullable=True),
-    sa.Column('parent_id', sa.Integer(), nullable=True),
-    sa.Column('order_index', sa.Integer(), nullable=True),
+    sa.Column('status', sa.Enum('DRAFT', 'PUBLISHED', 'ARCHIVED', name='assetstatus'), nullable=False),
+    sa.Column('is_subscription', sa.Boolean(), nullable=True),
+    sa.Column('subscription_interval', sa.Enum('WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY', name='subscriptioninterval'), nullable=True),
+    sa.Column('event_date', sa.DateTime(), nullable=True),
+    sa.Column('event_location', sa.String(length=512), nullable=True),
+    sa.Column('max_attendees', sa.Integer(), nullable=True),
     sa.Column('custom_fields', sa.JSON(), nullable=True),
+    sa.Column('details', sa.JSON(), nullable=True),
+    sa.Column('total_sales', sa.Integer(), nullable=True),
+    sa.Column('total_revenue', sa.Numeric(precision=10, scale=2), nullable=True),
+    sa.Column('ai_summary', sa.Text(), nullable=True),
+    sa.Column('ai_tags', sa.JSON(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['creator_id'], ['creator.id'], ),
-    sa.ForeignKeyConstraint(['parent_id'], ['digital_asset.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     with op.batch_alter_table('digital_asset', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_digital_asset_is_published'), ['is_published'], unique=False)
         batch_op.create_index(batch_op.f('ix_digital_asset_slug'), ['slug'], unique=True)
+        batch_op.create_index(batch_op.f('ix_digital_asset_status'), ['status'], unique=False)
 
     op.create_table('asset_file',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('asset_id', sa.Integer(), nullable=False),
-    sa.Column('file_name', sa.String(length=255), nullable=True),
+    sa.Column('title', sa.String(length=255), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
     sa.Column('storage_path', sa.String(length=1024), nullable=False),
     sa.Column('file_type', sa.String(length=50), nullable=True),
     sa.Column('order_index', sa.Integer(), nullable=True),
@@ -112,12 +136,23 @@ def upgrade():
     with op.batch_alter_table('purchase', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_purchase_transaction_token'), ['transaction_token'], unique=True)
 
+    op.create_table('rating',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('customer_id', sa.Integer(), nullable=False),
+    sa.Column('asset_id', sa.Integer(), nullable=False),
+    sa.Column('score', sa.Integer(), nullable=False),
+    sa.Column('review_text', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['asset_id'], ['digital_asset.id'], ),
+    sa.ForeignKeyConstraint(['customer_id'], ['customer.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('subscription',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('customer_id', sa.Integer(), nullable=False),
     sa.Column('asset_id', sa.Integer(), nullable=False),
     sa.Column('status', sa.Enum('ACTIVE', 'CANCELED', 'PAST_DUE', name='subscriptionstatus'), nullable=False),
-    sa.Column('interval', sa.Enum('MONTHLY', 'QUARTERLY', 'ANNUALLY', name='subscriptioninterval'), nullable=False),
+    sa.Column('interval', sa.Enum('WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY', name='subscriptioninterval'), nullable=False),
     sa.Column('start_date', sa.DateTime(), nullable=True),
     sa.Column('next_billing_date', sa.DateTime(), nullable=True),
     sa.Column('end_date', sa.DateTime(), nullable=True),
@@ -138,6 +173,7 @@ def downgrade():
         batch_op.drop_index(batch_op.f('ix_subscription_status'))
 
     op.drop_table('subscription')
+    op.drop_table('rating')
     with op.batch_alter_table('purchase', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_purchase_transaction_token'))
 
@@ -145,10 +181,15 @@ def downgrade():
     op.drop_table('comment')
     op.drop_table('asset_file')
     with op.batch_alter_table('digital_asset', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_digital_asset_status'))
         batch_op.drop_index(batch_op.f('ix_digital_asset_slug'))
-        batch_op.drop_index(batch_op.f('ix_digital_asset_is_published'))
 
     op.drop_table('digital_asset')
+    with op.batch_alter_table('creator_setting', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_creator_setting_key'))
+        batch_op.drop_index(batch_op.f('ix_creator_setting_creator_id'))
+
+    op.drop_table('creator_setting')
     with op.batch_alter_table('ambassador', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_ambassador_affiliate_code'))
 

@@ -22,7 +22,7 @@
                 </a>
 
                 <div class="flex items-center space-x-2 sm:space-x-4">
-                    {% if 'creator_id' in session %}<a href="{{ url_for('admin.index') }}" class="hidden sm:inline-block text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg transition">Admin Hub</a>{% endif %}
+                    {% if 'creator_id' in session %}<a href="{{ url_for('admin.login') }}" class="hidden sm:inline-block text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg transition">Admin Hub</a>{% endif %}
                     {% if 'current_customer_phone' in session %}<a href="{{ url_for('main.library') }}" class="hidden sm:inline-block text-sm font-semibold text-white bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg transition">My Library</a>{% endif %}
 
                     <div x-data="{ open: false }" class="relative">

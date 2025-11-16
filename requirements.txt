@@ -7,3 +7,4 @@ qrcode[pil]==7.4.2
 pyotp==2.9.0
 Flask-Babel==3.1.0
 mistune==2.0.4
+python-slugify==7.0.0

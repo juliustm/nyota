@@ -3,7 +3,7 @@
 {% block title %}Assets{% endblock %}
 
 {% block content %}
-<script type="application/json" id="assets-data">{{ assets|tojson|safe }}</script>
+<script type="application/json" id="assets-data">{{ assets|safe }}</script>
 
 <div x-data="adminAssets()" x-init="init()" class="space-y-6">
     <!-- Header Section -->
@@ -403,8 +403,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts_extra %}
-<script src="{{ url_for('static', filename='js/admin_main.js') }}"></script>
 {% endblock %}

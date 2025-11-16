@@ -478,11 +478,8 @@ def dashboard():
 @creator_login_required
 def list_assets():
     """Renders the main list of all digital assets from the database."""
-    
-    # 1. Fetch all assets belonging to the currently logged-in creator.
     creator_assets = DigitalAsset.query.filter_by(creator_id=g.creator.id).order_by(DigitalAsset.updated_at.desc()).all()
     
-    # 2. Serialize the asset data into a list of dictionaries for the frontend.
     assets_data = [
         {
             'id': asset.id, 'title': asset.title, 'description': asset.description,
@@ -492,7 +489,6 @@ def list_assets():
         } for asset in creator_assets
     ]
     
-    # 3. Pass the data as a JSON string to the template.
     return render_template(
         'admin/assets.html', 
         assets=json.dumps(assets_data, default=json_serial)
@@ -502,50 +498,121 @@ def list_assets():
 @creator_login_required
 def asset_new():
     if request.method == 'POST':
-        # ... logic for creating a new asset ...
-        flash("Asset created successfully!", "success")
-        return redirect(url_for('admin.list_assets'))
-    # Pass an empty dictionary for the form template
-    return render_template('admin/asset_form.html', asset={})
+        try:
+            new_asset = DigitalAsset(creator_id=g.creator.id)
+            save_asset_from_form(new_asset, request)
+            db.session.add(new_asset)
+            db.session.commit()
+            flash(f"Asset '{new_asset.title}' created successfully!", "success")
+            return redirect(url_for('admin.list_assets'))
+        except ValueError as e:
+            flash(str(e), 'danger')
+            return render_template('admin/asset_form.html', asset=request.form.get('asset_data', '{}'))
+    return render_template('admin/asset_form.html', asset='{}')
 
 @admin_bp.route('/assets/<int:asset_id>/edit', methods=['GET', 'POST'])
 @creator_login_required
 def asset_edit(asset_id):
     asset = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
     if request.method == 'POST':
-        # ... logic for updating the asset ...
-        flash(f"Asset '{asset.title}' updated successfully!", "success")
-        return redirect(url_for('admin.list_assets'))
+        try:
+            save_asset_from_form(asset, request)
+            db.session.commit()
+            flash(f"Asset '{asset.title}' updated successfully!", "success")
+            return redirect(url_for('admin.list_assets'))
+        except ValueError as e:
+            flash(str(e), 'danger')
+            return render_template('admin/asset_form.html', asset=request.form.get('asset_data', '{}'))
+    return render_template('admin/asset_form.html', asset=json.dumps(asset.to_dict(), default=json_serial))
+
+def save_asset_from_form(asset, req):
+    """
+    A robust helper function that validates and populates a DigitalAsset object
+    from the JSON-based form data submitted by the Alpine.js component.
+    """
+    if 'asset_data' not in req.form:
+        raise ValueError("The form submission was incomplete. Please try again.")
+
+    form_data = json.loads(req.form['asset_data'])
     
-    # Pass the real asset data to the edit form
-    return render_template('admin/asset_form.html', asset=asset.to_dict())
+    # Use .get() for safety
+    asset_details = form_data.get('asset', {})
+    
+    # === VALIDATION BLOCK ===
+    title = asset_details.get('title')
+    asset_type_enum_str = form_data.get('assetTypeEnum')
 
+    if not asset_type_enum_str:
+        # THIS IS THE FIX: Check if an asset type was selected.
+        raise ValueError("No asset type was selected. Please go back to Step 1 and choose a content type.")
+        
+    if not title or not title.strip():
+        # This is the constructive message for the creator.
+        raise ValueError("A Title is required to save an asset. Please enter a title in Step 2.")
 
-@admin_bp.route('/assets/<int:asset_id>/edit', methods=['GET', 'POST'])
-@creator_login_required
-def edit_asset(asset_id):
-    """Handles both displaying and processing the editing of an existing asset."""
+    # --- Step 1 & 2: Type and Core Details ---
+    asset.asset_type = AssetType[asset_type_enum_str]
+    asset.title = title
+    asset.description = asset_details.get('description')
+    asset.story = asset_details.get('story_snippet')
 
-    # 1. Fetch the specific asset, ensuring it belongs to the logged-in creator.
-    asset = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
+    # --- Handle Cover Image Upload ---
+    if 'cover_image' in req.files:
+        file = req.files['cover_image']
+        if file and file.filename:
+            unique_prefix = f"{asset.id or 'new'}_{int(datetime.now().timestamp())}"
+            filename = f"{unique_prefix}_{secure_filename(file.filename)}"
+            upload_path = os.path.join(current_app.root_path, 'static/uploads/covers')
+            os.makedirs(upload_path, exist_ok=True)
+            file.save(os.path.join(upload_path, filename))
+            asset.cover_image_url = f'/static/uploads/covers/{filename}'
 
-    if request.method == 'POST':
-        # TODO: Implement the logic to save changes from the edit form.
-        flash(f"Asset '{asset.title}' updated successfully!", "success")
-        return redirect(url_for('admin.list_assets'))
+    # --- Step 4: Pricing ---
+    pricing_data = form_data.get('pricing', {})
+    asset.price = decimal.Decimal(pricing_data.get('amount') or 0.0)
+    asset.is_subscription = pricing_data.get('type') == 'recurring'
+    if asset.is_subscription:
+        asset.subscription_interval = SubscriptionInterval[pricing_data.get('billingCycle', 'monthly').upper()]
+    else:
+        asset.subscription_interval = None
 
-    # 2. Fetch recent supporters for this specific asset.
-    recent_supporters = Customer.query.join(Purchase).filter(
-        Purchase.asset_id == asset.id
-    ).order_by(Purchase.purchase_date.desc()).limit(5).all()
+    # --- Step 3: Type-specific details ---
+    asset.details = asset.details or {}
+    
+    if asset.asset_type == AssetType.TICKET:
+        event_details = form_data.get('eventDetails', {})
+        asset.event_location = event_details.get('link')
+        if event_details.get('date') and event_details.get('time'):
+            try:
+                asset.event_date = datetime.strptime(f"{event_details['date']} {event_details['time']}", '%Y-%m-%d %H:%M')
+            except (ValueError, TypeError):
+                asset.event_date = None
+        max_attendees = event_details.get('maxAttendees')
+        asset.max_attendees = int(max_attendees) if max_attendees else None
+        asset.custom_fields = form_data.get('customFields', [])
+        
+    elif asset.asset_type == AssetType.SUBSCRIPTION:
+        asset.details = form_data.get('subscriptionDetails', {})
+        
+    elif asset.asset_type == AssetType.NEWSLETTER:
+        asset.details = form_data.get('newsletterDetails', {})
+    
+    # --- Handle Content Items (AssetFile records) ---
+    AssetFile.query.filter_by(asset_id=asset.id).delete()
+    for i, item in enumerate(form_data.get('contentItems', [])):
+        db.session.add(AssetFile(
+            asset=asset, title=item.get('title'), description=item.get('description'),
+            storage_path=item.get('link'), order_index=i
+        ))
 
-    # 3. Pass the real asset data and supporters to the template.
-    # We use to_dict() to ensure it's in a format the frontend can easily use.
-    return render_template(
-        'admin/asset_view.html', # Assuming asset_view.html is the simple edit form
-        asset=asset.to_dict(), 
-        recent_supporters=recent_supporters
-    )
+    # Set status based on which button was clicked
+    action = form_data.get('action', 'publish')
+    if action == 'draft':
+        asset.status = AssetStatus.DRAFT
+    else:
+        asset.status = AssetStatus.PUBLISHED
+    
+    return asset
 
 @admin_bp.route('/supporters')
 @creator_login_required

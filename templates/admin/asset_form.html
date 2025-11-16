@@ -137,7 +137,12 @@
     </div>
 
     <!-- Main Form -->
-    <form x-show="step > 1" action="{{ url_for('admin.asset_edit', asset_id=asset.id) if asset.id else url_for('admin.asset_new') }}" method="POST" class="space-y-8" enctype="multipart/form-data">
+    <form x-show="step > 1"
+      x-ref="assetForm"
+      action="{{ url_for('admin.asset_new') if not asset.id else url_for('admin.asset_edit', asset_id=asset.id) }}"
+      method="POST"
+      class="space-y-8"
+      enctype="multipart/form-data">
         
         <!-- Navigation Header -->
         <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -571,10 +576,12 @@
                         </button>
                         <div class="flex gap-3">
                             <button type="button" 
+                                    @click="submitForm('draft')"
                                     class="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                                 Save Draft
                             </button>
-                            <button type="submit" 
+                            <button type="button" 
+                                    @click="submitForm('publish')"
                                     class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors shadow-lg"
                                     x-text="asset.id ? 'Update Asset' : 'Publish Asset'">
                             </button>

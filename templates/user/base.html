@@ -40,8 +40,8 @@
                             </div>
                             <div class="border-t border-gray-100 dark:border-gray-700/50 p-2">
                                 <p class="px-2 py-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Language</p>
-                                <a href="{{ url_for('main.set_language', lang='en') }}" class="block text-sm px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {{ 'font-bold text-indigo-600 dark:text-indigo-400' if g.language == 'en' }}">English</a>
-                                <a href="{{ url_for('main.set_language', lang='sw') }}" class="block text-sm px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {{ 'font-bold text-indigo-600 dark:text-indigo-400' if g.language == 'sw' }}">Kiswahili</a>
+                                <a href="{{ url_for('main.landing_page', lang='en') }}" class="block text-sm px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {{ 'font-bold text-indigo-600 dark:text-indigo-400' if g.language == 'en' }}">English</a>
+                                <a href="{{ url_for('main.landing_page', lang='sw') }}" class="block text-sm px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 {{ 'font-bold text-indigo-600 dark:text-indigo-400' if g.language == 'sw' }}">Kiswahili</a>
                             </div>
                         </div>
                     </div>

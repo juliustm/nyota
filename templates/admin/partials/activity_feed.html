@@ -1,0 +1,36 @@
+<!-- templates/admin/partials/activity_feed.html -->
+
+<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
+{% if recent_purchases or recent_comments %}
+    <ul class="space-y-4">
+        {% for purchase in recent_purchases %}
+        <li class="flex items-start gap-4 text-sm">
+            <span class="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
+                <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1" /></svg>
+            </span>
+            <div class="flex-grow">
+                <p><strong class="font-medium text-gray-800 dark:text-gray-200">{{ purchase.customer.whatsapp_number }}</strong> purchased for <strong class="font-medium">{{ currency_symbol }}{{ "%.2f"|format(purchase.amount_paid) }}</strong>.</p>
+                <time class="text-xs text-gray-500 dark:text-gray-400" datetime="{{ purchase.purchase_date.isoformat() }}">{{ purchase.purchase_date.strftime('%b %d, %Y at %I:%M %p') }}</time>
+            </div>
+        </li>
+        {% endfor %}
+        {% for comment in recent_comments %}
+        <li class="flex items-start gap-4 text-sm">
+            <span class="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+            </span>
+            <div class="flex-grow">
+                <p><strong class="font-medium text-gray-800 dark:text-gray-200">{{ comment.customer.whatsapp_number }}</strong> left a comment:</p>
+                <blockquote class="mt-1 pl-3 py-1 border-l-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 italic">"{{ comment.body }}"</blockquote>
+                <time class="text-xs text-gray-500 dark:text-gray-400 mt-1" datetime="{{ comment.created_at.isoformat() }}">{{ comment.created_at.strftime('%b %d, %Y at %I:%M %p') }}</time>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <div class="text-center py-8 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No recent activity</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Purchases and comments will appear here.</p>
+    </div>
+{% endif %}

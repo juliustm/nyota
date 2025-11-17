@@ -252,16 +252,47 @@ class DigitalAsset(db.Model):
 
     # Relationships
     creator = db.relationship('Creator', back_populates='assets')
-    files = db.relationship('AssetFile', back_populates='asset', cascade="all, delete-orphan")
+    files = db.relationship('AssetFile', back_populates='asset', cascade="all, delete-orphan", lazy='dynamic') # Use lazy='dynamic' for files
     purchases = db.relationship('Purchase', back_populates='asset')
     ratings = db.relationship('Rating', back_populates='asset')
     comments = db.relationship('Comment', back_populates='asset')
 
-    # FIX: REMOVED the old __init__ method. It was unreliable.
-    
     def to_dict(self):
-        # (This method is correct and remains unchanged)
-        pass
+        """Serializes the asset object to a dictionary for JSON conversion."""
+        
+        # Helper to format date and time if they exist
+        event_date_str = self.event_date.strftime('%Y-%m-%d') if self.event_date else None
+        event_time_str = self.event_date.strftime('%H:%M') if self.event_date else None
+
+        asset_data = {
+            'id': self.id,
+            'title': self.title,
+            'description': self.description,
+            'story': self.story,
+            'slug': self.slug,
+            'price': float(self.price or 0.0),
+            'status': self.status.value if self.status else None,
+            'asset_type': self.asset_type.name if self.asset_type else None,
+            'cover_image_url': self.cover_image_url,
+            'total_sales': self.total_sales or 0,
+            'total_revenue': float(self.total_revenue or 0.0),
+            
+            # Use the to_dict method from AssetFile for clean serialization
+            'files': [f.to_dict() for f in self.files.all()],
+            
+            # Create nested objects that the frontend component expects
+            'eventDetails': {
+                'link': self.event_location,
+                'date': event_date_str,
+                'time': event_time_str,
+                'maxAttendees': self.max_attendees
+            },
+            
+            # The 'details' column is JSON, so it can be used directly.
+            # Provide a default empty dict to prevent frontend errors.
+            'details': self.details or {} 
+        }
+        return asset_data
         
     def __repr__(self):
         return f'<DigitalAsset {self.id}: {self.title}>'

@@ -184,4 +184,109 @@ document.addEventListener('alpine:init', () => {
         testSMS(){alert('SMS test would send.');},testAI(){alert('AI test would run.');},testInstagram(){alert('IG test would run.');},
         connectInstagram(){this.settings.social_instagram_connected=true;},connectGoogle(){this.settings.productivity_google_connected=true;},
     }));
+
+    Alpine.data('assetView', (initialAsset, allStatuses) => ({
+        // Original data from the server. Guard against null.
+        asset: initialAsset || {},
+        // A mutable copy for the form. Initialize as null and build it in init().
+        editableAsset: null, 
+        
+        statuses: allStatuses || [],
+        activeTab: 'details',
+        isSaving: false,
+        notification: { show: false, message: '', type: 'success' },
+
+        init() {
+            // Use $nextTick to ensure Alpine's reactivity system is ready
+            // before we populate the data. This will force the view to update.
+            this.$nextTick(() => {
+                // 1. Create the editable copy. If asset is null/empty, start with an empty object.
+                this.editableAsset = JSON.parse(JSON.stringify(this.asset));
+
+                // 2. Safely add the nested properties if they don't exist.
+                if (!this.editableAsset.eventDetails) {
+                    this.editableAsset.eventDetails = { link: '', date: '', time: '', maxAttendees: null };
+                }
+                if (!this.editableAsset.details) {
+                    this.editableAsset.details = { welcomeContent: '', benefits: '' };
+                }
+            });
+            
+            // Other setup can run immediately.
+            this.applyUtilityClasses();
+        },
+
+        get publicUrl() {
+            // Guard against a null asset object here as well.
+            return `${window.location.origin}/asset/${this.asset.slug || ''}`;
+        },
+
+        async saveChanges() {
+            this.isSaving = true;
+            this.hideNotification();
+
+            // This check prevents saving if the component didn't initialize correctly.
+            if (!this.editableAsset || !this.asset.id) {
+                this.showNotification('Error: Asset data is missing. Cannot save.', 'error');
+                this.isSaving = false;
+                return;
+            }
+
+            const payload = {
+                title: this.editableAsset.title,
+                description: this.editableAsset.description,
+                story: this.editableAsset.story,
+                price: this.editableAsset.price,
+                status: this.editableAsset.status,
+                eventDetails: this.editableAsset.eventDetails,
+                details: this.editableAsset.details
+            };
+
+            try {
+                const response = await fetch(`/admin/api/assets/${this.asset.id}/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    this.showNotification(result.message, 'success');
+                    // Use a fresh copy from editableAsset to update the original `asset`
+                    this.asset = JSON.parse(JSON.stringify(this.editableAsset));
+                } else {
+                    this.showNotification(result.message || 'An unknown error occurred.', 'error');
+                }
+            } catch (e) {
+                this.showNotification('A server connection error occurred.', 'error');
+            } finally {
+                this.isSaving = false;
+            }
+        },
+
+        showNotification(message, type = 'success') {
+            this.notification.message = message;
+            this.notification.type = type;
+            this.notification.show = true;
+            setTimeout(() => this.hideNotification(), 4000);
+        },
+
+        hideNotification() {
+            this.notification.show = false;
+        },
+        
+        applyUtilityClasses() {
+            const map = {
+                '.input-label': 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5',
+                '.input-field': 'w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors',
+            };
+            document.querySelectorAll(Object.keys(map).join(',')).forEach(el => {
+                for (const selector in map) {
+                    if (el.matches(selector)) {
+                        el.className = map[selector];
+                    }
+                }
+            });
+        }
+    }));
+    
 });

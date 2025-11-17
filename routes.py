@@ -21,7 +21,7 @@ from flask import (
 
 from models.nyota import (
     db, Creator, DigitalAsset, AssetStatus, AssetType, AssetFile, 
-    SubscriptionInterval, CreatorSetting, Customer, Purchase
+    SubscriptionInterval, CreatorSetting, Customer, Purchase, Comment
 )
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
@@ -181,20 +181,72 @@ def asset_new():
             return render_template('admin/asset_form.html', asset=request.form.get('asset_data', '{}'))
     return render_template('admin/asset_form.html', asset='{}')
 
-@admin_bp.route('/assets/<int:asset_id>/edit', methods=['GET', 'POST'])
+@admin_bp.route('/assets/<int:asset_id>/edit', methods=['GET'])
 @creator_login_required
 def asset_edit(asset_id):
     asset = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
-    if request.method == 'POST':
-        try:
-            save_asset_from_form(asset, request)
-            db.session.commit()
-            flash(f"Asset '{asset.title}' updated successfully!", "success")
-            return redirect(url_for('admin.list_assets'))
-        except ValueError as e:
-            flash(str(e), 'danger')
-            return render_template('admin/asset_form.html', asset=request.form.get('asset_data', '{}'))
-    return render_template('admin/asset_form.html', asset=json.dumps(asset.to_dict(), default=json_serial))
+    recent_purchases = Purchase.query.filter_by(asset_id=asset.id).order_by(Purchase.purchase_date.desc()).limit(5).all()
+    recent_comments = Comment.query.filter_by(asset_id=asset.id).order_by(Comment.created_at.desc()).limit(5).all()
+    return render_template('admin/asset_view.html', asset=asset, recent_purchases=recent_purchases, recent_comments=recent_comments, currency_symbol=g.creator.get_setting('currency_symbol', '$'), statuses=[s.value for s in AssetStatus])
+
+@admin_bp.route('/api/assets/<int:asset_id>/update', methods=['POST'])
+@creator_login_required
+def update_asset_details(asset_id):
+    """API endpoint to handle edits from the asset_view page."""
+    asset = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'success': False, 'message': 'Invalid request.'}), 400
+
+    title = data.get('title', '').strip()
+    if not title:
+        return jsonify({'success': False, 'message': 'Asset title cannot be empty.'}), 422
+
+    try:
+        asset.title = title
+        asset.description = data.get('description', asset.description)
+        asset.story = data.get('story', asset.story)
+        asset.price = decimal.Decimal(data.get('price', asset.price))
+        
+        new_status_str = data.get('status')
+        if new_status_str in [s.value for s in AssetStatus]:
+            asset.status = AssetStatus(new_status_str)
+        
+        # Update type-specific fields
+        if asset.asset_type == AssetType.TICKET:
+            event_details = data.get('eventDetails', {})
+            asset.event_location = event_details.get('link')
+            if event_details.get('date') and event_details.get('time'):
+                asset.event_date = datetime.strptime(f"{event_details['date']} {event_details['time']}", '%Y-%m-%d %H:%M')
+            asset.max_attendees = int(event_details.get('maxAttendees')) if event_details.get('maxAttendees') else None
+        elif asset.asset_type in [AssetType.SUBSCRIPTION, AssetType.NEWSLETTER]:
+            asset.details = data.get('details', asset.details)
+
+        db.session.commit()
+        return jsonify({'success': True, 'message': f"'{asset.title}' updated successfully."})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating asset {asset_id} via API: {e}")
+        return jsonify({'success': False, 'message': 'A server error occurred while saving.'}), 500
+
+    # --- RENDER THE VIEW/EDIT PAGE (GET request) ---
+    
+    # Fetch recent purchases for this asset
+    recent_purchases = Purchase.query.filter_by(asset_id=asset.id).order_by(Purchase.purchase_date.desc()).limit(5).all()
+    
+    # Fetch recent comments for this asset
+    recent_comments = Comment.query.filter_by(asset_id=asset.id).order_by(Comment.created_at.desc()).limit(5).all()
+
+    return render_template(
+        'admin/asset_view.html',
+        asset=asset,
+        recent_purchases=recent_purchases,
+        recent_comments=recent_comments,
+        currency_symbol=g.creator.get_setting('currency_symbol', '$'),
+        statuses=[s.value for s in AssetStatus]
+    )
 
 def save_asset_from_form(asset, req):
     if 'asset_data' not in req.form: raise ValueError("Form submission incomplete. Please try again.")

@@ -3,11 +3,11 @@
 {% block title %}Store | {{ store_name }}{% endblock %}
 
 {% block content %}
-<div class="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-12 items-start">
 
     <!-- LEFT SIDEBAR: Minimal Creator Profile -->
     <aside class="lg:col-span-1 lg:sticky lg:top-24 fade-in">
-        <div class="p-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div class="p-6 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
             <div class="text-center">
                 <img src="{{ creator.get_setting('store_logo_url') or 'https://i.pravatar.cc/128?u=' + creator.username }}" alt="{{ creator.store_name }} Logo" class="w-20 h-20 rounded-full mx-auto mb-4 border-2 border-white dark:border-gray-800 shadow">
                 <h1 class="text-xl font-bold text-gray-900 dark:text-white">{{ creator.store_name }}</h1>
@@ -17,42 +17,24 @@
                 </p>
             </div>
             
-            <!-- Social Proof Stats -->
-            <div class="mt-6 grid grid-cols-2 gap-4 text-center border-t border-gray-200 dark:border-gray-700 pt-6">
-                <div>
-                    <div class="text-lg font-bold text-gray-900 dark:text-white">500+</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">Customers</div>
-                </div>
-                <div>
-                    <div class="text-lg font-bold text-gray-900 dark:text-white">4.9</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">Rating</div>
-                </div>
-            </div>
-            
-            <!-- Email Capture - Minimal but effective -->
             <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-6">
-                <h3 class="font-semibold text-center text-gray-900 dark:text-white mb-2">Get Updates</h3>
-                <p class="text-xs text-center text-gray-500 dark:text-gray-400 mb-3">New products & exclusive offers</p>
-                <form class="space-y-2">
-                    <input type="email" placeholder="Your email" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors">
-                    <button type="submit" class="w-full py-2 text-sm font-medium text-white rounded-lg shadow-sm" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.3s ease;">
-                        Subscribe
-                    </button>
-                </form>
+                <a href="{{ url_for('main.library') }}" class="w-full py-2.5 text-sm font-medium text-white rounded-lg shadow-sm flex items-center justify-center gap-2" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.3s ease;">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                    My Library
+                </a>
             </div>
         </div>
     </aside>
 
     <!-- MAIN CONTENT: Focused Product Showcase -->
-    <main class="lg:col-span-3 space-y-12 fade-in" style="animation-delay: 100ms;">
+    <main class="lg:col-span-3 space-y-16 fade-in" style="animation-delay: 100ms;">
         
-        <!-- Loop through each category that has assets -->
         {% for category, asset_list in categorized_assets.items() %}
         {% if asset_list %}
         <section>
             <!-- Category Header -->
-            <div class="mb-6">
-                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ category.value }}s</h2>
+            <div class="mb-8">
+                <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ category.value }}s</h2>
                 <p class="mt-1 text-gray-600 dark:text-gray-400">
                     {% if category.name == 'VIDEO_SERIES' %}In-depth courses to master new skills.
                     {% elif category.name == 'TICKET' %}Join live events, webinars, and workshops.
@@ -64,48 +46,70 @@
             </div>
 
             <!-- Product Grid for this Category -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {% for asset in asset_list %}
                 <div class="group relative product-card" style="transition: all 0.3s ease;">
-                    <!-- Glow effect wrapper -->
                     <div class="glow-hover absolute inset-0 rounded-xl z-0"></div>
                     
                     <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}" class="relative block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden h-full flex flex-col z-10">
-                        <!-- Image with Overlay -->
                         <div class="relative">
                             <img src="{{ asset.cover_image_url }}" alt="{{ asset.title }}" class="w-full h-48 object-cover">
                             <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+                            
+                            <!--
+                            ===========================================================
+                            == DYNAMIC OVERLAY based on purchase status
+                            ===========================================================
+                            -->
+                            {% set purchase_status = user_purchases.get(asset.id) %}
+                            {% if purchase_status == 'COMPLETED' %}
+                                <div class="absolute top-3 left-3 bg-green-500/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg flex items-center gap-1.5">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
+                                    Owned
+                                </div>
+                            {% elif purchase_status == 'PENDING' %}
+                                <div class="absolute top-3 left-3 bg-yellow-500/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg flex items-center gap-1.5">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" /></svg>
+                                    Pending
+                                </div>
+                            {% endif %}
+
                             <div class="absolute bottom-4 left-4">
-                                <h3 class="text-lg font-bold text-white" title="{{ asset.title }}">
-                                    {{ asset.title | truncate(45) }}
-                                </h3>
+                                <h3 class="text-lg font-bold text-white" title="{{ asset.title }}">{{ asset.title | truncate(45) }}</h3>
                             </div>
                             <div class="absolute top-3 right-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-bold text-gray-800 dark:text-gray-200">
                                 {{ currency_symbol }}{{ "%.2f"|format(asset.price) }}
                             </div>
                         </div>
                         
-                        <!-- Content Body -->
-                        <div class="p-4 flex-grow flex flex-col">
-                            <!-- Category badge -->
-                            <span class="inline-block text-xs font-medium px-2.5 py-1 rounded-full mb-3 w-fit 
-                                {% if category.name == 'VIDEO_SERIES' %}bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300
-                                {% elif category.name == 'TICKET' %}bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300
-                                {% elif category.name == 'DIGITAL_PRODUCT' %}bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300
-                                {% elif category.name == 'SUBSCRIPTION' %}bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300
-                                {% elif category.name == 'NEWSLETTER' %}bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300
-                                {% endif %}">
-                                {{ category.value }}
-                            </span>
-                            
+                        <div class="p-5 flex-grow flex flex-col">
                             <p class="text-gray-600 dark:text-gray-400 text-sm leading-relaxed flex-grow">
                                 {{ asset.description | truncate(100) }}
                             </p>
-                            <div class="mt-4">
-                                <span class="inline-flex items-center justify-center w-full px-4 py-2 font-medium text-white rounded-lg" 
-                                      style="background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.3s ease;">
-                                    View Details
-                                </span>
+                            <div class="mt-5">
+                                <!--
+                                ===========================================================
+                                == DYNAMIC BUTTON based on purchase status
+                                ===========================================================
+                                -->
+                                {% if purchase_status == 'COMPLETED' %}
+                                    <span class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-white bg-green-600 rounded-lg">
+                                        Access Content
+                                    </span>
+                                {% elif purchase_status == 'PENDING' %}
+                                    <span class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200 bg-gray-200 dark:bg-gray-700 rounded-lg">
+                                        Awaiting Payment
+                                    </span>
+                                {% elif purchase_status == 'FAILED' %}
+                                    <span class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-white bg-red-600 rounded-lg group-hover:bg-red-700 transition-colors">
+                                        Retry Purchase
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-white rounded-lg group-hover:opacity-90" 
+                                          style="background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.3s ease;">
+                                        View Details
+                                    </span>
+                                {% endif %}
                             </div>
                         </div>
                     </a>
@@ -115,49 +119,36 @@
         </section>
         {% endif %}
         {% endfor %}
-
     </main>
-
 </div>
 {% endblock %}
 
 {% block scripts_extra %}
 <style>
-    .fade-in {
-        opacity: 0;
-        animation: fadeIn 0.6s ease-out forwards;
-    }
-    
-    @keyframes fadeIn {
-        to { opacity: 1; }
-    }
-    
-    .product-card:hover {
-        transform: translateY(-4px);
-    }
-    
-    .glow-hover::before {
-        content: '';
-        position: absolute;
-        inset: -1px;
+    .fade-in { opacity: 0; animation: fadeIn 0.6s ease-out forwards; }
+    @keyframes fadeIn { to { opacity: 1; } }
+    .product-card:hover { transform: translateY(-5px); }
+    .glow-hover {
+        background: radial-gradient(400px circle at var(--x) var(--y), rgba(139, 92, 246, 0.2), transparent 40%);
         border-radius: inherit;
-        padding: 1px;
-        background: linear-gradient(45deg, #6366f1, #8b5cf6, #6366f1);
-        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-        mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-        -webkit-mask-composite: xor;
-        mask-composite: exclude;
         opacity: 0;
-        transition: opacity 0.3s ease;
+        transition: opacity 0.4s ease;
     }
-    
-    .product-card:hover .glow-hover::before {
-        opacity: 1;
-    }
-    
-    .sticky-sidebar {
-        position: sticky;
-        top: 6rem;
-    }
+    .product-card:hover .glow-hover { opacity: 1; }
 </style>
+<script>
+    // This script adds the interactive mouse-following glow effect to the cards
+    document.addEventListener('DOMContentLoaded', () => {
+        const cards = document.querySelectorAll('.product-card');
+        cards.forEach(card => {
+            card.addEventListener('mousemove', e => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.style.setProperty('--x', `${x}px`);
+                card.style.setProperty('--y', `${y}px`);
+            });
+        });
+    });
+</script>
 {% endblock %}

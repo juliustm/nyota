@@ -173,16 +173,79 @@ document.addEventListener('alpine:init', () => {
     }));
 
     Alpine.data('settingsPage', (initialSettings) => ({
-        mainTab: 'storeProfile', integrationTab: 'notifications', storeLogo: initialSettings.store_logo_url || '', telegramTesting: false, telegramTested: false, telegramTestSuccess: false, whatsappTesting: false, emailTesting: false, emailTested: false, emailTestSuccess: false, testEmailAddress: '', settings: initialSettings,
-        init(){const theme=localStorage.getItem('theme')||'system';this.$dispatch('set-theme',theme);this.applyUtilityClasses();},
-        setTheme(newTheme){this.settings.admin_theme=newTheme;this.$dispatch('set-theme',newTheme);},
-        previewStoreLogo(event){const file=event.target.files[0];if(file){this.storeLogo=URL.createObjectURL(file);}},
-        applyUtilityClasses(){const map={'.input-label':'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5','.input-field':'w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors','.checkbox':'w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600','.primary-button':'px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-sm transition-colors shadow-sm','.secondary-button':'px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium transition-colors','.verify-button':'px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg text-sm transition-colors shadow-sm inline-flex items-center'};for(const s in map){document.querySelectorAll(s).forEach(el=>el.className=map[s]);}},
-        testTelegram(){this.telegramTesting=true;this.telegramTested=false;setTimeout(()=>{this.telegramTesting=false;this.telegramTested=true;this.telegramTestSuccess=Math.random()>.3;},2000);},
-        testWhatsApp(){this.whatsappTesting=true;setTimeout(()=>{this.whatsappTesting=false;this.settings.whatsapp_verified=true;},1500);},
-        testEmail(){if(!this.testEmailAddress){alert('Please enter an email address.');return;}this.emailTesting=true;this.emailTested=false;setTimeout(()=>{this.emailTesting=false;this.emailTested=true;this.emailTestSuccess=Math.random()>.2;},2500);},
-        testSMS(){alert('SMS test would send.');},testAI(){alert('AI test would run.');},testInstagram(){alert('IG test would run.');},
-        connectInstagram(){this.settings.social_instagram_connected=true;},connectGoogle(){this.settings.productivity_google_connected=true;},
+        // --- State ---
+        settings: initialSettings || {}, // Guard against null/undefined data
+        mainTab: 'storeProfile',
+        integrationTab: 'notifications',
+        storeLogo: null, // Initialize as null, set in init()
+        
+        // Form states
+        telegramEnabled: false,
+        whatsappEnabled: false,
+        smtpEnabled: false,
+        aiEnabled: false,
+        
+        // Testing states
+        telegramTesting: false,
+        telegramTested: false,
+        telegramTestSuccess: false,
+        emailTesting: false,
+        emailTested: false,
+        emailTestSuccess: false,
+        testEmailAddress: '',
+
+        init() {
+            // Populate state from the initial settings object
+            this.storeLogo = this.settings.store_logo_url || '';
+            this.telegramEnabled = this.settings.telegram_enabled || false;
+            this.whatsappEnabled = this.settings.whatsapp_enabled || false;
+            this.smtpEnabled = this.settings.email_smtp_enabled || false;
+            this.aiEnabled = this.settings.ai_enabled || false;
+
+            // This is just for the local theme picker, separate from saved settings
+            const theme = localStorage.getItem('theme') || 'system';
+            this.$dispatch('set-theme', theme);
+        },
+        
+        setTheme(newTheme) {
+            // This method updates the LIVE theme, not the saved setting
+            this.$dispatch('set-theme', newTheme);
+        },
+        
+        previewStoreLogo(event) {
+            const file = event.target.files[0];
+            if (file) {
+                this.storeLogo = URL.createObjectURL(file);
+            }
+        },
+        
+        // Test methods (placeholders)
+        testTelegram() {
+            this.telegramTesting = true;
+            setTimeout(() => {
+                this.telegramTesting = false;
+                this.telegramTested = true;
+                this.telegramTestSuccess = Math.random() > 0.3;
+            }, 2000);
+        },
+        testEmail() {
+            if (!this.testEmailAddress.trim()) {
+                alert('Please enter an email address to send a test to.');
+                return;
+            }
+            this.emailTesting = true;
+            setTimeout(() => {
+                this.emailTesting = false;
+                this.emailTested = true;
+                this.emailTestSuccess = Math.random() > 0.2;
+            }, 2500);
+        },
+        testWhatsApp() { alert('Testing WhatsApp...'); },
+        testSMS() { alert('Testing SMS...'); },
+        testAI() { alert('Testing AI...'); },
+        testInstagram() { alert('Testing Instagram...'); },
+        connectInstagram() { alert('Connecting to Instagram...'); },
+        connectGoogle() { alert('Connecting to Google...'); },
     }));
 
     Alpine.data('assetView', (initialAsset, allStatuses) => ({
@@ -388,6 +451,124 @@ document.addEventListener('alpine:init', () => {
                 this.eventSource.close();
             };
         }
+    }));
+
+    Alpine.data('adminSupporters', () => ({
+        // --- Data ---
+        supporters: [], // Start with a guaranteed empty array
+        filteredSupporters: [],
+        viewMode: 'list',
+        searchTerm: '',
+        typeFilter: 'all',
+        sortBy: 'spent', 
+        sortAsc: false,
+        selectedSupporters: [],
+        bulkAction: '',
+
+        init() {
+            // --- THIS IS THE FIX ---
+            // A much more robust way to initialize the data.
+            const dataElement = document.getElementById('supporters-data');
+            if (dataElement && dataElement.textContent.trim()) {
+                try {
+                    const parsedData = JSON.parse(dataElement.textContent);
+                    // Ensure the parsed data is actually an array before assigning it
+                    if (Array.isArray(parsedData)) {
+                        this.supporters = parsedData;
+                    } else {
+                        console.error("Parsed supporters data is not an array:", parsedData);
+                        this.supporters = []; // Fallback to empty array
+                    }
+                } catch (e) {
+                    console.error('Error parsing supporters data:', e);
+                    this.supporters = []; // Fallback to empty array on parsing error
+                }
+            } else {
+                this.supporters = []; // Fallback if data element is missing or empty
+            }
+            
+            this.applyFiltersAndSort(); 
+
+            this.$watch(() => [this.searchTerm, this.typeFilter, this.sortBy], () => {
+                this.applyFiltersAndSort();
+            });
+        },
+
+        // --- Computed Properties & Logic ---
+        applyFiltersAndSort() {
+            let temp = [...this.supporters]; // This now works because `supporters` is an array
+
+            if (this.searchTerm.trim()) {
+                const s = this.searchTerm.toLowerCase();
+                temp = temp.filter(supporter => 
+                    supporter.name.toLowerCase().includes(s) ||
+                    (supporter.email && supporter.email.toLowerCase().includes(s))
+                );
+            }
+            
+            if (this.typeFilter !== 'all') {
+                temp = temp.filter(supporter => {
+                    if (this.typeFilter === 'customer') return supporter.purchases > 0;
+                    if (this.typeFilter === 'affiliate') return supporter.is_affiliate;
+                    if (this.typeFilter === 'subscriber') return supporter.is_subscriber;
+                    return true;
+                });
+            }
+
+            temp.sort((a, b) => {
+                let valA, valB;
+                switch (this.sortBy) {
+                    case 'name': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
+                    case 'recent': valA = new Date(a.join_date); valB = new Date(b.join_date); break;
+                    case 'purchases': valA = a.purchases || 0; valB = b.purchases || 0; break;
+                    default: valA = a.total_spent || 0; valB = b.total_spent || 0; break; // 'spent'
+                }
+                // Default to descending sort for money/dates
+                if (valA < valB) return 1;
+                if (valA > valB) return -1;
+                return 0;
+            });
+
+            this.filteredSupporters = temp;
+        },
+
+        // --- Helper Functions for UI ---
+        // These will now work correctly
+        getTotalRevenue() {
+            return this.supporters.reduce((sum, s) => sum + (s.total_spent || 0), 0);
+        },
+        getAffiliateCount() {
+            return this.supporters.filter(s => s.is_affiliate).length;
+        },
+        getAverageLTV() {
+            const customerCount = this.supporters.filter(s => s.purchases > 0).length;
+            if (customerCount === 0) return 0;
+            return this.getTotalRevenue() / customerCount;
+        },
+        formatDate(iso) {
+            if (!iso) return 'N/A';
+            return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        },
+        
+        // --- UI State Helpers ---
+        hasActiveFilters() { return this.searchTerm.trim() || this.typeFilter !== 'all'; },
+        getActiveFilters() {
+            let filters = [];
+            if (this.searchTerm.trim()) filters.push({ key: 'searchTerm', label: `Search: "${this.searchTerm}"` });
+            if (this.typeFilter !== 'all') filters.push({ key: 'typeFilter', label: `Type: ${this.typeFilter}` });
+            return filters;
+        },
+        removeFilter(key) { this[key] = (key === 'searchTerm') ? '' : 'all'; },
+        clearAllFilters() { this.searchTerm = ''; this.typeFilter = 'all'; },
+        
+        // --- Actions ---
+        applyBulkAction() { alert(`Applying action "${this.bulkAction}" to ${this.selectedSupporters.length} supporters.`); },
+        viewSupporter(id) { alert(`Viewing supporter ${id}`); },
+        messageSupporter(id) { alert(`Messaging supporter ${id}`); },
+        
+        toggleSelectAll(event) {
+            this.selectedSupporters = event.target.checked ? this.filteredSupporters.map(s => s.id) : [];
+        },
     }));
     
 });

@@ -148,18 +148,60 @@ def creator_logout():
 @admin_bp.route('/dashboard')
 @creator_login_required
 def creator_dashboard():
-    total_earnings = db.session.query(func.sum(DigitalAsset.total_revenue)).filter(DigitalAsset.creator_id == g.creator.id).scalar() or 0.0
-    total_sales = db.session.query(func.sum(DigitalAsset.total_sales)).filter(DigitalAsset.creator_id == g.creator.id).scalar() or 0
-    total_assets = DigitalAsset.query.filter(DigitalAsset.creator_id == g.creator.id).count()
-    start_of_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0)
-    new_supporters = Customer.query.join(Purchase).join(DigitalAsset).filter(DigitalAsset.creator_id == g.creator.id, Customer.created_at >= start_of_month).count()
-    earnings_this_month = db.session.query(func.sum(Purchase.amount_paid)).join(DigitalAsset).filter(DigitalAsset.creator_id == g.creator.id, Purchase.purchase_date >= start_of_month).scalar() or 0.0
-    stats = {'total_earnings': total_earnings, 'total_sales': total_sales, 'total_assets': total_assets, 'new_supporters': new_supporters, 'earnings_this_month': earnings_this_month}
-    recent_activity = db.session.query(Purchase).join(DigitalAsset).filter(
+    # --- STATS CALCULATION ---
+    # Total earnings from completed purchases
+    total_earnings = db.session.query(func.sum(Purchase.amount_paid)).join(DigitalAsset).filter(
         DigitalAsset.creator_id == g.creator.id,
         Purchase.status == PurchaseStatus.COMPLETED
+    ).scalar() or decimal.Decimal(0)
+
+    # Total number of completed sales
+    total_sales = Purchase.query.join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.status == PurchaseStatus.COMPLETED
+    ).count()
+
+    # Total unique customers who have completed a purchase
+    supporters_count = db.session.query(func.count(Customer.id.distinct())).join(Purchase).join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.status == PurchaseStatus.COMPLETED
+    ).scalar() or 0
+
+    # Earnings this month
+    start_of_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0)
+    earnings_this_month = db.session.query(func.sum(Purchase.amount_paid)).join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.status == PurchaseStatus.COMPLETED,
+        Purchase.purchase_date >= start_of_month
+    ).scalar() or decimal.Decimal(0)
+
+    # New supporters this month
+    new_supporters_this_month = db.session.query(func.count(Customer.id.distinct())).join(Purchase).join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.status == PurchaseStatus.COMPLETED,
+        Customer.created_at >= start_of_month
+    ).scalar() or 0
+
+    stats = {
+        'total_earnings': total_earnings,
+        'total_sales': total_sales,
+        'supporters_count': supporters_count,
+        'earnings_this_month': earnings_this_month,
+        'new_supporters_this_month': new_supporters_this_month
+    }
+    
+    # --- RECENT ACTIVITY (SALES) ---
+    # Fetch the 10 most recent purchases (completed or pending)
+    recent_activity = Purchase.query.join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id
     ).order_by(Purchase.purchase_date.desc()).limit(10).all()
-    return render_template('admin/dashboard.html', stats=stats, activity=recent_activity)
+
+    return render_template(
+        'admin/dashboard.html', 
+        stats=stats, 
+        activity=recent_activity,
+        currency_symbol=g.creator.get_setting('currency_symbol', '$')
+    )
 
 @admin_bp.route('/assets')
 @creator_login_required
@@ -329,7 +371,38 @@ def duplicate_asset(asset_id):
 @admin_bp.route('/supporters')
 @creator_login_required
 def supporters():
-    return render_template('admin/supporters.html', supporters=[])
+    """Fetches all customers and their aggregated data for the admin supporters page."""
+    
+    # --- THIS IS THE NEW, CORRECTED QUERY ---
+    
+    # 1. Find the IDs of all unique customers who have made a purchase from this creator.
+    #    This is a very efficient and direct way to identify supporters.
+    supporter_ids_query = db.session.query(Customer.id).distinct().join(Purchase).join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id
+    )
+    supporter_ids = [item[0] for item in supporter_ids_query.all()]
+
+    # 2. If there are any supporters, fetch their full objects with all relationships pre-loaded.
+    #    This avoids the complex join issues and is the recommended pattern.
+    if supporter_ids:
+        all_customers = db.session.query(Customer).filter(
+            Customer.id.in_(supporter_ids)
+        ).options(
+            db.selectinload(Customer.purchases),
+            db.selectinload(Customer.subscriptions),
+            db.selectinload(Customer.ambassador_profile)
+        ).all()
+    else:
+        all_customers = []
+
+    # 3. Serialize each customer. This part remains the same.
+    supporters_data = [customer.to_dict_detailed() for customer in all_customers]
+
+    return render_template(
+        'admin/supporters.html', 
+        supporters=json.dumps(supporters_data, default=json_serial),
+        currency_symbol=g.creator.get_setting('currency_symbol', '$')
+    )
 
 @admin_bp.route('/settings', methods=['GET', 'POST'])
 @creator_login_required
@@ -387,17 +460,17 @@ def manage_settings():
         flash("Settings saved successfully!", "success")
         return redirect(url_for('admin.manage_settings'))
 
-    # --- DISPLAY SETTINGS LOGIC (GET request) ---
     all_settings = CreatorSetting.query.filter_by(creator_id=g.creator.id).all()
-    
-    # Organize settings into a simple dictionary for easy access in the template
     settings_dict = {setting.key: setting.value for setting in all_settings}
     
-    # Add core creator fields to the dictionary for a unified 'settings' object
+    # Add core creator fields to the dictionary for a unified object
     settings_dict['store_name'] = g.creator.store_name
     settings_dict['store_handle'] = g.creator.store_handle
 
-    return render_template('admin/settings.html', settings=settings_dict)
+    # Convert the final dictionary to a JSON string for the data island
+    settings_json = json.dumps(settings_dict, default=json_serial)
+
+    return render_template('admin/settings.html', settings_json=settings_json)
 
 # ==============================================================================
 # == MAIN (PUBLIC) BLUEPRINT
@@ -480,38 +553,62 @@ def landing_page():
         creator_id=creator.id
     ).order_by(DigitalAsset.updated_at.desc()).all()
 
-    # Pre-categorize assets into a dictionary. This is clean and efficient.
+    # Pre-categorize assets into a dictionary
     categorized_assets = {}
     for asset in assets:
         category_enum = asset.asset_type
         if category_enum not in categorized_assets:
             categorized_assets[category_enum] = []
         categorized_assets[category_enum].append(asset)
+    
+    # --- THIS IS THE NEW SESSION-AWARE LOGIC ---
+    user_purchases = {} # A dictionary to hold the status of each asset for the user
+    customer_phone = session.get('customer_phone')
+    if customer_phone:
+        customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
+        if customer:
+            # Fetch all of this customer's purchases
+            purchases = Purchase.query.filter_by(customer_id=customer.id).all()
+            # Create a simple lookup map: {asset_id: status_name}
+            for p in purchases:
+                # Store the most "important" status (Completed > Pending > Failed)
+                if p.asset_id not in user_purchases or p.status == PurchaseStatus.COMPLETED:
+                    user_purchases[p.asset_id] = p.status.name
             
     return render_template(
         'user/index.html',
         creator=creator,
         store_name=creator.store_name,
-        categorized_assets=categorized_assets, # Pass the dictionary to the template
+        categorized_assets=categorized_assets,
+        user_purchases=user_purchases, # Pass the purchase map to the template
         currency_symbol=creator.get_setting('currency_symbol', '$')
     )
 
 @main_bp.route('/asset/<slug>')
 def asset_detail(slug):
-    # Get the asset object from the database
     asset_obj = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
-    
-    # Separately, create the JSON string for the frontend
     asset_json = json.dumps(asset_obj.to_dict(), default=json_serial)
-    
-    # Get the creator for the store_name
     creator = Creator.query.get(asset_obj.creator_id)
 
-    # Pass BOTH the object and the JSON string to the template
+    purchase_status = None
+    customer_phone = session.get('customer_phone')
+    if customer_phone:
+        customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
+        if customer:
+            # Find the most recent purchase attempt for this asset by this customer
+            latest_purchase = Purchase.query.filter_by(
+                customer_id=customer.id, 
+                asset_id=asset_obj.id
+            ).order_by(Purchase.purchase_date.desc()).first()
+            
+            if latest_purchase:
+                purchase_status = latest_purchase.status.name # e.g., "COMPLETED", "PENDING", "FAILED"
+
     return render_template(
         'user/asset_detail.html',
         asset_obj=asset_obj,
         asset_json=asset_json,
+        purchase_status=purchase_status, # Pass the status to the template
         store_name=creator.store_name if creator else "Creator Store",
         currency_symbol=creator.get_setting('currency_symbol', '$') if creator else '$'
     )
@@ -616,6 +713,7 @@ def uza_payment_callback():
         asset = purchase.asset
         asset.total_sales = (asset.total_sales or 0) + 1
         asset.total_revenue = (asset.total_revenue or 0) + purchase.amount_paid
+        session['customer_phone'] = purchase.customer.whatsapp_number
         
         db.session.commit()
         
@@ -654,6 +752,35 @@ def payment_stream(channel_id):
 
     return Response(event_stream(), mimetype='text/event-stream')
     
-@main_bp.route('/library')
+@main_bp.route('/library', methods=['GET', 'POST'])
 def library():
-    return "<h1>Your Library</h1><p>This is a placeholder for purchased assets.</p>"
+    customer_phone = session.get('customer_phone')
+    
+    if request.method == 'POST':
+        form_phone = request.form.get('phone_number')
+        if form_phone:
+            session['customer_phone'] = form_phone.strip()
+            return redirect(url_for('main.library'))
+
+    purchases = []
+    if customer_phone:
+        customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
+        if customer:
+            purchases = Purchase.query.filter_by(customer_id=customer.id).order_by(Purchase.purchase_date.desc()).all()
+    
+    creator = Creator.query.first()
+
+    return render_template(
+        'user/library.html',
+        customer_phone=customer_phone,
+        purchases=purchases,
+        store_name=creator.store_name if creator else "Creator Store",
+        currency_symbol=creator.get_setting('currency_symbol', '$') if creator else '$'
+    )
+
+@main_bp.route('/logout')
+def logout():
+    """Logs out the customer by clearing their phone from the session."""
+    session.pop('customer_phone', None)
+    flash("You have been logged out.", "info")
+    return redirect(url_for('main.library'))

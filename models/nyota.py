@@ -206,11 +206,40 @@ class Customer(db.Model):
     whatsapp_number = db.Column(db.String(25), unique=True, nullable=False, index=True)
     xp_points = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    purchases = db.relationship('Purchase', back_populates='customer', lazy='dynamic')
-    subscriptions = db.relationship('Subscription', back_populates='customer', lazy='dynamic')
-    comments = db.relationship('Comment', back_populates='customer', lazy='dynamic')
-    ratings = db.relationship('Rating', back_populates='customer', lazy='dynamic')
+    purchases = db.relationship('Purchase', back_populates='customer')
+    subscriptions = db.relationship('Subscription', back_populates='customer')
+    comments = db.relationship('Comment', back_populates='customer')
+    ratings = db.relationship('Rating', back_populates='customer')
     ambassador_profile = db.relationship('Ambassador', back_populates='customer', uselist=False)
+
+    def to_dict_detailed(self):
+        """Serializes the customer with aggregated purchase and status data."""
+        
+        # Calculate total spent and number of purchases
+        total_spent = 0
+        purchase_count = 0
+        for p in self.purchases:
+            if p.status == PurchaseStatus.COMPLETED:
+                total_spent += p.amount_paid
+                purchase_count += 1
+        
+        # Determine status (e.g., is they an active subscriber?)
+        is_subscriber = any(s.status == 'active' for s in self.subscriptions)
+
+        return {
+            'id': self.id,
+            'name': self.whatsapp_number, # Using phone number as name for now
+            'email': self.whatsapp_number, # Placeholder
+            'avatar': f'https://i.pravatar.cc/48?u={self.whatsapp_number}', # Placeholder
+            'join_date': self.created_at.isoformat(),
+            'total_spent': float(total_spent),
+            'purchases': purchase_count,
+            'is_affiliate': self.ambassador_profile is not None,
+            'is_subscriber': is_subscriber,
+            # Add more fields as needed, e.g., location, notes
+            'location': 'Unknown', 
+            'notes': '',
+        }
 
 # ... The rest of the models (DigitalAsset, AssetFile, Purchase, etc.) are unchanged ...
 # They were solid and do not need modification. This section is omitted for brevity

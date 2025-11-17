@@ -1,291 +1,163 @@
 {% extends "user/base.html" %}
 
-{% block title %}{{ store_name }}'s Hub{% endblock %}
+{% block title %}Store | {{ store_name }}{% endblock %}
 
 {% block content %}
-<script type="application/json" id="storefront-data">{{ assets|tojson|safe }}</script>
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
 
-<div x-data="storefront('{{ currency_symbol }}')" x-init="init()">
-
-    <!-- Simplified Creator Profile Section -->
-    <div class="mb-12 p-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 fade-in">
-        <div class="flex flex-col md:flex-row items-center gap-6">
-            <div class="flex-shrink-0">
-                <img src="https://i.pravatar.cc/96?u=creator" alt="Creator Avatar" class="w-20 h-20 rounded-xl border-2 border-white dark:border-gray-800">
+    <!-- LEFT SIDEBAR: Minimal Creator Profile -->
+    <aside class="lg:col-span-1 lg:sticky lg:top-24 fade-in">
+        <div class="p-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+            <div class="text-center">
+                <img src="{{ creator.get_setting('store_logo_url') or 'https://i.pravatar.cc/128?u=' + creator.username }}" alt="{{ creator.store_name }} Logo" class="w-20 h-20 rounded-full mx-auto mb-4 border-2 border-white dark:border-gray-800 shadow">
+                <h1 class="text-xl font-bold text-gray-900 dark:text-white">{{ creator.store_name }}</h1>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">by {{ creator.username }}</p>
+                <p class="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
+                    {{ creator.get_setting('store_bio', 'Premium digital products to elevate your workflow. No fluff, just results.') }}
+                </p>
             </div>
-            <div class="flex-1 text-center md:text-left">
-                <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3">{{ store_name }}</h1>
-                <p class="text-lg text-gray-600 dark:text-gray-300 mb-4 leading-relaxed">Your trusted source for high-quality digital assets. Every creation is crafted with passion and expertise.</p>
-                <div class="flex flex-wrap gap-4 justify-center md:justify-start">
-                    <div class="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                        <svg class="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        <span class="font-medium">500+ Supporters</span>
-                    </div>
-                    <div class="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                        <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                        </svg>
-                        <span class="font-medium">4.9 Rating</span>
-                    </div>
+            
+            <!-- Social Proof Stats -->
+            <div class="mt-6 grid grid-cols-2 gap-4 text-center border-t border-gray-200 dark:border-gray-700 pt-6">
+                <div>
+                    <div class="text-lg font-bold text-gray-900 dark:text-white">500+</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">Customers</div>
                 </div>
+                <div>
+                    <div class="text-lg font-bold text-gray-900 dark:text-white">4.9</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">Rating</div>
+                </div>
+            </div>
+            
+            <!-- Email Capture - Minimal but effective -->
+            <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                <h3 class="font-semibold text-center text-gray-900 dark:text-white mb-2">Get Updates</h3>
+                <p class="text-xs text-center text-gray-500 dark:text-gray-400 mb-3">New products & exclusive offers</p>
+                <form class="space-y-2">
+                    <input type="email" placeholder="Your email" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors">
+                    <button type="submit" class="w-full py-2 text-sm font-medium text-white rounded-lg shadow-sm" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.3s ease;">
+                        Subscribe
+                    </button>
+                </form>
             </div>
         </div>
-    </div>
+    </aside>
 
-    <!-- Simplified Filter Buttons -->
-    <div class="flex justify-center flex-wrap gap-2 mb-12 fade-in" style="animation-delay: 0.1s;">
-        <button @click="setFilter('all')" 
-                :class="{ 
-                    'bg-indigo-600 text-white': activeFilter === 'all', 
-                    'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700': activeFilter !== 'all' 
-                }" 
-                class="px-5 py-2.5 text-base font-medium rounded-lg transition-colors">
-            All
-        </button>
-        <button @click="setFilter('video-series')" 
-                :class="{ 
-                    'bg-indigo-600 text-white': activeFilter === 'video-series', 
-                    'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700': activeFilter !== 'video-series' 
-                }" 
-                class="px-5 py-2.5 text-base font-medium rounded-lg transition-colors">
-            Video Courses
-        </button>
-        <button @click="setFilter('photo-pack')" 
-                :class="{ 
-                    'bg-indigo-600 text-white': activeFilter === 'photo-pack', 
-                    'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700': activeFilter !== 'photo-pack' 
-                }" 
-                class="px-5 py-2.5 text-base font-medium rounded-lg transition-colors">
-            Photos & Presets
-        </button>
-        <button @click="setFilter('ticket')" 
-                :class="{ 
-                    'bg-indigo-600 text-white': activeFilter === 'ticket', 
-                    'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700': activeFilter !== 'ticket' 
-                }" 
-                class="px-5 py-2.5 text-base font-medium rounded-lg transition-colors">
-            Event Tickets
-        </button>
-    </div>
+    <!-- MAIN CONTENT: Focused Product Showcase -->
+    <main class="lg:col-span-3 space-y-12 fade-in" style="animation-delay: 100ms;">
+        
+        <!-- Loop through each category that has assets -->
+        {% for category, asset_list in categorized_assets.items() %}
+        {% if asset_list %}
+        <section>
+            <!-- Category Header -->
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{ category.value }}s</h2>
+                <p class="mt-1 text-gray-600 dark:text-gray-400">
+                    {% if category.name == 'VIDEO_SERIES' %}In-depth courses to master new skills.
+                    {% elif category.name == 'TICKET' %}Join live events, webinars, and workshops.
+                    {% elif category.name == 'DIGITAL_PRODUCT' %}Premium resources to elevate your work.
+                    {% elif category.name == 'SUBSCRIPTION' %}Get exclusive content and perks every month.
+                    {% elif category.name == 'NEWSLETTER' %}Stay ahead with insights delivered to your inbox.
+                    {% endif %}
+                </p>
+            </div>
 
-    <!-- Single Column Asset Feed -->
-    <div class="max-w-4xl mx-auto space-y-6">
-        <template x-for="(asset, index) in filteredAssets" :key="asset.id">
-            <article x-data="{ openReviews: false, visibleReviews: 3, imageError: false }" 
-                     class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden transition-all duration-300 hover:shadow-md fade-in" 
-                     :style="`animation-delay: ${index * 100}ms`">
-                
-                <!-- Mobile Layout: Stacked -->
-                <div class="block md:hidden">
-                    <div class="relative">
-                        <a :href="`{{ url_for('main.asset_detail', slug='') }}${asset.slug}`" class="block">
-                            <img x-show="!imageError" :src="asset.cover_image_url" :alt="asset.title" @error="imageError = true" 
-                                 class="w-full h-48 object-cover">
-                            <div x-show="imageError" x-cloak class="w-full h-48 bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 dark:text-gray-500">
-                                <svg x-show="asset.asset_type === 'video-series'" class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                <svg x-show="asset.asset_type === 'photo-pack'" class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                                <svg x-show="asset.asset_type === 'ticket'" class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-                                </svg>
-                            </div>
-                        </a>
-                    </div>
+            <!-- Product Grid for this Category -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {% for asset in asset_list %}
+                <div class="group relative product-card" style="transition: all 0.3s ease;">
+                    <!-- Glow effect wrapper -->
+                    <div class="glow-hover absolute inset-0 rounded-xl z-0"></div>
                     
-                    <div class="p-5">
-                        <div class="mb-3">
-                            <p class="text-sm font-medium text-indigo-600 dark:text-indigo-400 mb-1" x-text="asset.asset_type.replace('-', ' ')"></p>
-                            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2" x-text="asset.title"></h3>
-                            <p class="text-gray-600 dark:text-gray-400 text-base" x-text="asset.details_line"></p>
-                        </div>
-
-                        <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                            <p class="text-gray-700 dark:text-gray-300 text-base leading-relaxed" x-text="asset.story_snippet"></p>
-                        </div>
-
-                        <div class="flex justify-between items-center mb-4">
-                            <div class="text-2xl font-bold text-gray-900 dark:text-white">
-                                <span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span>
-                                <template x-if="asset.purchase_type === 'subscription'">
-                                    <span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1" x-text="`/ ${asset.subscription_interval}`"></span>
-                                </template>
+                    <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}" class="relative block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden h-full flex flex-col z-10">
+                        <!-- Image with Overlay -->
+                        <div class="relative">
+                            <img src="{{ asset.cover_image_url }}" alt="{{ asset.title }}" class="w-full h-48 object-cover">
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+                            <div class="absolute bottom-4 left-4">
+                                <h3 class="text-lg font-bold text-white" title="{{ asset.title }}">
+                                    {{ asset.title | truncate(45) }}
+                                </h3>
                             </div>
-                            <a :href="`{{ url_for('main.asset_detail', slug='') }}${asset.slug}`" 
-                               class="px-5 py-2.5 text-base font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">
-                                View Details
-                            </a>
-                        </div>
-
-                        <!-- Reviews for Mobile -->
-                        <div x-show="asset.reviews && asset.reviews.length > 0" class="border-t border-gray-200 dark:border-gray-600 pt-4">
-                            <div class="flex justify-between items-center mb-3">
-                                <div class="flex items-center gap-2">
-                                    <div class="flex -space-x-2">
-                                        <template x-for="review in asset.reviews.slice(0, 3)">
-                                            <img :src="review.avatar" :alt="review.author" class="w-7 h-7 rounded-full border-2 border-white dark:border-gray-800">
-                                        </template>
-                                    </div>
-                                    <div class="text-sm text-gray-600 dark:text-gray-400">
-                                        <span class="font-semibold text-gray-700 dark:text-gray-200" x-text="calculateAverageRating(asset.reviews)"></span>/5 • 
-                                        <span x-text="asset.reviews.length"></span> reviews
-                                    </div>
-                                </div>
-                                <button @click="openReviews = !openReviews" class="text-indigo-600 dark:text-indigo-400 text-sm font-medium">
-                                    <span x-text="openReviews ? 'Hide' : 'Show'"></span>
-                                </button>
+                            <div class="absolute top-3 right-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-bold text-gray-800 dark:text-gray-200">
+                                {{ currency_symbol }}{{ "%.2f"|format(asset.price) }}
                             </div>
+                        </div>
+                        
+                        <!-- Content Body -->
+                        <div class="p-4 flex-grow flex flex-col">
+                            <!-- Category badge -->
+                            <span class="inline-block text-xs font-medium px-2.5 py-1 rounded-full mb-3 w-fit 
+                                {% if category.name == 'VIDEO_SERIES' %}bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300
+                                {% elif category.name == 'TICKET' %}bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300
+                                {% elif category.name == 'DIGITAL_PRODUCT' %}bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300
+                                {% elif category.name == 'SUBSCRIPTION' %}bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300
+                                {% elif category.name == 'NEWSLETTER' %}bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300
+                                {% endif %}">
+                                {{ category.value }}
+                            </span>
                             
-                            <div x-show="openReviews" x-collapse class="space-y-3">
-                                <template x-for="review in asset.reviews.slice(0, visibleReviews)" :key="review.author">
-                                    <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                                        <div class="flex items-start gap-3">
-                                            <img :src="review.avatar" class="w-8 h-8 rounded-lg">
-                                            <div class="flex-1">
-                                                <div class="flex items-center gap-2 mb-1">
-                                                    <p class="font-medium text-gray-900 dark:text-white text-sm" x-text="review.author"></p>
-                                                    <div class="flex items-center gap-0.5">
-                                                        <template x-for="i in 5">
-                                                            <svg class="w-3.5 h-3.5" :class="i <= review.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" fill="currentColor" viewBox="0 0 20 20">
-                                                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                                                            </svg>
-                                                        </template>
-                                                    </div>
-                                                </div>
-                                                <p class="text-gray-700 dark:text-gray-300 text-sm" x-text="review.text"></p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </template>
-                                <button x-show="visibleReviews < asset.reviews.length" 
-                                        @click="visibleReviews += 4" 
-                                        class="w-full text-center text-sm text-indigo-600 dark:text-indigo-400 font-medium py-2">
-                                    Show More Reviews
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tablet+ Layout: Horizontal -->
-                <div class="hidden md:flex p-6">
-                    <div class="flex-shrink-0 w-48 mr-6">
-                        <a :href="`{{ url_for('main.asset_detail', slug='') }}${asset.slug}`" class="block">
-                            <img x-show="!imageError" :src="asset.cover_image_url" :alt="asset.title" @error="imageError = true" 
-                                 class="w-full h-40 object-cover rounded-lg">
-                            <div x-show="imageError" x-cloak class="w-full h-40 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-gray-400 dark:text-gray-500">
-                                <svg x-show="asset.asset_type === 'video-series'" class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                <svg x-show="asset.asset_type === 'photo-pack'" class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                                <svg x-show="asset.asset_type === 'ticket'" class="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
-                                </svg>
-                            </div>
-                        </a>
-                    </div>
-                    
-                    <div class="flex-1">
-                        <div class="flex justify-between items-start mb-4">
-                            <div class="flex-1">
-                                <p class="text-sm font-medium text-indigo-600 dark:text-indigo-400 mb-1" x-text="asset.asset_type.replace('-', ' ')"></p>
-                                <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2" x-text="asset.title"></h3>
-                                <p class="text-gray-600 dark:text-gray-400 text-lg" x-text="asset.details_line"></p>
-                            </div>
-                            <div class="text-right ml-6">
-                                <div class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                                    <span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span>
-                                </div>
-                                <a :href="`{{ url_for('main.asset_detail', slug='') }}${asset.slug}`" 
-                                   class="inline-block px-6 py-3 text-base font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">
+                            <p class="text-gray-600 dark:text-gray-400 text-sm leading-relaxed flex-grow">
+                                {{ asset.description | truncate(100) }}
+                            </p>
+                            <div class="mt-4">
+                                <span class="inline-flex items-center justify-center w-full px-4 py-2 font-medium text-white rounded-lg" 
+                                      style="background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.3s ease;">
                                     View Details
-                                </a>
+                                </span>
                             </div>
                         </div>
-
-                        <div class="mb-4">
-                            <p class="text-gray-700 dark:text-gray-300 text-lg leading-relaxed" x-text="asset.story_snippet"></p>
-                        </div>
-
-                        <!-- Reviews for Tablet+ -->
-                        <div x-show="asset.reviews && asset.reviews.length > 0" class="border-t border-gray-200 dark:border-gray-600 pt-4">
-                            <div class="flex justify-between items-center mb-4">
-                                <div class="flex items-center gap-3">
-                                    <div class="flex -space-x-2">
-                                        <template x-for="review in asset.reviews.slice(0, 4)">
-                                            <img :src="review.avatar" :alt="review.author" class="w-8 h-8 rounded-full border-2 border-white dark:border-gray-800">
-                                        </template>
-                                    </div>
-                                    <div>
-                                        <div class="flex items-center gap-1">
-                                            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                                            </svg>
-                                            <span class="font-semibold text-gray-900 dark:text-white" x-text="calculateAverageRating(asset.reviews)"></span>
-                                            <span class="text-gray-500 dark:text-gray-400">/ 5</span>
-                                        </div>
-                                        <span class="text-sm text-gray-600 dark:text-gray-400" x-text="`${asset.reviews.length} reviews`"></span>
-                                    </div>
-                                </div>
-                                <button @click="openReviews = !openReviews" class="text-indigo-600 dark:text-indigo-400 font-medium">
-                                    <span x-text="openReviews ? 'Hide reviews' : 'Show reviews'"></span>
-                                </button>
-                            </div>
-                            
-                            <div x-show="openReviews" x-collapse class="space-y-4">
-                                <template x-for="review in asset.reviews.slice(0, visibleReviews)" :key="review.author">
-                                    <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                                        <div class="flex items-start gap-4">
-                                            <img :src="review.avatar" class="w-10 h-10 rounded-lg">
-                                            <div class="flex-1">
-                                                <div class="flex items-center justify-between mb-2">
-                                                    <p class="font-semibold text-gray-900 dark:text-white" x-text="review.author"></p>
-                                                    <div class="flex items-center gap-1">
-                                                        <template x-for="i in 5">
-                                                            <svg class="w-4 h-4" :class="i <= review.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" fill="currentColor" viewBox="0 0 20 20">
-                                                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                                                            </svg>
-                                                        </template>
-                                                    </div>
-                                                </div>
-                                                <p class="text-gray-700 dark:text-gray-300" x-text="review.text"></p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </template>
-                                <button x-show="visibleReviews < asset.reviews.length" 
-                                        @click="visibleReviews += 4" 
-                                        class="w-full text-center text-indigo-600 dark:text-indigo-400 font-medium py-3">
-                                    Show More Reviews
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    </a>
                 </div>
-            </article>
-        </template>
-    </div>
-    
-    <!-- Simplified Empty State -->
-    <div x-show="!filteredAssets.length" class="text-center py-16 fade-in" x-cloak>
-        <div class="max-w-md mx-auto">
-            <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-            <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-3">No Assets Found</h3>
-            <p class="text-gray-600 dark:text-gray-400 mb-6">We couldn't find any assets matching your selected category.</p>
-            <button @click="setFilter('all')" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg transition-colors">
-                Show All Assets
-            </button>
-        </div>
-    </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+        {% endfor %}
+
+    </main>
+
 </div>
+{% endblock %}
+
+{% block scripts_extra %}
+<style>
+    .fade-in {
+        opacity: 0;
+        animation: fadeIn 0.6s ease-out forwards;
+    }
+    
+    @keyframes fadeIn {
+        to { opacity: 1; }
+    }
+    
+    .product-card:hover {
+        transform: translateY(-4px);
+    }
+    
+    .glow-hover::before {
+        content: '';
+        position: absolute;
+        inset: -1px;
+        border-radius: inherit;
+        padding: 1px;
+        background: linear-gradient(45deg, #6366f1, #8b5cf6, #6366f1);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    
+    .product-card:hover .glow-hover::before {
+        opacity: 1;
+    }
+    
+    .sticky-sidebar {
+        position: sticky;
+        top: 6rem;
+    }
+</style>
 {% endblock %}

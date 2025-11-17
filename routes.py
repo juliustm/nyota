@@ -424,16 +424,51 @@ def mock_payment_worker(channel_id, phone, url):
 
 @main_bp.route('/')
 def landing_page():
-    creator = Creator.query.first();
-    if not creator: return "<h1>Store not set up yet.</h1>", 503
-    assets = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED, creator_id=creator.id).all()
-    assets_data = [a.to_dict() for a in assets]
-    return render_template('user/index.html', assets=json.dumps(assets_data, default=json_serial))
+    creator = Creator.query.first()
+    if not creator:
+        return "<h1>Store not set up yet.</h1><p>Please complete the admin setup.</p>", 503
+
+    # Fetch all published assets
+    assets = DigitalAsset.query.filter_by(
+        status=AssetStatus.PUBLISHED, 
+        creator_id=creator.id
+    ).order_by(DigitalAsset.updated_at.desc()).all()
+
+    # Pre-categorize assets into a dictionary. This is clean and efficient.
+    categorized_assets = {}
+    for asset in assets:
+        category_enum = asset.asset_type
+        if category_enum not in categorized_assets:
+            categorized_assets[category_enum] = []
+        categorized_assets[category_enum].append(asset)
+            
+    return render_template(
+        'user/index.html',
+        creator=creator,
+        store_name=creator.store_name,
+        categorized_assets=categorized_assets, # Pass the dictionary to the template
+        currency_symbol=creator.get_setting('currency_symbol', '$')
+    )
 
 @main_bp.route('/asset/<slug>')
 def asset_detail(slug):
-    asset = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
-    return render_template('user/asset_detail.html', asset=json.dumps(asset.to_dict(), default=json_serial))
+    # Get the asset object from the database
+    asset_obj = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
+    
+    # Separately, create the JSON string for the frontend
+    asset_json = json.dumps(asset_obj.to_dict(), default=json_serial)
+    
+    # Get the creator for the store_name
+    creator = Creator.query.get(asset_obj.creator_id)
+
+    # Pass BOTH the object and the JSON string to the template
+    return render_template(
+        'user/asset_detail.html',
+        asset_obj=asset_obj,
+        asset_json=asset_json,
+        store_name=creator.store_name if creator else "Creator Store",
+        currency_symbol=creator.get_setting('currency_symbol', '$') if creator else '$'
+    )
 
 @main_bp.route('/checkout/<slug>')
 def checkout(slug):

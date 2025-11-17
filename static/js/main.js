@@ -53,61 +53,90 @@ document.addEventListener('alpine:init', () => {
     // ========================================================================
 
     Alpine.data('adminAssets', () => ({
-        // --- State Properties ---
-        assets: [], // Always initialize as an empty array
-        filteredAssets: [],
-        viewMode: 'list',
-        searchTerm: '',
-        statusFilter: 'all',
-        typeFilter: 'all',
-        sortBy: 'updated_at',
-        sortAsc: false,
-        selectedAssets: [],
-        bulkAction: '',
-        currentPage: 1,
-        itemsPerPage: 10,
+        assets: [], filteredAssets: [], viewMode: 'list', searchTerm: '', statusFilter: 'all', typeFilter: 'all',
+        sortBy: 'updated_at', sortAsc: false, selectedAssets: [], bulkAction: '', currentPage: 1, itemsPerPage: 10,
 
-        // --- Initialization ---
         init() {
             try {
                 const dataElement = document.getElementById('assets-data');
                 if (dataElement && dataElement.textContent) {
-                    // FIX: Parse the JSON string from the backend into a JavaScript array.
-                    const parsedData = JSON.parse(dataElement.textContent);
-                    // FIX: Ensure the parsed data is actually an array before assigning it.
-                    this.assets = Array.isArray(parsedData) ? parsedData : [];
+                    this.assets = Array.isArray(JSON.parse(dataElement.textContent)) ? JSON.parse(dataElement.textContent) : [];
+                }
+            } catch (e) { this.assets = []; console.error('Error parsing assets data:', e); }
+            this.applyFiltersAndSort();
+            this.$watch(() => [this.searchTerm, this.statusFilter, this.typeFilter, this.sortBy, this.sortAsc], () => { this.currentPage = 1; this.applyFiltersAndSort(); });
+        },
+
+        applyFiltersAndSort() {
+            let temp = [...this.assets];
+            if (this.searchTerm.trim()) { const s = this.searchTerm.toLowerCase(); temp = temp.filter(a => (a.title && a.title.toLowerCase().includes(s)) || (a.description && a.description.toLowerCase().includes(s))); }
+            if (this.statusFilter !== 'all') { temp = temp.filter(a => a.status === this.statusFilter); }
+            if (this.typeFilter !== 'all') { temp = temp.filter(a => a.type.toLowerCase().replace(/_/g, '-') === this.typeFilter); }
+            temp.sort((a, b) => { let vA, vB; switch (this.sortBy) { case 'title': vA = a.title.toLowerCase(); vB = b.title.toLowerCase(); break; case 'sales': vA = a.sales || 0; vB = b.sales || 0; break; case 'revenue': vA = a.revenue || 0; vB = b.revenue || 0; break; default: vA = new Date(a.updated_at); vB = new Date(b.updated_at); break; } if (vA < vB) return this.sortAsc ? -1 : 1; if (vA > vB) return this.sortAsc ? 1 : -1; return 0; });
+            this.filteredAssets = temp;
+        },
+
+        // --- Action Methods ---
+        async applyBulkAction() {
+            if (!this.bulkAction || this.selectedAssets.length === 0) return alert('Please select an action and at least one asset.');
+            if (this.bulkAction === 'delete' && !confirm(`Permanently delete ${this.selectedAssets.length} asset(s)? This cannot be undone.`)) return;
+            
+            try {
+                const response = await fetch('/admin/api/assets/bulk-action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: this.bulkAction, ids: this.selectedAssets })
+                });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    alert(result.message);
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (result.message || 'An unknown error occurred.'));
                 }
             } catch (e) {
-                console.error('Error parsing assets data:', e);
-                this.assets = []; // Default to an empty array on error.
+                alert('A server connection error occurred.');
             }
-
-            this.applyFiltersAndSort(); // Run once on init
-
-            // Re-run filters whenever a filter or sort property changes.
-            this.$watch(
-                () => [this.searchTerm, this.statusFilter, this.typeFilter, this.sortBy, this.sortAsc],
-                () => {
-                    this.currentPage = 1; // Reset to first page on any filter change
-                    this.applyFiltersAndSort();
-                }
-            );
         },
-        applyFiltersAndSort(){let temp=[...this.assets]; if(this.searchTerm.trim()){const s=this.searchTerm.toLowerCase();temp=temp.filter(a=>(a.title&&a.title.toLowerCase().includes(s))||(a.description&&a.description.toLowerCase().includes(s)));} if(this.statusFilter!=='all'){temp=temp.filter(a=>a.status===this.statusFilter);} if(this.typeFilter!=='all'){temp=temp.filter(a=>a.type.toLowerCase().replace(/_/g,'-')===this.typeFilter);} temp.sort((a,b)=>{let valA,valB; switch(this.sortBy){case'title':valA=a.title.toLowerCase();valB=b.title.toLowerCase();break;case'sales':valA=a.sales||0;valB=b.sales||0;break;case'revenue':valA=a.revenue||0;valB=b.revenue||0;break;default:valA=new Date(a.updated_at);valB=new Date(b.updated_at);} if(valA<valB)return this.sortAsc?-1:1; if(valA>valB)return this.sortAsc?1:-1; return 0;}); this.filteredAssets=temp;},
-        getStatusCount(status){return this.assets.filter(a=>a.status===status).length;},
-        getTotalRevenue(){return this.assets.reduce((sum,asset)=>sum+(parseFloat(asset.revenue)||0),0);},
-        getTotalSales(){return this.assets.reduce((sum,asset)=>sum+(parseInt(asset.sales)||0),0);},
-        formatDate(iso){if(!iso)return'N/A';return new Date(iso).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});},
-        getStatusClasses(status){return{'Published':'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300','Draft':'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300','Archived':'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'}[status]||'bg-gray-100 text-gray-800';},
-        getAssetTypeLabel(type){if(!type)return'Product';return type.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase());},
-        toggleSelectAll(event){if(event.target.checked){this.selectedAssets=this.filteredAssets.map(a=>a.id);}else{this.selectedAssets=[];}},
-        applyBulkAction(){alert(`Bulk action '${this.bulkAction}' on ${this.selectedAssets.length} assets coming soon.`);},
-        confirmDelete(id){if(confirm('Are you sure?')){alert(`Deleting asset ${id} coming soon.`)}},
-        duplicateAsset(id){alert(`Duplicate asset ${id} coming soon.`);},
-        hasActiveFilters(){return this.searchTerm||this.statusFilter!=='all'||this.typeFilter!=='all'},
-        getActiveFilters(){let f=[];if(this.searchTerm)f.push({key:'searchTerm',label:`Search: "${this.searchTerm}"`});if(this.statusFilter!=='all')f.push({key:'statusFilter',label:`Status: ${this.statusFilter}`});if(this.typeFilter!=='all')f.push({key:'typeFilter',label:`Type: ${this.typeFilter.replace('-',' ')}`});return f;},
-        removeFilter(key){this[key]=key==='searchTerm'?'':'all';},
-        clearAllFilters(){this.searchTerm='';this.statusFilter='all';this.typeFilter='all';},
+        confirmDelete(assetId) {
+            if (confirm('Are you sure you want to permanently delete this asset?')) {
+                this.selectedAssets = [assetId];
+                this.bulkAction = 'delete';
+                this.applyBulkAction();
+            }
+        },
+        async duplicateAsset(assetId) {
+            if (confirm('Create a duplicate of this asset? It will be saved as a draft.')) {
+                try {
+                    const response = await fetch(`/admin/api/assets/${assetId}/duplicate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                    });
+                    const result = await response.json();
+                    if (response.ok && result.success) {
+                        alert(result.message);
+                        window.location.reload();
+                    } else {
+                        alert('Error: ' + (result.message || 'An unknown error occurred.'));
+                    }
+                } catch (e) {
+                    alert('A server connection error occurred.');
+                }
+            }
+        },
+
+        // --- UI & Helper Methods ---
+        getStatusCount(status) { return this.assets.filter(a => a.status === status).length; },
+        getTotalRevenue() { return this.assets.reduce((sum, asset) => sum + (parseFloat(asset.revenue) || 0), 0); },
+        getTotalSales() { return this.assets.reduce((sum, asset) => sum + (parseInt(asset.sales) || 0), 0); },
+        formatDate(iso) { if (!iso) return 'N/A'; return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); },
+        getStatusClasses(status) { return { 'Published': 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300', 'Draft': 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300', 'Archived': 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300' }[status] || 'bg-gray-100 text-gray-800'; },
+        getAssetTypeLabel(type) { if (!type) return 'Product'; return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()); },
+        toggleSelectAll(event) { if (event.target.checked) { this.selectedAssets = this.filteredAssets.map(a => a.id); } else { this.selectedAssets = []; } },
+        hasActiveFilters() { return this.searchTerm || this.statusFilter !== 'all' || this.typeFilter !== 'all' },
+        getActiveFilters() { let f = []; if (this.searchTerm) f.push({ key: 'searchTerm', label: `Search: "${this.searchTerm}"` }); if (this.statusFilter !== 'all') f.push({ key: 'statusFilter', label: `Status: ${this.statusFilter}` }); if (this.typeFilter !== 'all') f.push({ key: 'typeFilter', label: `Type: ${this.typeFilter.replace('-', ' ')}` }); return f; },
+        removeFilter(key) { this[key] = key === 'searchTerm' ? '' : 'all'; },
+        clearAllFilters() { this.searchTerm = ''; this.statusFilter = 'all'; this.typeFilter = 'all'; },
     }));
 
     Alpine.data('assetForm', () => ({

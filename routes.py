@@ -6,20 +6,23 @@ import decimal
 import qrcode
 import io
 import base64
+import time
+import uuid
+import queue
+import threading
 from datetime import datetime, date
 from werkzeug.utils import secure_filename
 from sqlalchemy import func
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash, session, g,
-    jsonify, current_app
+    jsonify, current_app, Response
 )
 
 from models.nyota import (
     db, Creator, DigitalAsset, AssetStatus, AssetType, AssetFile, 
     SubscriptionInterval, CreatorSetting, Customer, Purchase
 )
-
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
 
@@ -41,51 +44,35 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 @admin_bp.before_request
 def before_admin_request():
-    """
-    Smart request hook to handle all admin authentication and setup logic.
-    This runs before any route in the admin blueprint.
-    """
-    public_endpoints = ['admin.creator_setup', 'admin.login', 'admin.login_verify']
+    """Smart request hook to handle all admin authentication and setup logic."""
+    public_endpoints = ['admin.creator_setup', 'admin.creator_login', 'admin.creator_login_verify']
     
-    # State 1: No creator exists in the database.
     if not Creator.query.first():
-        # If the user is trying to access anything other than the setup page, force them to it.
         if request.endpoint not in ['admin.creator_setup']:
             return redirect(url_for('admin.creator_setup'))
-    # State 2: A creator exists, but the user is not logged in.
-    elif 'creator_id' not in session:
-        # If they are trying to access a protected page, force them to the login page.
-        if request.endpoint not in public_endpoints:
-            return redirect(url_for('admin.login'))
-    # State 3: User is logged in.
-    else:
-        # Load the creator object into the global context for use in templates and routes.
+    elif 'creator_id' not in session and request.endpoint not in public_endpoints:
+        return redirect(url_for('admin.creator_login'))
+    elif 'creator_id' in session:
         g.creator = Creator.query.get(session['creator_id'])
         if not g.creator:
-            # Failsafe: If session contains an invalid ID, clear it and force login.
             session.clear()
-            return redirect(url_for('admin.login'))
+            return redirect(url_for('admin.creator_login'))
 
 # --- AUTH & SETUP ROUTES ---
 
 @admin_bp.route('/')
 def admin_home():
-    """
-    Primary entry point for `/admin`. Redirects user based on their state.
-    """
+    """Primary entry point for `/admin`. Redirects user based on their state."""
     if 'creator_id' in session:
         return redirect(url_for('admin.creator_dashboard'))
     elif Creator.query.first():
-        return redirect(url_for('admin.login'))
+        return redirect(url_for('admin.creator_login'))
     else:
         return redirect(url_for('admin.creator_setup'))
 
 @admin_bp.route('/setup', methods=['GET', 'POST'])
 def creator_setup():
-    """Handles the initial, one-time setup of the first creator account."""
-    if Creator.query.first():
-        return redirect(url_for('admin.login'))
-
+    if Creator.query.first(): return redirect(url_for('admin.creator_login'))
     if request.method == 'POST':
         action = request.form.get('action')
         if action == 'create_user':
@@ -96,18 +83,15 @@ def creator_setup():
             
             totp_secret = generate_totp_secret()
             session['setup_info'] = {'username': username, 'totp_secret': totp_secret}
-            totp_uri = get_totp_uri(username, totp_secret)
+            totp_uri = get_totp_uri(username, session['setup_info']['totp_secret'])
             img = qrcode.make(totp_uri)
             buf = io.BytesIO()
             img.save(buf)
             qr_code_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-            
-            flash(translate('scan_qr_and_verify'), 'info')
             return render_template('admin/setup.html', stage=2, qr_code=qr_code_b64, username=username)
 
         elif action == 'verify_totp':
-            setup_info = session.get('setup_info')
-            token = request.form.get('token')
+            setup_info, token = session.get('setup_info'), request.form.get('token')
             if not setup_info or not token:
                 flash(translate('session_expired_setup'), 'danger')
                 return redirect(url_for('admin.creator_setup'))
@@ -116,10 +100,9 @@ def creator_setup():
                 new_creator = Creator(username=setup_info['username'], totp_secret=setup_info['totp_secret'])
                 db.session.add(new_creator)
                 db.session.commit()
-                
                 session.pop('setup_info', None)
                 flash(translate('setup_complete_success'), 'success')
-                return redirect(url_for('admin.login'))
+                return redirect(url_for('admin.creator_login'))
             else:
                 flash(translate('invalid_2fa_token'), 'danger')
                 totp_uri = get_totp_uri(setup_info['username'], setup_info['totp_secret'])
@@ -128,371 +111,59 @@ def creator_setup():
                 img.save(buf)
                 qr_code_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
                 return render_template('admin/setup.html', stage=2, qr_code=qr_code_b64, username=setup_info['username'])
-
     return render_template('admin/setup.html', stage=1)
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 def creator_login():
-    if not Creator.query.first():
-        return redirect(url_for('admin.creator_setup'))
-    if 'creator_id' in session:
-        return redirect(url_for('admin.creator_dashboard'))
-
+    if not Creator.query.first(): return redirect(url_for('admin.creator_setup'))
+    if 'creator_id' in session: return redirect(url_for('admin.creator_dashboard'))
     if request.method == 'POST':
         creator = Creator.query.filter_by(username=request.form.get('username')).first()
         if creator:
             session['2fa_creator_id'] = creator.id
-            return redirect(url_for('admin.login_verify'))
-        else:
-            flash(translate('invalid_username'), 'danger')
+            return redirect(url_for('admin.creator_login_verify'))
+        flash(translate('invalid_username'), 'danger')
     return render_template('admin/login.html')
 
 @admin_bp.route('/login/verify', methods=['GET', 'POST'])
 def creator_login_verify():
-    if '2fa_creator_id' not in session:
-        return redirect(url_for('admin.login'))
-    
+    if '2fa_creator_id' not in session: return redirect(url_for('admin.creator_login'))
     if request.method == 'POST':
         creator = Creator.query.get(session['2fa_creator_id'])
         if verify_totp(creator.totp_secret, request.form.get('token')):
             session.pop('2fa_creator_id', None)
             session['creator_id'] = creator.id
-            flash(translate('login_successful'), 'success')
             return redirect(url_for('admin.creator_dashboard'))
-        else:
-            flash(translate('invalid_2fa_token'), 'danger')
+        flash(translate('invalid_2fa_token'), 'danger')
     return render_template('admin/login_verify.html')
 
 @admin_bp.route('/logout')
 def creator_logout():
     session.clear()
     flash(translate('logged_out'), 'info')
-    return redirect(url_for('admin.login'))
+    return redirect(url_for('admin.creator_login'))
 
-# --- CORE ADMIN ROUTES (Protected by the `before_request` hook) ---
+# --- CORE ADMIN ROUTES (Protected) ---
 
 @admin_bp.route('/dashboard')
 @creator_login_required
 def creator_dashboard():
-    """Renders the main creator dashboard with real, calculated stats."""
-    
-    # --- Existing Correct Calculations ---
     total_earnings = db.session.query(func.sum(DigitalAsset.total_revenue)).filter(DigitalAsset.creator_id == g.creator.id).scalar() or 0.0
     total_sales = db.session.query(func.sum(DigitalAsset.total_sales)).filter(DigitalAsset.creator_id == g.creator.id).scalar() or 0
     total_assets = DigitalAsset.query.filter(DigitalAsset.creator_id == g.creator.id).count()
     start_of_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0)
-    new_supporters = Customer.query.join(Purchase).join(DigitalAsset).filter(
-        DigitalAsset.creator_id == g.creator.id,
-        Customer.created_at >= start_of_month
-    ).count()
-
-    # Calculate earnings for the current month ===
-    earnings_this_month = db.session.query(func.sum(Purchase.amount_paid)).join(DigitalAsset).filter(
-        DigitalAsset.creator_id == g.creator.id,
-        Purchase.purchase_date >= start_of_month
-    ).scalar() or 0.0
-
-    # Assemble the stats dictionary that the template expects.
-    stats = {
-        'total_earnings': total_earnings,
-        'total_sales': total_sales,
-        'total_assets': total_assets,
-        'new_supporters': new_supporters,
-        'earnings_this_month': earnings_this_month  # <-- Add the new value to the dictionary
-    }
-    
-    # TODO: Fetch recent activity (e.g., last 5 purchases)
-    activity = []
-    
+    new_supporters = Customer.query.join(Purchase).join(DigitalAsset).filter(DigitalAsset.creator_id == g.creator.id, Customer.created_at >= start_of_month).count()
+    earnings_this_month = db.session.query(func.sum(Purchase.amount_paid)).join(DigitalAsset).filter(DigitalAsset.creator_id == g.creator.id, Purchase.purchase_date >= start_of_month).scalar() or 0.0
+    stats = {'total_earnings': total_earnings, 'total_sales': total_sales, 'total_assets': total_assets, 'new_supporters': new_supporters, 'earnings_this_month': earnings_this_month}
+    activity = [] # TODO: Fetch recent activity
     return render_template('admin/dashboard.html', stats=stats, activity=activity)
-
-
-# ==============================================================================
-# == MAIN (PUBLIC) BLUEPRINT
-# ==============================================================================
-
-@main_bp.route('/')
-def landing_page():
-    """Renders the main creator storefront with live data."""
-    creator = Creator.query.first()
-    if not creator:
-        return "<h1>Store not set up yet.</h1>", 503
-
-    published_assets = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED, creator_id=creator.id).all()
-    assets_data = [a.to_dict() for a in published_assets]
-    return render_template(
-        'user/index.html', 
-        assets=json.dumps(assets_data, default=json_serial),
-        store_name=creator.store_name,
-        store_bio=creator.get_setting('store_bio', 'Welcome to my store!')
-    )
-
-@main_bp.route('/asset/<slug>')
-def asset_detail(slug):
-    """Displays the detailed page for a single digital asset."""
-    asset = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
-    asset_data = asset.to_dict()
-    return render_template('user/asset_detail.html', asset=json.dumps(asset_data, default=json_serial))
-
-@main_bp.route('/access/<token>')
-def customer_access(token):
-    """Entry point for a customer after purchase to access their library."""
-    session['current_customer_phone'] = token # Using token as a mock phone number for now
-    flash(translate('library_access_granted'), 'success')
-    return redirect(url_for('main.library'))
-
-@main_bp.route('/library')
-def library():
-    """Displays the customer's personal library of ONLY purchased assets."""
-    return render_template('user/library.html', assets=mock_purchased_assets)
-
-@main_bp.route('/set-language/<lang>')
-def set_language(lang):
-    """Sets the user's preferred language in the session."""
-    if lang in ['en', 'sw']:
-        session['language'] = lang
-    return redirect(request.referrer or url_for('main.landing_page'))
-
-
-# --- Asynchronous Checkout Flow ---
-def mock_payment_worker(channel_id, phone_number, success_redirect_url):
-    """A background worker that simulates an external payment service."""
-    time.sleep(random.randint(4, 8))
-    payment_successful = random.choice([True, False, True]) # Skewed towards success
-
-    if payment_successful:
-        # Now we use the URL that was passed in as an argument
-        sse_manager.publish(channel_id, {
-            'status': 'SUCCESS',
-            'message': 'Payment confirmed!',
-            'redirect_url': success_redirect_url
-        })
-    else:
-        sse_manager.publish(channel_id, {
-            'status': 'FAILED',
-            'message': 'Payment failed. Please check your phone and try again.'
-        })
-    
-    time.sleep(2)
-    sse_manager.unsubscribe(channel_id)
-
-
-@main_bp.route('/checkout/<slug>')
-def checkout(slug):
-    asset = next((a for a in mock_assets if a['slug'] == slug), None)
-    if not asset:
-        flash(translate('asset_not_found'), 'danger')
-        return redirect(url_for('main.landing_page'))
-    
-    channel_id = str(uuid.uuid4())
-    return render_template('user/checkout.html', asset=asset, channel_id=channel_id)
-
-@main_bp.route('/api/initiate-payment', methods=['POST'])
-def initiate_payment():
-    """API endpoint that starts the asynchronous payment process."""
-    data = request.get_json()
-    phone_number = data.get('phone_number')
-    asset_id = data.get('asset_id')
-    channel_id = data.get('channel_id')
-
-    if not all([phone_number, asset_id, channel_id]):
-        return jsonify({'success': False, 'message': 'Missing required data.'}), 400
-
-    # Generate the success URL here, while we have the app context
-    success_url = url_for('main.library', _external=True)
-
-    # Pass the generated URL as an argument to the worker
-    worker_thread = threading.Thread(
-        target=mock_payment_worker,
-        args=(channel_id, phone_number, success_url)
-    )
-    worker_thread.start()
-
-    return jsonify({
-        'success': True,
-        'message': 'Payment initiated. Please check your phone to authorize the transaction.',
-        'channel_id': channel_id
-    })
-
-@main_bp.route('/api/payment-stream/<channel_id>')
-def payment_stream(channel_id):
-    """SSE endpoint for a client to listen for their specific payment result."""
-    def event_stream():
-        q = sse_manager.subscribe(channel_id)
-        try:
-            message = q.get(timeout=60)
-            yield message
-        except queue.Empty:
-            yield f'data: {json.dumps({"status": "TIMEOUT", "message": "Payment request timed out."})}\n\n'
-        finally:
-            sse_manager.unsubscribe(channel_id)
-            
-    response = Response(event_stream(), mimetype='text/event-stream')
-    response.headers['Cache-Control'] = 'no-cache'
-    response.headers['X-Accel-Buffering'] = 'no'
-    return response
-    
-@main_bp.route('/api/payment-success-session', methods=['POST'])
-def set_payment_success_session():
-    """API endpoint to securely set the session after a successful payment event."""
-    data = request.get_json()
-    phone_number = data.get('phone_number')
-    if phone_number:
-        session['current_customer_phone'] = phone_number
-        return jsonify({'success': True})
-    return jsonify({'success': False}), 400
-
-
-# ==============================================================================
-# == ADMIN BLUEPRINT (The Creator Hub)
-# ==============================================================================
-
-@admin_bp.route('/')
-def index():
-    if 'creator_id' in session:
-        return redirect(url_for('admin.dashboard'))
-    return redirect(url_for('admin.login'))
-
-@admin_bp.route('/setup', methods=['GET', 'POST'])
-def setup():
-    if Creator.query.first():
-        return redirect(url_for('admin.login'))
-
-    if request.method == 'POST':
-        action = request.form.get('action')
-
-        # Action 1: Create the user and show the QR code
-        if action == 'create_user':
-            username = request.form.get('username')
-            if not username:
-                flash(translate('username_required'), 'danger')
-                return render_template('admin/setup.html', stage=1)
-
-            totp_secret = generate_totp_secret()
-            
-            # Store temporary setup info in the session
-            session['setup_info'] = {
-                'username': username,
-                'totp_secret': totp_secret
-            }
-
-            totp_uri = get_totp_uri(username, totp_secret)
-            img = qrcode.make(totp_uri)
-            buf = io.BytesIO()
-            img.save(buf)
-            buf.seek(0)
-            qr_code_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-            
-            flash(translate('scan_qr_and_verify'), 'info')
-            return render_template('admin/setup.html', stage=2, qr_code=qr_code_b64, username=username)
-
-        # Verify the TOTP code and finalize setup 
-        elif action == 'verify_totp':
-            setup_info = session.get('setup_info')
-            token = request.form.get('token')
-            if not setup_info or not token:
-                flash(translate('session_expired_setup'), 'danger')
-                session.pop('setup_info', None) # Clean up session
-                return redirect(url_for('admin.setup'))
-            
-            # Verify the code the user entered
-            if verify_totp(setup_info['totp_secret'], token):
-                # On success, create the Creator record in the database
-                new_creator = Creator(
-                    username=setup_info['username'],
-                    totp_secret=setup_info['totp_secret']
-                )
-                db.session.add(new_creator)
-                db.session.commit()
-                
-                session.pop('setup_info', None) # Clean up session
-                flash(translate('setup_complete_success'), 'success')
-                return redirect(url_for('admin.login'))
-            else:
-                # If verification fails, re-render the verification page with an error
-                flash(translate('invalid_2fa_token'), 'danger')
-                # We need to regenerate the QR code to show it again
-                totp_uri = get_totp_uri(setup_info['username'], setup_info['totp_secret'])
-                img = qrcode.make(totp_uri)
-                buf = io.BytesIO()
-                img.save(buf)
-                buf.seek(0)
-                qr_code_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-                return render_template('admin/setup.html', stage=2, qr_code=qr_code_b64, username=setup_info['username'])
-
-    # Default GET request shows the first stage
-    return render_template('admin/setup.html', stage=1)
-
-@admin_bp.route('/login', methods=['GET', 'POST'])
-def login():
-    if not Creator.query.first():
-        flash(translate('setup_required'), 'info')
-        return redirect(url_for('admin.setup'))
-    if 'creator_id' in session:
-        return redirect(url_for('admin.dashboard'))
-
-    if request.method == 'POST':
-        creator = Creator.query.filter_by(username=request.form.get('username')).first()
-        if creator:
-            session['2fa_creator_id'] = creator.id
-            return redirect(url_for('admin.login_verify'))
-        else:
-            flash(translate('invalid_username'), 'danger')
-
-    return render_template('admin/login.html')
-
-@admin_bp.route('/login/verify', methods=['GET', 'POST'])
-def login_verify():
-    if '2fa_creator_id' not in session:
-        return redirect(url_for('admin.login'))
-    
-    if request.method == 'POST':
-        creator = Creator.query.get(session['2fa_creator_id'])
-        if verify_totp(creator.totp_secret, request.form.get('token')):
-            session.pop('2fa_creator_id', None)
-            session['creator_id'] = creator.id
-            flash(translate('login_successful'), 'success')
-            return redirect(url_for('admin.dashboard'))
-        else:
-            flash(translate('invalid_2fa_token'), 'danger')
-            
-    return render_template('admin/login_verify.html')
-
-@admin_bp.route('/logout')
-def logout():
-    session.clear()
-    flash(translate('logged_out'), 'info')
-    return redirect(url_for('admin.login'))
-
-@admin_bp.route('/dashboard')
-@creator_login_required
-def dashboard():
-    """The main dashboard showing key metrics and recent activity."""
-    return render_template(
-        'admin/dashboard.html',
-        stats=dashboard_stats,
-        activity=recent_activity
-    )
 
 @admin_bp.route('/assets')
 @creator_login_required
 def list_assets():
-    """Renders the main list of all digital assets from the database."""
     creator_assets = DigitalAsset.query.filter_by(creator_id=g.creator.id).order_by(DigitalAsset.updated_at.desc()).all()
-    
-    assets_data = [
-        {
-            'id': asset.id, 'title': asset.title, 'description': asset.description,
-            'cover': asset.cover_image_url, 'type': asset.asset_type.name,
-            'status': asset.status.value, 'sales': asset.total_sales,
-            'revenue': float(asset.total_revenue), 'updated_at': asset.updated_at
-        } for asset in creator_assets
-    ]
-    
-    return render_template(
-        'admin/assets.html', 
-        assets=json.dumps(assets_data, default=json_serial)
-    )
+    assets_data = [{'id': a.id, 'title': a.title, 'description': a.description, 'cover': a.cover_image_url, 'type': a.asset_type.name, 'status': a.status.value, 'sales': a.total_sales, 'revenue': float(a.total_revenue), 'updated_at': a.updated_at} for a in creator_assets]
+    return render_template('admin/assets.html', assets=json.dumps(assets_data, default=json_serial), currency_symbol=g.creator.get_setting('currency_symbol', '$'))
 
 @admin_bp.route('/assets/new', methods=['GET', 'POST'])
 @creator_login_required
@@ -526,106 +197,215 @@ def asset_edit(asset_id):
     return render_template('admin/asset_form.html', asset=json.dumps(asset.to_dict(), default=json_serial))
 
 def save_asset_from_form(asset, req):
-    """
-    A robust helper function that validates and populates a DigitalAsset object
-    from the JSON-based form data submitted by the Alpine.js component.
-    """
-    if 'asset_data' not in req.form:
-        raise ValueError("The form submission was incomplete. Please try again.")
-
+    if 'asset_data' not in req.form: raise ValueError("Form submission incomplete. Please try again.")
     form_data = json.loads(req.form['asset_data'])
-    
-    # Use .get() for safety
     asset_details = form_data.get('asset', {})
-    
-    # === VALIDATION BLOCK ===
     title = asset_details.get('title')
     asset_type_enum_str = form_data.get('assetTypeEnum')
-
-    if not asset_type_enum_str:
-        # THIS IS THE FIX: Check if an asset type was selected.
-        raise ValueError("No asset type was selected. Please go back to Step 1 and choose a content type.")
-        
-    if not title or not title.strip():
-        # This is the constructive message for the creator.
-        raise ValueError("A Title is required to save an asset. Please enter a title in Step 2.")
-
-    # --- Step 1 & 2: Type and Core Details ---
+    if not asset_type_enum_str: raise ValueError("No asset type selected. Please go back to Step 1.")
+    if not title or not title.strip(): raise ValueError("A Title is required. Please enter a title in Step 2.")
+    
     asset.asset_type = AssetType[asset_type_enum_str]
-    asset.title = title
-    asset.description = asset_details.get('description')
-    asset.story = asset_details.get('story_snippet')
+    asset.title, asset.description, asset.story = title, asset_details.get('description'), asset_details.get('story_snippet')
 
-    # --- Handle Cover Image Upload ---
     if 'cover_image' in req.files:
         file = req.files['cover_image']
         if file and file.filename:
-            unique_prefix = f"{asset.id or 'new'}_{int(datetime.now().timestamp())}"
-            filename = f"{unique_prefix}_{secure_filename(file.filename)}"
+            filename = f"{asset.id or 'new'}_{int(datetime.now().timestamp())}_{secure_filename(file.filename)}"
             upload_path = os.path.join(current_app.root_path, 'static/uploads/covers')
             os.makedirs(upload_path, exist_ok=True)
             file.save(os.path.join(upload_path, filename))
             asset.cover_image_url = f'/static/uploads/covers/{filename}'
 
-    # --- Step 4: Pricing ---
     pricing_data = form_data.get('pricing', {})
     asset.price = decimal.Decimal(pricing_data.get('amount') or 0.0)
     asset.is_subscription = pricing_data.get('type') == 'recurring'
-    if asset.is_subscription:
-        asset.subscription_interval = SubscriptionInterval[pricing_data.get('billingCycle', 'monthly').upper()]
-    else:
-        asset.subscription_interval = None
-
-    # --- Step 3: Type-specific details ---
-    asset.details = asset.details or {}
+    asset.subscription_interval = SubscriptionInterval[pricing_data.get('billingCycle', 'monthly').upper()] if asset.is_subscription else None
     
+    asset.details = asset.details or {}
     if asset.asset_type == AssetType.TICKET:
         event_details = form_data.get('eventDetails', {})
-        asset.event_location = event_details.get('link')
+        asset.event_location, asset.custom_fields = event_details.get('link'), form_data.get('customFields', [])
         if event_details.get('date') and event_details.get('time'):
-            try:
-                asset.event_date = datetime.strptime(f"{event_details['date']} {event_details['time']}", '%Y-%m-%d %H:%M')
-            except (ValueError, TypeError):
-                asset.event_date = None
-        max_attendees = event_details.get('maxAttendees')
-        asset.max_attendees = int(max_attendees) if max_attendees else None
-        asset.custom_fields = form_data.get('customFields', [])
-        
-    elif asset.asset_type == AssetType.SUBSCRIPTION:
-        asset.details = form_data.get('subscriptionDetails', {})
-        
-    elif asset.asset_type == AssetType.NEWSLETTER:
-        asset.details = form_data.get('newsletterDetails', {})
+            try: asset.event_date = datetime.strptime(f"{event_details['date']} {event_details['time']}", '%Y-%m-%d %H:%M')
+            except (ValueError, TypeError): asset.event_date = None
+        asset.max_attendees = int(event_details.get('maxAttendees')) if event_details.get('maxAttendees') else None
+    elif asset.asset_type == AssetType.SUBSCRIPTION: asset.details = form_data.get('subscriptionDetails', {})
+    elif asset.asset_type == AssetType.NEWSLETTER: asset.details = form_data.get('newsletterDetails', {})
     
-    # --- Handle Content Items (AssetFile records) ---
     AssetFile.query.filter_by(asset_id=asset.id).delete()
     for i, item in enumerate(form_data.get('contentItems', [])):
-        db.session.add(AssetFile(
-            asset=asset, title=item.get('title'), description=item.get('description'),
-            storage_path=item.get('link'), order_index=i
-        ))
+        db.session.add(AssetFile(asset=asset, title=item.get('title'), description=item.get('description'), storage_path=item.get('link'), order_index=i))
 
-    # Set status based on which button was clicked
-    action = form_data.get('action', 'publish')
-    if action == 'draft':
-        asset.status = AssetStatus.DRAFT
-    else:
-        asset.status = AssetStatus.PUBLISHED
-    
+    asset.status = AssetStatus.DRAFT if form_data.get('action') == 'draft' else AssetStatus.PUBLISHED
     return asset
+
+# --- API ENDPOINTS FOR ASSET ACTIONS ---
+@admin_bp.route('/api/assets/bulk-action', methods=['POST'])
+@creator_login_required
+def assets_bulk_action():
+    data = request.get_json()
+    asset_ids, action = data.get('ids'), data.get('action')
+    if not asset_ids or not action: return jsonify({'success': False, 'message': 'Missing data.'}), 400
+    query = DigitalAsset.query.filter(DigitalAsset.id.in_(asset_ids), DigitalAsset.creator_id == g.creator.id)
+    if query.count() != len(asset_ids): return jsonify({'success': False, 'message': 'Authorization error or some assets not found.'}), 403
+    try:
+        if action == 'publish': query.update({'status': AssetStatus.PUBLISHED}); msg = f"{len(asset_ids)} asset(s) published."
+        elif action == 'draft': query.update({'status': AssetStatus.DRAFT}); msg = f"{len(asset_ids)} asset(s) moved to drafts."
+        elif action == 'archive': query.update({'status': AssetStatus.ARCHIVED}); msg = f"{len(asset_ids)} asset(s) archived."
+        elif action == 'delete': query.delete(synchronize_session=False); msg = f"{len(asset_ids)} asset(s) permanently deleted."
+        else: return jsonify({'success': False, 'message': 'Invalid action.'}), 400
+        db.session.commit()
+        return jsonify({'success': True, 'message': msg})
+    except Exception as e:
+        db.session.rollback(); current_app.logger.error(f"Bulk action error: {e}"); return jsonify({'success': False, 'message': 'A server error occurred.'}), 500
+
+@admin_bp.route('/api/assets/<int:asset_id>/duplicate', methods=['POST'])
+@creator_login_required
+def duplicate_asset(asset_id):
+    original = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
+    try:
+        db.session.add(DigitalAsset(creator_id=g.creator.id, title=f"Copy of {original.title}", status=AssetStatus.DRAFT, description=original.description, story=original.story, cover_image_url=original.cover_image_url, asset_type=original.asset_type, price=original.price, is_subscription=original.is_subscription, subscription_interval=original.subscription_interval, event_date=original.event_date, event_location=original.event_location, max_attendees=original.max_attendees, custom_fields=original.custom_fields, details=original.details))
+        db.session.commit()
+        return jsonify({'success': True, 'message': f"'{original.title}' was duplicated successfully."})
+    except Exception as e:
+        db.session.rollback(); current_app.logger.error(f"Duplication error: {e}"); return jsonify({'success': False, 'message': 'A server error occurred.'}), 500
 
 @admin_bp.route('/supporters')
 @creator_login_required
 def supporters():
-    """Page for the creator to manage their supporters and affiliates."""
-    return render_template('admin/supporters.html', supporters=mock_supporters)
+    return render_template('admin/supporters.html', supporters=[])
 
 @admin_bp.route('/settings', methods=['GET', 'POST'])
 @creator_login_required
-def settings():
+def manage_settings():
+    """
+    Handles both displaying and saving all creator settings using the
+    scalable CreatorSetting key-value model.
+    """
     if request.method == 'POST':
-        flash(translate('settings_saved'), 'success')
-        return redirect(url_for('admin.settings'))
+        # --- SAVE SETTINGS LOGIC ---
+        
+        # Core Creator fields that are not in the key-value store
+        g.creator.store_name = request.form.get('store_name', g.creator.store_name)
+        g.creator.store_handle = request.form.get('store_handle', g.creator.store_handle)
+        
+        # A definitive list of all possible setting keys from the template
+        setting_keys = [
+            'store_logo_url', 'store_bio', 'social_twitter', 'social_instagram', 'contact_email', 
+            'contact_phone', 'appearance_storefront_theme', 'telegram_enabled', 'telegram_bot_token', 
+            'telegram_chat_id', 'telegram_notify_payments', 'telegram_notify_ratings', 
+            'telegram_notify_comments', 'whatsapp_enabled', 'whatsapp_phone_id', 'whatsapp_access_token',
+            'sms_provider', 'sms_twilio_sid', 'sms_twilio_token', 'sms_twilio_phone', 'sms_beem_api_key',
+            'sms_beem_secret_key', 'sms_beem_sender_name', 'payment_stripe_enabled', 'payment_paypal_enabled',
+            'ai_enabled', 'ai_provider', 'ai_api_key', 'ai_model', 'ai_temperature',
+            'ai_feature_content_suggestions', 'ai_feature_seo_optimization', 'ai_feature_email_templates',
+            'ai_feature_smart_analytics', 'social_instagram_connected', 'social_instagram_ai_enabled',
+            'social_instagram_keywords', 'social_instagram_response_delay', 'social_instagram_ai_personality',
+            'productivity_google_connected', 'productivity_google_calendar_id', 'productivity_google_sync_events',
+            'productivity_google_send_reminders', 'productivity_google_check_conflicts', 'email_smtp_enabled',
+            'email_smtp_host', 'email_smtp_port', 'email_smtp_user', 'email_smtp_pass', 'email_smtp_encryption',
+            'email_smtp_sender_email', 'email_smtp_sender_name'
+        ]
+
+        # Iterate and save each setting
+        for key in setting_keys:
+            # Handle checkboxes, which are only present in form data if checked
+            if 'enabled' in key or 'connected' in key or key.startswith('telegram_notify_') or key.startswith('productivity_google_'):
+                value = True if request.form.get(key) else False
+            else:
+                value = request.form.get(key)
+            
+            g.creator.set_setting(key, value)
+        
+        # Handle file upload for store logo
+        if 'store_logo' in request.files:
+            file = request.files['store_logo']
+            if file and file.filename:
+                filename = f"logo_{g.creator.id}_{secure_filename(file.filename)}"
+                upload_path = os.path.join(current_app.root_path, 'static/uploads/logos')
+                os.makedirs(upload_path, exist_ok=True)
+                file.save(os.path.join(upload_path, filename))
+                g.creator.set_setting('store_logo_url', f'/static/uploads/logos/{filename}')
+
+        db.session.commit()
+        flash("Settings saved successfully!", "success")
+        return redirect(url_for('admin.manage_settings'))
+
+    # --- DISPLAY SETTINGS LOGIC (GET request) ---
+    all_settings = CreatorSetting.query.filter_by(creator_id=g.creator.id).all()
     
-    mock_settings = {'store_name': "Amina's Digital Creations", 'default_currency': 'TZS'}
-    return render_template('admin/settings.html', settings=mock_settings)
+    # Organize settings into a simple dictionary for easy access in the template
+    settings_dict = {setting.key: setting.value for setting in all_settings}
+    
+    # Add core creator fields to the dictionary for a unified 'settings' object
+    settings_dict['store_name'] = g.creator.store_name
+    settings_dict['store_handle'] = g.creator.store_handle
+
+    return render_template('admin/settings.html', settings=settings_dict)
+
+# ==============================================================================
+# == MAIN (PUBLIC) BLUEPRINT
+# ==============================================================================
+# NOTE: This section uses mock data and will need to be updated later.
+# It is preserved to prevent the public-facing pages from crashing.
+
+# Mock SSE Manager
+class SseManager:
+    def __init__(self): self.channels, self.lock = {}, threading.Lock()
+    def subscribe(self, channel_id):
+        with self.lock: q = queue.Queue(5); self.channels[channel_id] = q; return q
+    def unsubscribe(self, channel_id):
+        with self.lock: self.channels.pop(channel_id, None)
+    def publish(self, channel_id, data):
+        with self.lock:
+            if channel_id in self.channels:
+                try: self.channels[channel_id].put_nowait(f"data: {json.dumps(data)}\n\n")
+                except queue.Full: pass
+sse_manager = SseManager()
+
+def mock_payment_worker(channel_id, phone, url):
+    time.sleep(5)
+    sse_manager.publish(channel_id, {'status': 'SUCCESS', 'message': 'Payment confirmed!', 'redirect_url': url})
+    time.sleep(2)
+    sse_manager.unsubscribe(channel_id)
+
+@main_bp.route('/')
+def landing_page():
+    creator = Creator.query.first();
+    if not creator: return "<h1>Store not set up yet.</h1>", 503
+    assets = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED, creator_id=creator.id).all()
+    assets_data = [a.to_dict() for a in assets]
+    return render_template('user/index.html', assets=json.dumps(assets_data, default=json_serial))
+
+@main_bp.route('/asset/<slug>')
+def asset_detail(slug):
+    asset = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
+    return render_template('user/asset_detail.html', asset=json.dumps(asset.to_dict(), default=json_serial))
+
+@main_bp.route('/checkout/<slug>')
+def checkout(slug):
+    asset = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
+    return render_template('user/checkout.html', asset=asset.to_dict(), channel_id=str(uuid.uuid4()))
+
+@main_bp.route('/api/initiate-payment', methods=['POST'])
+def initiate_payment():
+    data = request.get_json()
+    if not all(k in data for k in ['phone_number', 'asset_id', 'channel_id']):
+        return jsonify({'success': False, 'message': 'Missing data.'}), 400
+    success_url = url_for('main.library', _external=True)
+    threading.Thread(target=mock_payment_worker, args=(data['channel_id'], data['phone_number'], success_url)).start()
+    return jsonify({'success': True, 'message': 'Payment initiated.'})
+
+@main_bp.route('/api/payment-stream/<channel_id>')
+def payment_stream(channel_id):
+    def event_stream():
+        q = sse_manager.subscribe(channel_id)
+        try: yield q.get(timeout=60)
+        except queue.Empty: yield f'data: {json.dumps({"status": "TIMEOUT"})}\n\n'
+        finally: sse_manager.unsubscribe(channel_id)
+    return Response(event_stream(), mimetype='text/event-stream')
+    
+@main_bp.route('/library')
+def library():
+    return "<h1>Your Library</h1><p>This is a placeholder for purchased assets.</p>"

@@ -25,7 +25,7 @@ def creator_login_required(f):
         # 1. Check if the creator's ID is in the session cookie.
         if 'creator_id' not in session:
             flash('Please log in to access the creator dashboard.', 'warning')
-            return redirect(url_for('admin.login'))
+            return redirect(url_for('admin.creator_login'))
 
         # 2. Fetch the creator from the database to ensure they still exist.
         #    This prevents issues if a creator is deleted but their session persists.
@@ -34,7 +34,7 @@ def creator_login_required(f):
         if g.creator is None:
             session.clear() # Clear the invalid session
             flash('Your account could not be found. Please log in again.', 'danger')
-            return redirect(url_for('admin.login'))
+            return redirect(url_for('admin.creator_login'))
 
         return f(*args, **kwargs)
     return decorated_function

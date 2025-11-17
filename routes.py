@@ -21,7 +21,7 @@ from flask import (
 
 from models.nyota import (
     db, Creator, DigitalAsset, AssetStatus, AssetType, AssetFile, 
-    SubscriptionInterval, CreatorSetting, Customer, Purchase, Comment
+    SubscriptionInterval, CreatorSetting, Customer, Purchase, Comment, PurchaseStatus
 )
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
@@ -155,8 +155,11 @@ def creator_dashboard():
     new_supporters = Customer.query.join(Purchase).join(DigitalAsset).filter(DigitalAsset.creator_id == g.creator.id, Customer.created_at >= start_of_month).count()
     earnings_this_month = db.session.query(func.sum(Purchase.amount_paid)).join(DigitalAsset).filter(DigitalAsset.creator_id == g.creator.id, Purchase.purchase_date >= start_of_month).scalar() or 0.0
     stats = {'total_earnings': total_earnings, 'total_sales': total_sales, 'total_assets': total_assets, 'new_supporters': new_supporters, 'earnings_this_month': earnings_this_month}
-    activity = [] # TODO: Fetch recent activity
-    return render_template('admin/dashboard.html', stats=stats, activity=activity)
+    recent_activity = db.session.query(Purchase).join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.status == PurchaseStatus.COMPLETED
+    ).order_by(Purchase.purchase_date.desc()).limit(10).all()
+    return render_template('admin/dashboard.html', stats=stats, activity=recent_activity)
 
 @admin_bp.route('/assets')
 @creator_login_required
@@ -404,22 +407,65 @@ def manage_settings():
 
 # Mock SSE Manager
 class SseManager:
-    def __init__(self): self.channels, self.lock = {}, threading.Lock()
+    def __init__(self):
+        self.channels = {}
+        self.lock = threading.Lock()
+
     def subscribe(self, channel_id):
-        with self.lock: q = queue.Queue(5); self.channels[channel_id] = q; return q
+        with self.lock:
+            q = queue.Queue(5)
+            self.channels[channel_id] = q
+            return q
+
     def unsubscribe(self, channel_id):
-        with self.lock: self.channels.pop(channel_id, None)
+        with self.lock:
+            self.channels.pop(channel_id, None)
+
     def publish(self, channel_id, data):
         with self.lock:
             if channel_id in self.channels:
-                try: self.channels[channel_id].put_nowait(f"data: {json.dumps(data)}\n\n")
-                except queue.Full: pass
+                try:
+                    # Format data as a Server-Sent Event
+                    message = f"data: {json.dumps(data)}\n\n"
+                    self.channels[channel_id].put_nowait(message)
+                except queue.Full:
+                    current_app.logger.warning(f"SSE channel {channel_id} queue is full. Message dropped.")
+
 sse_manager = SseManager()
 
-def mock_payment_worker(channel_id, phone, url):
-    time.sleep(5)
-    sse_manager.publish(channel_id, {'status': 'SUCCESS', 'message': 'Payment confirmed!', 'redirect_url': url})
-    time.sleep(2)
+# Mock function to simulate the UZA payment gateway call and callback
+# In a real app, the UZA callback would hit a separate '/api/uza-callback' endpoint
+def simulate_uza_payment(channel_id, phone, asset_id):
+    # 1. Simulate API call to UZA
+    time.sleep(2)  # Network latency
+    current_app.logger.info(f"Pretending to call UZA API for phone {phone}...")
+    
+    # 2. Simulate user taking time to pay on their phone
+    time.sleep(8)
+    
+    # 3. Simulate UZA sending a callback to our server
+    current_app.logger.info(f"Simulating UZA callback for channel {channel_id}...")
+    
+    # Randomly decide if payment was successful or failed
+    import random
+    if random.random() > 0.15: # 85% success rate
+        # --- THIS IS WHAT YOUR REAL UZA CALLBACK ROUTE WOULD DO ---
+        # 1. Find the purchase record in your DB using a transaction ID
+        # 2. Update its status to 'PAID'
+        # 3. Create a customer if they don't exist
+        # 4. Publish success to the SSE channel
+        sse_manager.publish(channel_id, {
+            'status': 'SUCCESS', 
+            'message': 'Payment confirmed! Thank you.',
+            'redirect_url': url_for('main.library') # In a real app, this might be a unique download link
+        })
+    else:
+        sse_manager.publish(channel_id, {
+            'status': 'FAILED',
+            'message': 'The payment was declined by your provider.'
+        })
+    
+    # Clean up the SSE channel after completion
     sse_manager.unsubscribe(channel_id)
 
 @main_bp.route('/')
@@ -477,20 +523,135 @@ def checkout(slug):
 
 @main_bp.route('/api/initiate-payment', methods=['POST'])
 def initiate_payment():
+    """
+    Called by the frontend to start a payment.
+    This endpoint creates a PENDING purchase record and simulates calling the UZA API.
+    """
     data = request.get_json()
     if not all(k in data for k in ['phone_number', 'asset_id', 'channel_id']):
-        return jsonify({'success': False, 'message': 'Missing data.'}), 400
-    success_url = url_for('main.library', _external=True)
-    threading.Thread(target=mock_payment_worker, args=(data['channel_id'], data['phone_number'], success_url)).start()
-    return jsonify({'success': True, 'message': 'Payment initiated.'})
+        return jsonify({'success': False, 'message': 'Missing required payment data.'}), 400
+    
+    asset = DigitalAsset.query.get(data['asset_id'])
+    if not asset:
+        return jsonify({'success': False, 'message': 'The selected product could not be found.'}), 404
+
+    # 1. Find or create the customer
+    customer = Customer.query.filter_by(whatsapp_number=data['phone_number']).first()
+    if not customer:
+        customer = Customer(whatsapp_number=data['phone_number'])
+        db.session.add(customer)
+        db.session.commit()
+
+    # 2. Create a new Purchase record in 'PENDING' state
+    # This record now contains our internal transaction_token and the SSE channel link
+    new_purchase = Purchase(
+        customer_id=customer.id,
+        asset_id=asset.id,
+        amount_paid=asset.price,
+        status=PurchaseStatus.PENDING,
+        sse_channel_id=data['channel_id']
+    )
+    db.session.add(new_purchase)
+    db.session.commit()
+    
+    # 3. >>> REAL WORLD: Call the UZA payment gateway API <<<
+    #    response = requests.post("https://api.uza.com/v1/charge", json={
+    #        "phone_number": data['phone_number'],
+    #        "amount": str(new_purchase.amount_paid),
+    #        "reference": new_purchase.transaction_token, # Send OUR ID to UZA
+    #        "callback_url": url_for('main.uza_payment_callback', _external=True)
+    #    })
+    #    uza_data = response.json()
+    #    uza_transaction_id = uza_data.get('transaction_id')
+
+    # --- SIMULATION of the UZA API response ---
+    # UZA generates its own ID and sends it back to us immediately.
+    uza_transaction_id = f"UZA_{uuid.uuid4().hex[:12].upper()}"
+    current_app.logger.info(
+        f"Simulating UZA API call for our transaction '{new_purchase.transaction_token}'. "
+        f"UZA responds with its own ID: '{uza_transaction_id}'"
+    )
+
+    # 4. Store the UZA transaction ID in our database
+    new_purchase.payment_gateway_ref = uza_transaction_id
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': f"A payment request for {asset.title} has been sent. Please approve it."
+    })
+
+
+@main_bp.route('/api/uza-callback', methods=['POST'])
+def uza_payment_callback():
+    """
+    THIS IS THE WEBHOOK ENDPOINT FOR UZA.
+    It is unauthenticated and will be called by the UZA servers.
+    """
+    data = request.get_json()
+    
+    # The UZA documentation says they will send back their ID in the 'gateway_ref' field
+    # and our original ID in the 'reference' field. We'll use our reference.
+    our_transaction_token = data.get('reference') # UZA calls it 'reference'
+    uza_gateway_ref = data.get('gateway_ref')     # UZA's ID for the transaction
+    status = data.get('status')                   # e.g., "COMPLETED" or "FAILED"
+
+    if not our_transaction_token:
+        current_app.logger.error("UZA Callback received without a 'reference' (our transaction_token).")
+        return jsonify({'status': 'error', 'message': 'Missing reference'}), 400
+
+    # Find the original purchase record using the token we sent to UZA
+    purchase = Purchase.query.filter_by(transaction_token=our_transaction_token).first()
+    if not purchase:
+        current_app.logger.error(f"UZA Callback for unknown transaction_token: {our_transaction_token}")
+        return jsonify({'status': 'error', 'message': 'Transaction not found'}), 404
+        
+    if purchase.status == PurchaseStatus.COMPLETED:
+        return jsonify({'status': 'ok', 'message': 'Transaction already processed'}), 200
+
+    if status == 'COMPLETED':
+        purchase.status = PurchaseStatus.COMPLETED
+        purchase.payment_gateway_ref = uza_gateway_ref # Store UZA's final reference ID
+        
+        asset = purchase.asset
+        asset.total_sales = (asset.total_sales or 0) + 1
+        asset.total_revenue = (asset.total_revenue or 0) + purchase.amount_paid
+        
+        db.session.commit()
+        
+        # Notify the waiting frontend via SSE
+        sse_manager.publish(purchase.sse_channel_id, {
+            'status': 'SUCCESS', 
+            'message': 'Payment confirmed! Thank you.',
+            'redirect_url': url_for('main.library')
+        })
+        current_app.logger.info(f"Processed successful payment for transaction {our_transaction_token}")
+    else:
+        purchase.status = PurchaseStatus.FAILED
+        db.session.commit()
+        
+        sse_manager.publish(purchase.sse_channel_id, {
+            'status': 'FAILED',
+            'message': data.get('message', 'Payment was not completed.')
+        })
+        current_app.logger.info(f"Processed failed payment for transaction {our_transaction_token}")
+
+    return jsonify({'status': 'ok'}), 200
 
 @main_bp.route('/api/payment-stream/<channel_id>')
 def payment_stream(channel_id):
     def event_stream():
         q = sse_manager.subscribe(channel_id)
-        try: yield q.get(timeout=60)
-        except queue.Empty: yield f'data: {json.dumps({"status": "TIMEOUT"})}\n\n'
-        finally: sse_manager.unsubscribe(channel_id)
+        try:
+            # Wait for a message. Timeout after 60 seconds.
+            message = q.get(timeout=60)
+            yield message
+        except queue.Empty:
+            # This is our fallback mechanism for timeouts
+            yield f'data: {json.dumps({"status": "TIMEOUT"})}\n\n'
+        finally:
+            sse_manager.unsubscribe(channel_id)
+
     return Response(event_stream(), mimetype='text/event-stream')
     
 @main_bp.route('/library')

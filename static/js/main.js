@@ -288,5 +288,106 @@ document.addEventListener('alpine:init', () => {
             });
         }
     }));
+
+    Alpine.data('checkout', (asset, currencySymbol, paymentUrl) => ({
+        // --- State ---
+        isOpen: false,
+        asset: asset,
+        currency: currencySymbol,
+        paymentUrl: paymentUrl, // This will be passed in from the template
+        phoneNumber: localStorage.getItem('nyota_phone') || '',
+        status: 'ready', // 'ready', 'initiating', 'waiting', 'success', 'failed'
+        errorMessage: '',
+        statusMessage: '',
+        channelId: null, // For SSE connection
+        eventSource: null,
+
+        // --- Methods ---
+        openModal() {
+            this.isOpen = true;
+            this.status = 'ready'; // Reset on open
+            this.errorMessage = '';
+            this.statusMessage = '';
+            this.channelId = crypto.randomUUID(); // Generate unique ID for this transaction
+            this.$nextTick(() => { if (this.$refs.phoneInput) this.$refs.phoneInput.focus(); });
+        },
+        closeModal() { this.isOpen = false; if (this.eventSource) this.eventSource.close(); },
+
+        formatPhoneNumber() {
+            // Basic formatter/validator
+            let raw = this.phoneNumber.replace(/[^0-9]/g, '');
+            if (raw.length > 15) raw = raw.substring(0, 15);
+            this.phoneNumber = raw;
+        },
+        
+        async initiatePayment() {
+            if (this.phoneNumber.length < 9) { // Basic validation
+                this.errorMessage = 'Please enter a valid phone number.';
+                return;
+            }
+            this.status = 'initiating';
+            this.errorMessage = '';
+            localStorage.setItem('nyota_phone', this.phoneNumber); // Remember for next time
+
+            try {
+                // THIS IS THE FIX: Use the 'paymentUrl' property instead of a Jinja block.
+                const response = await fetch(this.paymentUrl, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        phone_number: this.phoneNumber,
+                        asset_id: this.asset.id,
+                        channel_id: this.channelId
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    this.status = 'waiting';
+                    this.statusMessage = result.message || 'Check your phone to complete payment...';
+                    this.listenForPaymentResult();
+                } else {
+                    this.status = 'failed';
+                    this.errorMessage = result.message || 'Could not start payment. Please try again.';
+                }
+
+            } catch (err) {
+                this.status = 'failed';
+                this.errorMessage = 'A network error occurred. Please check your connection.';
+            }
+        },
+
+        listenForPaymentResult() {
+            if (this.eventSource) this.eventSource.close();
+
+            const streamUrl = `/api/payment-stream/${this.channelId}`;
+            this.eventSource = new EventSource(streamUrl);
+
+            this.eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.status === 'SUCCESS') {
+                    this.status = 'success';
+                    this.statusMessage = data.message || 'Payment successful!';
+                    this.eventSource.close();
+                    setTimeout(() => { window.location.href = data.redirect_url || '/library'; }, 1500);
+                } else if (data.status === 'FAILED') {
+                    this.status = 'failed';
+                    this.errorMessage = data.message || 'Payment failed. Please try again.';
+                    this.eventSource.close();
+                } else if (data.status === 'TIMEOUT') {
+                    this.status = 'failed';
+                    this.errorMessage = 'Payment timed out. Please try again.';
+                    this.eventSource.close();
+                }
+            };
+
+            this.eventSource.onerror = () => {
+                this.status = 'failed';
+                this.errorMessage = 'Connection lost. Please try again.';
+                this.eventSource.close();
+            };
+        }
+    }));
     
 });

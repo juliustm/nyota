@@ -7,223 +7,209 @@
 {% endblock %}
 
 {% block content %}
-<!-- The data island now uses the dedicated JSON string -->
+<!-- Data island for Alpine.js initialization -->
 <script type="application/json" id="asset-data">{{ asset_json|safe }}</script>
 
-<!-- The Alpine component initializes as before; it will read from the script tag above -->
-<div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()" class="max-w-6xl mx-auto pb-32">
-    <!-- Back Navigation -->
-    <div class="mb-8 fade-in">
-        <a href="{{ url_for('main.landing_page') }}" class="inline-flex items-center gap-2 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors group">
-            <svg class="w-5 h-5 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-            </svg>
-            Back to Store
-        </a>
-    </div>
+<!-- 
+  The `assetDetail` component wraps the entire page. 
+  It loads the asset data and makes it available to all child elements.
+-->
+<div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()" class="max-w-6xl mx-auto pb-48">
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12 items-start">
-        
-        <!-- LEFT COLUMN: Visuals & Core Info -->
-        <div class="lg:col-span-2 space-y-8">
-            <!-- Hero Image -->
-            <div class="relative rounded-2xl overflow-hidden shadow-xl fade-in" style="animation-delay: 100ms;">
-                <img :src="asset.cover_image_url" :alt="asset.title" class="w-full h-auto aspect-[4/3] object-cover">
-                <!-- This now correctly uses the Jinja object -->
-                <div class="absolute top-4 left-4 bg-gray-900/80 backdrop-blur-sm px-4 py-2 rounded-full text-sm font-semibold text-white shadow-lg">
-                    {{ asset_obj.asset_type.value }}
-                </div>
-            </div>
+    <!-- 
+      The `checkout` component wraps the page's main content and the modal.
+      This allows any button inside to trigger the checkout flow.
+      It's initialized with data from the parent `assetDetail` scope.
+    -->
+    <div x-data="checkout(asset, '{{ currency_symbol }}', '{{ url_for('main.initiate_payment') }}')">
+    
+        <!-- Back Navigation -->
+        <div class="mb-8 fade-in">
+            <a href="{{ url_for('main.landing_page') }}" class="inline-flex items-center gap-2 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors group">
+                <svg class="w-5 h-5 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                Back to Store
+            </a>
+        </div>
 
-            <!-- The Full Story -->
-            <section x-show="asset.story" class="fade-in" style="animation-delay: 200ms;">
-                <div class="prose prose-lg dark:prose-invert max-w-none">
-                    <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">About This Product</h2>
-                    <div class="text-gray-700 dark:text-gray-300 leading-relaxed" x-html="renderMarkdown(asset.story)"></div>
-                </div>
-            </section>
-
-            <!-- What You'll Get (Deliverables) -->
-            <section x-show="asset.files && asset.files.length > 0" x-cloak class="fade-in" style="animation-delay: 300ms;">
-                <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">What You'll Get</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <template x-for="file in asset.files" :key="file.id">
-                        <div class="flex items-start gap-4 p-5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md transition-all duration-300">
-                            <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                                </svg>
-                            </div>
-                            <div class="flex-1 min-w-0">
-                                <p class="font-medium text-gray-900 dark:text-white truncate" x-text="file.title"></p>
-                                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1" x-text="file.description || 'Included resource'"></p>
-                            </div>
-                        </div>
-                    </template>
-                </div>
-            </section>
-
-            <!-- Customer Reviews Section -->
-            <section x-show="asset.reviews && asset.reviews.length > 0" x-cloak class="fade-in" style="animation-delay: 400ms;">
-                <div class="flex items-center justify-between mb-6">
-                    <h2 class="text-3xl font-bold text-gray-900 dark:text-white">Customer Reviews</h2>
-                    <div class="flex items-center gap-2 bg-white dark:bg-gray-800 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
-                        <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                        </svg>
-                        <span class="text-lg font-bold text-gray-900 dark:text-white" x-text="averageRating"></span>
-                        <span class="text-sm text-gray-500 dark:text-gray-400">(<span x-text="asset.reviews.length"></span>)</span>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12 items-start">
+            
+            <!-- LEFT COLUMN: Main Content Sections -->
+            <div class="lg:col-span-2 space-y-16">
+                <!-- Hero Image -->
+                <div class="relative rounded-2xl overflow-hidden shadow-xl fade-in" style="animation-delay: 100ms;">
+                    <img :src="asset.cover_image_url" :alt="asset.title" class="w-full h-auto aspect-[16/9] object-cover">
+                    <div class="absolute top-4 left-4 bg-gray-900/80 backdrop-blur-sm px-4 py-2 rounded-full text-sm font-semibold text-white shadow-lg">
+                        {{ asset_obj.asset_type.value }}
                     </div>
                 </div>
-                
-                <div class="space-y-6">
-                    <template x-for="review in asset.reviews.slice(0, visibleReviews)" :key="review.author">
-                        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 hover:shadow-md transition-all duration-300">
-                            <div class="flex items-start gap-4">
-                                <img :src="review.avatar" :alt="review.author" class="w-12 h-12 rounded-full flex-shrink-0 shadow-md">
-                                <div class="flex-1">
-                                    <div class="flex items-center justify-between mb-3">
-                                        <div>
-                                            <p class="font-semibold text-gray-900 dark:text-white" x-text="review.author"></p>
-                                            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1" x-text="review.date || 'Recent purchase'"></p>
-                                        </div>
-                                        <div class="flex items-center gap-1">
-                                            <template x-for="i in 5">
-                                                <svg class="w-5 h-5" :class="i <= review.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                                                </svg>
-                                            </template>
-                                        </div>
-                                    </div>
-                                    <p class="text-gray-700 dark:text-gray-300 leading-relaxed" x-text="review.text"></p>
+
+                <!-- The Full Story -->
+                <section x-show="asset.story" class="fade-in" style="animation-delay: 200ms;">
+                    <div class="prose prose-lg dark:prose-invert max-w-none">
+                        <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">About This Product</h2>
+                        <div class="text-gray-700 dark:text-gray-300" x-html="renderMarkdown(asset.story)"></div>
+                    </div>
+                </section>
+
+                <!-- What You'll Get (Deliverables) -->
+                <section x-show="asset.files && asset.files.length > 0" x-cloak class="fade-in" style="animation-delay: 300ms;">
+                    <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">What You'll Get</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <template x-for="file in asset.files" :key="file.id">
+                            <div class="flex items-start gap-4 p-5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md transition-all duration-300">
+                                <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
+                                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-medium text-gray-900 dark:text-white truncate" x-text="file.title"></p>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1" x-text="file.description || 'Included resource'"></p>
                                 </div>
                             </div>
-                        </div>
-                    </template>
-                </div>
-                
-                <div x-show="visibleReviews < asset.reviews.length" class="text-center mt-8">
-                    <button @click="showMoreReviews()" class="px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 hover:shadow-md">
-                        Load More Reviews
-                    </button>
-                </div>
-            </section>
-        </div>
+                        </template>
+                    </div>
+                </section>
 
-        <!-- RIGHT COLUMN: Sticky Purchase Card -->
-        <div class="lg:col-span-1">
-            <div class="lg:sticky lg:top-24 space-y-8 fade-in" style="animation-delay: 150ms;">
-                <!-- Title & Pricing Card -->
-                <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl p-6">
-                    <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-3" x-text="asset.title"></h1>
-                    <p class="text-gray-600 dark:text-gray-300 leading-relaxed mb-4" x-text="asset.description"></p>
+                <!-- Customer Reviews Section -->
+                <section x-show="asset.reviews && asset.reviews.length > 0" x-cloak class="fade-in" style="animation-delay: 400ms;">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">Customer Reviews</h2>
+                        <div class="flex items-center gap-2 bg-white dark:bg-gray-800 px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                            <span class="text-lg font-bold text-gray-900 dark:text-white" x-text="averageRating"></span>
+                            <span class="text-sm text-gray-500 dark:text-gray-400">(<span x-text="asset.reviews.length"></span>)</span>
+                        </div>
+                    </div>
                     
-                    <!-- Pricing -->
-                    <div class="flex items-baseline gap-2 mb-6">
-                        <span class="text-4xl font-bold text-gray-900 dark:text-white" x-text="currency + formatCurrency(asset.price)"></span>
-                        <span x-show="asset.is_subscription" class="text-lg text-gray-500 dark:text-gray-400">/ <span x-text="asset.subscription_interval"></span></span>
-                    </div>
-
-                    <!-- Countdown Timer for Tickets -->
-                    <div x-show="asset.asset_type === 'TICKET'" x-cloak class="mb-6 bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900/30 dark:to-orange-900/30 border border-yellow-200 dark:border-yellow-800 p-4 rounded-xl text-center">
-                        <p class="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">Event Starts In:</p>
-                        <p class="text-xl font-bold tracking-wider text-yellow-900 dark:text-yellow-100" x-text="countdown"></p>
-                    </div>
-
-                    <!-- Purchase Button -->
-                    <a :href="`{{ url_for('main.checkout', slug='') }}${asset_obj.slug}`" 
-                       class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5">
-                        <span x-text="asset.is_subscription ? 'Subscribe Now' : 'Purchase Now'"></span>
-                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
-                        </svg>
-                    </a>
-
-                    <!-- Guarantee -->
-                    <div class="text-center mt-4">
-                        <p class="text-sm text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
-                            <svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-                            </svg>
-                            Secure checkout · 30-day guarantee
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Social Proof -->
-                <div x-show="asset.reviews && asset.reviews.length > 0" x-cloak class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-lg p-6">
-                    <div class="text-center">
-                        <div class="flex items-center justify-center gap-2 mb-3">
-                            <svg class="w-6 h-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                            </svg>
-                            <span class="text-2xl font-bold text-gray-900 dark:text-white" x-text="averageRating"></span>
-                        </div>
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Rated by <span x-text="asset.reviews.length"></span> customers</p>
-                        
-                        <!-- Top Review Preview -->
-                        <div x-show="asset.reviews.length > 0" class="text-left bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
-                            <div class="flex items-center gap-1 mb-2">
-                                <template x-for="i in 5">
-                                    <svg class="w-4 h-4" :class="i <= asset.reviews[0].rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" fill="currentColor" viewBox="0 0 20 20">
-                                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                                    </svg>
-                                </template>
+                    <div class="space-y-6">
+                        <template x-for="review in asset.reviews.slice(0, visibleReviews)" :key="review.author">
+                            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 hover:shadow-md transition-all duration-300">
+                                <div class="flex items-start gap-4">
+                                    <img :src="review.avatar" :alt="review.author" class="w-12 h-12 rounded-full flex-shrink-0 shadow-md">
+                                    <div class="flex-1">
+                                        <div class="flex items-center justify-between mb-3">
+                                            <div>
+                                                <p class="font-semibold text-gray-900 dark:text-white" x-text="review.author"></p>
+                                                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1" x-text="review.date || 'Recent purchase'"></p>
+                                            </div>
+                                            <div class="flex items-center gap-1">
+                                                <template x-for="i in 5">
+                                                    <svg class="w-5 h-5" :class="i <= review.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                                                </template>
+                                            </div>
+                                        </div>
+                                        <p class="text-gray-700 dark:text-gray-300 leading-relaxed" x-text="review.text"></p>
+                                    </div>
+                                </div>
                             </div>
-                            <p class="text-sm text-gray-700 dark:text-gray-300 italic" x-text="'\"' + asset.reviews[0].text.substring(0, 120) + (asset.reviews[0].text.length > 120 ? '...\"' : '\"')"></p>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2" x-text="'- ' + asset.reviews[0].author"></p>
+                        </template>
+                    </div>
+                    
+                    <div x-show="visibleReviews < asset.reviews.length" class="text-center mt-8">
+                        <button @click="showMoreReviews()" class="px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-300 hover:shadow-md">
+                            Load More Reviews
+                        </button>
+                    </div>
+                </section>
+            </div>
+
+            <!-- RIGHT COLUMN: Sticky Purchase Card -->
+            <div class="lg:col-span-1">
+                <div class="lg:sticky lg:top-24 space-y-8 fade-in" style="animation-delay: 150ms;">
+                    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl p-6">
+                        <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-3" x-text="asset.title"></h1>
+                        <p class="text-gray-600 dark:text-gray-300 leading-relaxed mb-4" x-text="asset.description"></p>
+                        <div class="flex items-baseline gap-2 mb-6">
+                            <span class="text-4xl font-bold text-gray-900 dark:text-white" x-text="currency + formatCurrency(asset.price)"></span>
+                            <span x-show="asset.is_subscription" class="text-lg text-gray-500 dark:text-gray-400">/ <span x-text="asset.subscription_interval"></span></span>
+                        </div>
+                        <div x-show="asset.asset_type === 'TICKET'" x-cloak class="mb-6 bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900/30 dark:to-orange-900/30 border border-yellow-200 dark:border-yellow-800 p-4 rounded-xl text-center">
+                            <p class="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">Event Starts In:</p>
+                            <p class="text-xl font-bold tracking-wider text-yellow-900 dark:text-yellow-100" x-text="countdown"></p>
+                        </div>
+                        
+                        <!-- Desktop Purchase Button -->
+                        <button @click="openModal()" class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+                            <span x-text="asset.is_subscription ? 'Subscribe Now' : 'Purchase Now'"></span>
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                        </button>
+                        
+                        <div class="text-center mt-4">
+                            <p class="text-sm text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1">
+                                <svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                                Secure checkout · 30-day guarantee
+                            </p>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-</div>
+
+        <!-- STICKY FOOTER CTA (for mobile) -->
+        <div class="fixed bottom-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 shadow-lg animate-slide-up">
+            <div class="max-w-4xl mx-auto px-4 py-4">
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="text-center sm:text-left">
+                        <p class="text-sm text-gray-600 dark:text-gray-400" x-text="asset.title"></p>
+                        <p class="text-2xl font-bold text-gray-900 dark:text-white"><span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span><span x-show="asset.is_subscription" class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-1">/ <span x-text="asset.subscription_interval"></span></span></p>
+                    </div>
+                    <button @click="openModal()" class="w-full sm:w-auto flex-shrink-0 px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-colors text-base shadow-lg hover:shadow-indigo-500/50 transform hover:-translate-y-0.5">
+                        <span x-text="asset.is_subscription ? 'Subscribe Now' : 'Purchase Now'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- The Checkout Modal -->
+        <div x-show="isOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="fixed inset-0 z-[99] bg-gray-900/80 backdrop-blur-sm flex items-center justify-center p-4" x-cloak>
+            <div @click.outside="closeModal()" class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-auto p-8 transform-gpu transition-all" x-show="isOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95">
+                
+                <div x-show="status === 'ready' || status === 'failed'">
+                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Complete Your Purchase</h3>
+                    <p class="text-gray-600 dark:text-gray-400 mb-6">Enter your phone number to receive a payment request via mobile money.</p>
+                    <form @submit.prevent="initiatePayment()">
+                        <div class="mb-4">
+                            <label for="phone" class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">Phone Number</label>
+                            <input type="tel" id="phone" x-ref="phoneInput" x-model="phoneNumber" @input="formatPhoneNumber()" placeholder="e.g. 712345678" class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-colors text-lg" required>
+                        </div>
+                        <p x-show="errorMessage" x-text="errorMessage" class="text-sm text-red-600 dark:text-red-400 mb-4"></p>
+                        <button type="submit" class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all duration-300 text-lg">
+                            Pay <span x-text="currency + formatCurrency(asset.price)"></span>
+                        </button>
+                    </form>
+                </div>
+
+                <div x-show="status === 'initiating' || status === 'waiting'" class="text-center py-8">
+                    <svg class="animate-spin h-12 w-12 text-indigo-500 mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white mt-6" x-text="status === 'initiating' ? 'Sending Request...' : 'Awaiting Payment'"></h3>
+                    <p class="text-gray-600 dark:text-gray-400 mt-2" x-text="statusMessage"></p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-4">Check your phone to approve the transaction.</p>
+                </div>
+
+                <div x-show="status === 'success'" class="text-center py-8">
+                    <div class="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center mx-auto">
+                        <svg class="w-10 h-10 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white mt-6">Payment Successful!</h3>
+                    <p class="text-gray-600 dark:text-gray-400 mt-2" x-text="statusMessage"></p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-4">Redirecting you to your library...</p>
+                </div>
+
+                <button @click="closeModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+        </div>
+
+    </div> <!-- End of checkout x-data scope -->
+</div> <!-- End of assetDetail x-data scope -->
 
 <style>
-    .fade-in {
-        opacity: 0;
-        animation: fadeInUp 0.6s ease-out forwards;
-    }
-    
-    @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    /* Improve prose styling for markdown content */
-    .prose {
-        line-height: 1.75;
-    }
-    
-    .prose h3 {
-        font-weight: 600;
-        font-size: 1.25rem;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
-        color: #1f2937;
-    }
-    
-    .dark .prose h3 {
-        color: #f9fafb;
-    }
-    
-    .prose p {
-        margin-bottom: 1.25rem;
-    }
-    
-    .prose ul {
-        margin-bottom: 1.25rem;
-    }
-    
-    .prose li {
-        margin-bottom: 0.5rem;
-    }
+    .fade-in { opacity: 0; animation: fadeInUp 0.6s ease-out forwards; }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .prose { line-height: 1.75; }
+    .prose h2, .prose h3 { font-weight: 800; color: #111827; }
+    .dark .prose h2, .dark .prose h3 { color: #f9fafb; }
+    .prose p, .prose ul, .prose li { color: #4b5563; }
+    .dark .prose p, .dark .prose ul, .dark .prose li { color: #d1d5db; }
 </style>
 {% endblock %}

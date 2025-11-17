@@ -9,6 +9,7 @@ with a professional, scalable model for creator settings and preferences.
 """
 
 import enum
+import uuid
 from datetime import datetime
 from slugify import slugify
 from flask_sqlalchemy import SQLAlchemy
@@ -48,6 +49,11 @@ class TicketStatus(enum.Enum):
     VALID = "valid"
     USED = "used"
     EXPIRED = "expired"
+
+class PurchaseStatus(enum.Enum):
+    PENDING = "Pending"
+    COMPLETED = "Completed"
+    FAILED = "Failed"
 
 class CreatorSetting(db.Model):
     """
@@ -279,7 +285,8 @@ class DigitalAsset(db.Model):
             
             # Use the to_dict method from AssetFile for clean serialization
             'files': [f.to_dict() for f in self.files.all()],
-            
+            # This will be an array of review dictionaries
+            'reviews': [r.to_dict() for r in self.ratings],
             # Create nested objects that the frontend component expects
             'eventDetails': {
                 'link': self.event_location,
@@ -331,12 +338,14 @@ class AssetFile(db.Model):
 class Purchase(db.Model):
     __tablename__ = 'purchase'
     id = db.Column(db.Integer, primary_key=True)
-    transaction_token = db.Column(db.String(36), unique=True, nullable=False, index=True)
+    transaction_token = db.Column(db.String(36), unique=True, nullable=False, index=True, default=lambda: str(uuid.uuid4()))
     customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
     asset_id = db.Column(db.Integer, db.ForeignKey('digital_asset.id'), nullable=False)
     amount_paid = db.Column(db.Numeric(10, 2), nullable=False)
     purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
+    status = db.Column(db.Enum(PurchaseStatus), nullable=False, default=PurchaseStatus.PENDING)
     payment_gateway_ref = db.Column(db.String(255), nullable=True)
+    sse_channel_id = db.Column(db.String(36), nullable=True, index=True)
     ticket_status = db.Column(db.Enum(TicketStatus), nullable=True)
     ticket_data = db.Column(JSON, nullable=True)
     customer = db.relationship('Customer', back_populates='purchases')
@@ -378,6 +387,17 @@ class Rating(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     customer = db.relationship('Customer', back_populates='ratings')
     asset = db.relationship('DigitalAsset', back_populates='ratings')
+
+    def to_dict(self):
+        """Serializes the rating object into a dictionary for the frontend."""
+        return {
+            'author': self.customer.whatsapp_number, # Using phone number as author for now
+            # NOTE: This is a placeholder for avatars. You can implement a real avatar system later.
+            'avatar': f'https://i.pravatar.cc/48?u={self.customer.whatsapp_number}', 
+            'rating': self.score,
+            'text': self.review_text,
+            'date': self.created_at.isoformat() # Send date in a standard format
+        }
 
 class Ambassador(db.Model):
     __tablename__ = 'ambassador'

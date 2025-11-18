@@ -10,6 +10,7 @@ import time
 import uuid
 import queue
 import threading
+import requests
 from datetime import datetime, date
 from werkzeug.utils import secure_filename
 from sqlalchemy import func
@@ -418,31 +419,49 @@ def manage_settings():
         g.creator.store_name = request.form.get('store_name', g.creator.store_name)
         g.creator.store_handle = request.form.get('store_handle', g.creator.store_handle)
         
-        # A definitive list of all possible setting keys from the template
+        # --- A DEFINITIVE LIST OF ALL POSSIBLE SETTING KEYS FROM THE TEMPLATE ---
         setting_keys = [
-            'store_logo_url', 'store_bio', 'social_twitter', 'social_instagram', 'contact_email', 
-            'contact_phone', 'appearance_storefront_theme', 'telegram_enabled', 'telegram_bot_token', 
-            'telegram_chat_id', 'telegram_notify_payments', 'telegram_notify_ratings', 
-            'telegram_notify_comments', 'whatsapp_enabled', 'whatsapp_phone_id', 'whatsapp_access_token',
-            'sms_provider', 'sms_twilio_sid', 'sms_twilio_token', 'sms_twilio_phone', 'sms_beem_api_key',
-            'sms_beem_secret_key', 'sms_beem_sender_name', 'payment_stripe_enabled', 'payment_paypal_enabled',
-            'ai_enabled', 'ai_provider', 'ai_api_key', 'ai_model', 'ai_temperature',
-            'ai_feature_content_suggestions', 'ai_feature_seo_optimization', 'ai_feature_email_templates',
-            'ai_feature_smart_analytics', 'social_instagram_connected', 'social_instagram_ai_enabled',
-            'social_instagram_keywords', 'social_instagram_response_delay', 'social_instagram_ai_personality',
-            'productivity_google_connected', 'productivity_google_calendar_id', 'productivity_google_sync_events',
-            'productivity_google_send_reminders', 'productivity_google_check_conflicts', 'email_smtp_enabled',
-            'email_smtp_host', 'email_smtp_port', 'email_smtp_user', 'email_smtp_pass', 'email_smtp_encryption',
-            'email_smtp_sender_email', 'email_smtp_sender_name'
+            'store_bio', 'social_twitter', 'social_instagram', 'contact_email', 'contact_phone',
+            'appearance_storefront_theme', 'admin_theme',
+            
+            # Notifications
+            'telegram_enabled', 'telegram_bot_token', 'telegram_chat_id', 
+            'telegram_payments', 'telegram_ratings', 'telegram_comments',
+            'whatsapp_enabled', 'whatsapp_phone_id', 'whatsapp_access_token',
+            'sms_provider', 'twilio_sid', 'twilio_token', 'twilio_phone',
+            'beem_api_key', 'beem_secret_key', 'beem_sender_name',
+
+            # Payments
+            'payment_uza_enabled', 'payment_uza_pk', 'payment_uza_refcode', 'payment_uza_source', 'payment_uza_currency',
+            'stripe_enabled', 'paypal_enabled',
+
+            # AI & Automation
+            'ai_enabled', 'ai_provider', 'groq_api_key', 'ai_temperature',
+            'ai_content_suggestions', 'ai_seo_optimization', 'ai_email_templates', 'ai_analytics',
+
+            # Social
+            'instagram_connected', 'instagram_ai_enabled', 'instagram_keywords', 
+            'ig_response_delay', 'ig_ai_personality',
+
+            # Productivity
+            'google_connected', 'google_calendar_id', 'sync_events', 'send_reminders', 'check_conflicts',
+            
+            # Email Delivery
+            'email_smtp_enabled', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 
+            'smtp_encryption', 'smtp_sender_email', 'smtp_sender_name'
         ]
 
         # Iterate and save each setting
         for key in setting_keys:
             # Handle checkboxes, which are only present in form data if checked
-            if 'enabled' in key or 'connected' in key or key.startswith('telegram_notify_') or key.startswith('productivity_google_'):
-                value = True if request.form.get(key) else False
+            if key.endswith('_enabled') or key.endswith('_connected') or key.startswith('telegram_') or key.startswith('ai_feature_') or key in ['sync_events', 'send_reminders', 'check_conflicts']:
+                value = True if request.form.get(key) == 'on' else False
             else:
                 value = request.form.get(key)
+            
+            # Don't save empty password/token fields if a value already exists
+            if ('token' in key or 'pass' in key or '_sk' in key or '_pk' in key) and not value:
+                continue
             
             g.creator.set_setting(key, value)
         
@@ -450,7 +469,7 @@ def manage_settings():
         if 'store_logo' in request.files:
             file = request.files['store_logo']
             if file and file.filename:
-                filename = f"logo_{g.creator.id}_{secure_filename(file.filename)}"
+                filename = f"logo_{g.creator.id}_{int(time.time())}_{secure_filename(file.filename)}"
                 upload_path = os.path.join(current_app.root_path, 'static/uploads/logos')
                 os.makedirs(upload_path, exist_ok=True)
                 file.save(os.path.join(upload_path, filename))
@@ -460,14 +479,12 @@ def manage_settings():
         flash("Settings saved successfully!", "success")
         return redirect(url_for('admin.manage_settings'))
 
+    # --- DISPLAY SETTINGS LOGIC (GET request) ---
     all_settings = CreatorSetting.query.filter_by(creator_id=g.creator.id).all()
     settings_dict = {setting.key: setting.value for setting in all_settings}
     
-    # Add core creator fields to the dictionary for a unified object
     settings_dict['store_name'] = g.creator.store_name
     settings_dict['store_handle'] = g.creator.store_handle
-
-    # Convert the final dictionary to a JSON string for the data island
     settings_json = json.dumps(settings_dict, default=json_serial)
 
     return render_template('admin/settings.html', settings_json=settings_json)
@@ -589,8 +606,7 @@ def asset_detail(slug):
     asset_obj = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
     asset_json = json.dumps(asset_obj.to_dict(), default=json_serial)
     creator = Creator.query.get(asset_obj.creator_id)
-
-    purchase_status = None
+    latest_purchase = None
     customer_phone = session.get('customer_phone')
     if customer_phone:
         customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
@@ -600,15 +616,12 @@ def asset_detail(slug):
                 customer_id=customer.id, 
                 asset_id=asset_obj.id
             ).order_by(Purchase.purchase_date.desc()).first()
-            
-            if latest_purchase:
-                purchase_status = latest_purchase.status.name # e.g., "COMPLETED", "PENDING", "FAILED"
 
     return render_template(
         'user/asset_detail.html',
         asset_obj=asset_obj,
         asset_json=asset_json,
-        purchase_status=purchase_status, # Pass the status to the template
+        latest_purchase=latest_purchase, 
         store_name=creator.store_name if creator else "Creator Store",
         currency_symbol=creator.get_setting('currency_symbol', '$') if creator else '$'
     )
@@ -620,63 +633,132 @@ def checkout(slug):
 
 @main_bp.route('/api/initiate-payment', methods=['POST'])
 def initiate_payment():
-    """
-    Called by the frontend to start a payment.
-    This endpoint creates a PENDING purchase record and simulates calling the UZA API.
-    """
+    """Handles ONLY first-time payment attempts for an asset by a user."""
     data = request.get_json()
-    if not all(k in data for k in ['phone_number', 'asset_id', 'channel_id']):
-        return jsonify({'success': False, 'message': 'Missing required payment data.'}), 400
+    phone_number, asset_id, channel_id = data.get('phone_number'), data.get('asset_id'), data.get('channel_id')
+    if not all([phone_number, asset_id, channel_id]):
+        return jsonify({'success': False, 'message': 'Missing data.'}), 400
     
-    asset = DigitalAsset.query.get(data['asset_id'])
-    if not asset:
-        return jsonify({'success': False, 'message': 'The selected product could not be found.'}), 404
+    asset = DigitalAsset.query.get(asset_id)
+    if not asset: 
+        return jsonify({'success': False, 'message': 'Product not found.'}), 404
 
-    # 1. Find or create the customer
-    customer = Customer.query.filter_by(whatsapp_number=data['phone_number']).first()
+    creator = asset.creator
+    uza_pk = creator.get_setting('payment_uza_pk')
+    if not uza_pk:
+        current_app.logger.error("UZA Payment failed: PK not configured.")
+        return jsonify({'success': False, 'message': 'Payment provider not configured.'}), 500
+
+    customer = Customer.query.filter_by(whatsapp_number=phone_number).first()
     if not customer:
-        customer = Customer(whatsapp_number=data['phone_number'])
+        customer = Customer(whatsapp_number=phone_number)
         db.session.add(customer)
         db.session.commit()
+    
+    session['customer_phone'] = phone_number
 
-    # 2. Create a new Purchase record in 'PENDING' state
-    # This record now contains our internal transaction_token and the SSE channel link
     new_purchase = Purchase(
-        customer_id=customer.id,
-        asset_id=asset.id,
-        amount_paid=asset.price,
-        status=PurchaseStatus.PENDING,
-        sse_channel_id=data['channel_id']
+        customer_id=customer.id, 
+        asset_id=asset.id, 
+        amount_paid=asset.price, 
+        status=PurchaseStatus.PENDING, 
+        sse_channel_id=channel_id
     )
     db.session.add(new_purchase)
     db.session.commit()
     
-    # 3. >>> REAL WORLD: Call the UZA payment gateway API <<<
-    #    response = requests.post("https://api.uza.com/v1/charge", json={
-    #        "phone_number": data['phone_number'],
-    #        "amount": str(new_purchase.amount_paid),
-    #        "reference": new_purchase.transaction_token, # Send OUR ID to UZA
-    #        "callback_url": url_for('main.uza_payment_callback', _external=True)
-    #    })
-    #    uza_data = response.json()
-    #    uza_transaction_id = uza_data.get('transaction_id')
+    uza_payload = {
+        "products": [{"id": 8069, "name": asset.title, "quantity": 1, "price": float(asset.price)}],
+        "payment": {"type": "payby.selcom", "walletid": phone_number},
+        "reference": new_purchase.transaction_token,
+        "pk": uza_pk,
+        "totalAmount": str(asset.price),
+        "currency": creator.get_setting('payment_uza_currency', 'TZS'),
+        "meta": {
+            "refcode": creator.get_setting('payment_uza_refcode', '#web'), 
+            "source": creator.get_setting('payment_uza_source', '#nyota')
+        }
+    }
 
-    # --- SIMULATION of the UZA API response ---
-    # UZA generates its own ID and sends it back to us immediately.
-    uza_transaction_id = f"UZA_{uuid.uuid4().hex[:12].upper()}"
-    current_app.logger.info(
-        f"Simulating UZA API call for our transaction '{new_purchase.transaction_token}'. "
-        f"UZA responds with its own ID: '{uza_transaction_id}'"
-    )
+    try:
+        response = requests.post("https://uza.co.tz/api/interface/embeddable/order", json=uza_payload, timeout=30)
+        response.raise_for_status()
+        response_data = response.json()
+        
+        if 'data' in response_data and 'order' in response_data['data']:
+            # --- THIS IS THE FIX ---
+            # 1. Capture the ID into a variable.
+            uza_deal_id = response_data['data']['order']['id']
+            
+            # 2. Save this ID to the database.
+            new_purchase.payment_gateway_ref = uza_deal_id
+            db.session.commit()
 
-    # 4. Store the UZA transaction ID in our database
-    new_purchase.payment_gateway_ref = uza_transaction_id
+            # 3. Return the correct variables to the frontend.
+            return jsonify({
+                'success': True,
+                'message': response_data['data']['order'].get('payment_message', 'Check your phone.'),
+                'purchase_id': new_purchase.id,
+                'deal_id': uza_deal_id
+            })
+        else: 
+            raise Exception(response_data.get('message', 'Unknown UZA error'))
+
+    except Exception as e:
+        new_purchase.status = PurchaseStatus.FAILED
+        db.session.commit()
+        current_app.logger.error(f"UZA API call failed: {e}")
+        return jsonify({'success': False, 'message': 'Could not connect to payment provider.'}), 500
+
+@main_bp.route('/api/retry-payment', methods=['POST'])
+def retry_payment():
+    """
+    Handles retrying a payment for an existing FAILED or PENDING purchase
+    using the deal_id from the frontend.
+    """
+    data = request.get_json()
+    deal_id = data.get('deal_id')
+    new_phone_number = data.get('phone_number')
+    purchase_id = data.get('purchase_id') # To find the purchase record
+
+    if not all([deal_id, new_phone_number, purchase_id]):
+        return jsonify({'success': False, 'message': 'Missing data for retry.'}), 400
+
+    purchase = Purchase.query.get(purchase_id)
+    if not purchase: 
+        return jsonify({'success': False, 'message': 'Original purchase not found.'}), 404
+
+    creator = purchase.asset.creator
+    uza_pk = creator.get_setting('payment_uza_pk')
+    if not uza_pk: 
+        return jsonify({'success': False, 'message': 'Payment provider not configured.'}), 500
+    
+    # Reset status to PENDING
+    purchase.status = PurchaseStatus.PENDING
     db.session.commit()
+    
+    uza_payload = {
+        "pk": uza_pk,
+        "payment_method_id": "payby.selcom",
+        "deal_id": deal_id,
+        "email": f"{deal_id}@uza.co.tz",
+        "walletid": new_phone_number # UZA API might need this for the new push
+    }
 
-    return jsonify({
-        'success': True,
-        'message': f"A payment request for {asset.title} has been sent. Please approve it."
-    })
+    try:
+        response = requests.put("https://uza.co.tz/api/interface/embeddable/retry-payment", json=uza_payload, timeout=30)
+        response.raise_for_status()
+        
+        # Update the session with the new number
+        session['customer_phone'] = new_phone_number
+        
+        return jsonify({'success': True, 'message': 'New payment request sent! Check your phone.'})
+
+    except Exception as e:
+        purchase.status = PurchaseStatus.FAILED
+        db.session.commit()
+        current_app.logger.error(f"UZA Retry failed: {e}")
+        return jsonify({'success': False, 'message': 'Could not retry payment.'}), 500
 
 
 @main_bp.route('/api/uza-callback', methods=['POST'])

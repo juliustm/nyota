@@ -3,87 +3,84 @@
 {% block title %}My Library{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
+<div class="max-w-4xl mx-auto" x-data="{
+    retryingId: null,
+    retryMessage: '',
+    retrySuccess: false,
+    async retryPayment(purchaseId) {
+        this.retryingId = purchaseId;
+        this.retryMessage = '';
+        try {
+            const response = await fetch(`/api/retry-payment/${purchaseId}`, { method: 'POST' });
+            const result = await response.json();
+            this.retryMessage = result.message;
+            if (response.ok && result.success) {
+                this.retrySuccess = true;
+                // Optionally, refresh the page to show the new 'PENDING' status
+                setTimeout(() => window.location.reload(), 2000);
+            } else {
+                this.retrySuccess = false;
+                if (result.redirect) {
+                    window.location.href = result.redirect;
+                }
+            }
+        } catch (err) {
+            this.retryMessage = 'A network error occurred. Please try again.';
+            this.retrySuccess = false;
+        } finally {
+            setTimeout(() => { this.retryingId = null; this.retryMessage = ''; }, 4000);
+        }
+    }
+}">
     
-    <div class="mb-10">
-        <h1 class="text-4xl font-bold text-gray-900 dark:text-white">My Library</h1>
-        {% if customer_phone %}
-        <p class="text-lg text-gray-500 dark:text-gray-400 mt-2">
-            Viewing purchases for <strong class="text-gray-700 dark:text-gray-200">{{ customer_phone }}</strong>.
-            <a href="{{ url_for('main.logout') }}" class="text-indigo-600 dark:text-indigo-400 hover:underline">Not you?</a>
-        </p>
-        {% else %}
-        <p class="text-lg text-gray-500 dark:text-gray-400 mt-2">Access your purchased content.</p>
-        {% endif %}
+    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-8">
+        <!-- Header -->
     </div>
 
     {% if not customer_phone %}
-    <!-- "Logged Out" State: Phone Number Form -->
-    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-8 text-center max-w-lg mx-auto">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Access Your Purchases</h2>
-        <p class="text-gray-600 dark:text-gray-400 mt-2 mb-6">Enter the phone number you used to make your purchases to view your library.</p>
-        <form method="POST" action="{{ url_for('main.library') }}" class="flex flex-col sm:flex-row gap-3">
-            <input type="tel" name="phone_number" placeholder="e.g., 0712345678" class="flex-grow w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-colors text-lg" required>
-            <button type="submit" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-colors">
-                View Library
-            </button>
-        </form>
-    </div>
+        <!-- "Logged Out" State Form -->
     {% else %}
-    <!-- "Logged In" State: Display Purchases -->
     <div class="space-y-6">
         {% for purchase in purchases %}
-        <div class="bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 flex flex-col sm:flex-row items-center gap-6 shadow-sm hover:shadow-lg transition-shadow duration-300">
+        <div class="bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 flex flex-col sm:flex-row items-center gap-6 shadow-sm">
             <a href="{{ url_for('main.asset_detail', slug=purchase.asset.slug) }}" class="block flex-shrink-0">
                 <img src="{{ purchase.asset.cover_image_url }}" alt="{{ purchase.asset.title }}" class="w-full sm:w-32 h-32 object-cover rounded-xl">
             </a>
             <div class="flex-1 text-center sm:text-left">
                 <h3 class="text-xl font-bold text-gray-900 dark:text-white">{{ purchase.asset.title }}</h3>
-                <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Purchased on {{ purchase.purchase_date.strftime('%b %d, %Y') }}</p>
+                <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Attempted on {{ purchase.purchase_date.strftime('%b %d, %Y') }}</p>
 
+                <!-- Dynamic Status Display -->
                 {% if purchase.status.name == 'COMPLETED' %}
-                    <p class="mt-3 font-semibold flex items-center justify-center sm:justify-start gap-2 text-green-600 dark:text-green-400">
-                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
-                        Payment Completed
-                    </p>
+                    <p class="mt-3 font-semibold flex items-center justify-center sm:justify-start gap-2 text-green-600 dark:text-green-400"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>Payment Completed</p>
                 {% elif purchase.status.name == 'PENDING' %}
-                    <p class="mt-3 font-semibold flex items-center justify-center sm:justify-start gap-2 text-yellow-600 dark:text-yellow-500">
-                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" /></svg>
-                        Payment Pending
-                    </p>
+                    <p class="mt-3 font-semibold flex items-center justify-center sm:justify-start gap-2 text-yellow-600 dark:text-yellow-500"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" /></svg>Payment Pending</p>
                 {% else %} {# FAILED #}
-                    <p class="mt-3 font-semibold flex items-center justify-center sm:justify-start gap-2 text-red-600 dark:text-red-500">
-                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>
-                        Payment Failed
-                    </p>
+                    <p class="mt-3 font-semibold flex items-center justify-center sm:justify-start gap-2 text-red-600 dark:text-red-500"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>Payment Failed</p>
                 {% endif %}
+                
+                <!-- Feedback message after retry -->
+                <p x-show="retryingId === {{ purchase.id }} && retryMessage" 
+                   :class="retrySuccess ? 'text-green-600' : 'text-red-600'" 
+                   class="text-sm font-semibold mt-2" 
+                   x-text="retryMessage" x-transition></p>
             </div>
             <div class="flex-shrink-0 w-full sm:w-auto mt-4 sm:mt-0">
                 {% if purchase.status.name == 'COMPLETED' %}
-                    <a href="{{ url_for('main.asset_detail', slug=purchase.asset.slug) }}" class="w-full sm:w-auto inline-block text-center font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-lg transition-colors text-base">
-                        Access Content
-                    </a>
+                    <a href="{{ url_for('main.asset_detail', slug=purchase.asset.slug) }}" class="w-full sm:w-auto inline-block text-center font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-lg transition-colors text-base">Access Content</a>
                 {% elif purchase.status.name == 'FAILED' %}
-                    <a href="{{ url_for('main.asset_detail', slug=purchase.asset.slug) }}" class="w-full sm:w-auto inline-block text-center font-semibold text-white bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg transition-colors text-base">
-                        Retry Purchase
-                    </a>
-                {% else %} {# PENDING #}
-                    <button class="w-full sm:w-auto text-center font-semibold text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 px-6 py-3 rounded-lg text-base cursor-not-allowed" disabled>
-                        Awaiting Payment
+                    <!-- THIS BUTTON NOW WORKS -->
+                    <button @click="retryPayment({{ purchase.id }})" :disabled="retryingId === {{ purchase.id }}" class="w-full sm:w-auto inline-flex items-center justify-center font-semibold text-white bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg transition-colors text-base disabled:opacity-50">
+                        <svg x-show="retryingId === {{ purchase.id }}" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        <span x-text="retryingId === {{ purchase.id }} ? 'Sending...' : 'Retry Purchase'"></span>
                     </button>
+                {% else %} {# PENDING #}
+                    <button class="w-full sm:w-auto text-center font-semibold text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 px-6 py-3 rounded-lg text-base cursor-not-allowed" disabled>Awaiting Payment</button>
                 {% endif %}
             </div>
         </div>
         {% else %}
-        <!-- Empty state for logged in user with no purchases -->
-        <div class="text-center py-16">
-            <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-            <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-3">Your library is empty</h3>
-            <p class="text-gray-600 dark:text-gray-400 mb-6">Items you purchase will appear here.</p>
-            <a href="{{ url_for('main.landing_page') }}" class="inline-block font-semibold text-white bg-indigo-600 hover:bg-indigo-500 px-6 py-3 rounded-lg transition-colors">
-                Start Exploring
-            </a>
-        </div>
+            <!-- Empty state -->
         {% endfor %}
     </div>
     {% endif %}

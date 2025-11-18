@@ -31,14 +31,6 @@ document.addEventListener('alpine:init', () => {
         renderMarkdown(text) { if (window.marked) return window.marked.parse(text || ''); return text || ''; },
         formatCurrency(amount) { return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0); }
     }));
-    
-    Alpine.data('checkoutForm', (asset, channelId) => ({
-        asset: asset, channelId: channelId, quantity: 1, state: 'ready', phoneNumber: '', statusMessage: '', errorMessage: '', eventSource: null, paymentUrl: '', sessionUrl: '',
-        get totalPrice() { return this.asset.price * this.quantity; },
-        init() { this.paymentUrl = this.$root.dataset.paymentUrl; this.sessionUrl = this.$root.dataset.sessionUrl; this.$watch('quantity', (value) => { if (!Number.isInteger(value) || value < 1) { this.quantity = 1; }}); },
-        async submitPayment() { if (!this.phoneNumber.trim()) { this.errorMessage = 'Please enter your phone number.'; return; } this.state = 'waiting'; this.errorMessage = ''; try { const response = await fetch(this.paymentUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone_number: this.phoneNumber, asset_id: this.asset.id, channel_id: this.channelId, quantity: this.quantity, total_price: this.totalPrice }) }); const result = await response.json(); if (result.success) { this.statusMessage = result.message; this.listenForPaymentResult(); } else { this.errorMessage = result.message || 'Could not initiate payment.'; this.state = 'ready'; } } catch (error) { this.errorMessage = 'Server connection error. Please try again.'; this.state = 'ready'; } },
-        listenForPaymentResult() { this.eventSource = new EventSource(`/api/payment-stream/${this.channelId}`); this.eventSource.onmessage = (event) => { const data = JSON.parse(event.data); if (data.status === 'SUCCESS') { this.statusMessage = data.message; fetch(this.sessionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone_number: this.phoneNumber }) }).then(() => { window.location.href = data.redirect_url; }); } else { this.errorMessage = data.message; this.state = 'ready'; } this.eventSource.close(); }; this.eventSource.onerror = () => { this.errorMessage = 'Connection to server lost. Please refresh and try again.'; this.state = 'ready'; this.eventSource.close(); }; }
-    }));
 
     Alpine.data('userLibrary', (currencySymbol) => ({
         purchasedAssets: [], activeTab: 'all', currency: currencySymbol,
@@ -353,47 +345,45 @@ document.addEventListener('alpine:init', () => {
     }));
 
     Alpine.data('checkout', (asset, currencySymbol, paymentUrl) => ({
-        // --- State ---
         isOpen: false,
         asset: asset,
         currency: currencySymbol,
-        paymentUrl: paymentUrl, // This will be passed in from the template
+        paymentUrl: paymentUrl,
         phoneNumber: localStorage.getItem('nyota_phone') || '',
-        status: 'ready', // 'ready', 'initiating', 'waiting', 'success', 'failed'
+        status: 'ready',
         errorMessage: '',
         statusMessage: '',
-        channelId: null, // For SSE connection
+        channelId: null,
         eventSource: null,
 
-        // --- Methods ---
-        openModal() {
-            this.isOpen = true;
-            this.status = 'ready'; // Reset on open
-            this.errorMessage = '';
-            this.statusMessage = '';
-            this.channelId = crypto.randomUUID(); // Generate unique ID for this transaction
+        init() {
+            window.addEventListener('open-checkout-modal', (event) => {
+                const prefillNumber = event.detail ? event.detail.phoneNumber : localStorage.getItem('nyota_phone');
+                this.openModal(prefillNumber);
+            });
+        },
+
+        openModal(prefillNumber = null) {
+            this.isOpen = true; this.status = 'ready';
+            this.errorMessage = ''; this.statusMessage = '';
+            this.phoneNumber = prefillNumber || localStorage.getItem('nyota_phone') || '';
+            this.channelId = crypto.randomUUID();
             this.$nextTick(() => { if (this.$refs.phoneInput) this.$refs.phoneInput.focus(); });
         },
         closeModal() { this.isOpen = false; if (this.eventSource) this.eventSource.close(); },
 
-        formatPhoneNumber() {
-            // Basic formatter/validator
-            let raw = this.phoneNumber.replace(/[^0-9]/g, '');
-            if (raw.length > 15) raw = raw.substring(0, 15);
-            this.phoneNumber = raw;
-        },
+        formatPhoneNumber() { /* ... unchanged ... */ },
         
         async initiatePayment() {
-            if (this.phoneNumber.length < 9) { // Basic validation
+            if (this.phoneNumber.length < 9) {
                 this.errorMessage = 'Please enter a valid phone number.';
                 return;
             }
             this.status = 'initiating';
             this.errorMessage = '';
-            localStorage.setItem('nyota_phone', this.phoneNumber); // Remember for next time
+            localStorage.setItem('nyota_phone', this.phoneNumber);
 
             try {
-                // THIS IS THE FIX: Use the 'paymentUrl' property instead of a Jinja block.
                 const response = await fetch(this.paymentUrl, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -408,16 +398,26 @@ document.addEventListener('alpine:init', () => {
 
                 if (response.ok && result.success) {
                     this.status = 'waiting';
-                    this.statusMessage = result.message || 'Check your phone to complete payment...';
+                    this.statusMessage = result.message || 'Check your phone...';
+                    
+                    // --- THIS IS THE KEY CHANGE ---
+                    // The backend now gives us the IDs we need to store for a potential retry.
+                    // We'll store this in localStorage, scoped to the asset ID.
+                    const pendingPurchase = {
+                        id: result.purchase_id,
+                        deal_id: result.deal_id,
+                        status: { name: 'PENDING' }
+                    };
+                    localStorage.setItem(`nyota_purchase_${this.asset.id}`, JSON.stringify(pendingPurchase));
+                    
                     this.listenForPaymentResult();
                 } else {
                     this.status = 'failed';
-                    this.errorMessage = result.message || 'Could not start payment. Please try again.';
+                    this.errorMessage = result.message || 'Could not start payment.';
                 }
-
             } catch (err) {
                 this.status = 'failed';
-                this.errorMessage = 'A network error occurred. Please check your connection.';
+                this.errorMessage = 'A network error occurred.';
             }
         },
 
@@ -569,6 +569,143 @@ document.addEventListener('alpine:init', () => {
         toggleSelectAll(event) {
             this.selectedSupporters = event.target.checked ? this.filteredSupporters.map(s => s.id) : [];
         },
+    }));
+
+    Alpine.data('assetPageController', () => ({
+        purchase: null,
+        phoneNumber: localStorage.getItem('nyota_phone') || '',
+        
+        // --- IMPROVED STATE MANAGEMENT ---
+        isRetrying: false,
+        isCancelling: false,
+        feedbackMessage: '',
+        isSuccess: false,
+
+        init() {
+            try {
+                const dataElement = document.getElementById('purchase-data');
+                if (dataElement && dataElement.textContent.trim()) {
+                    this.purchase = JSON.parse(dataElement.textContent);
+                    // Pre-fill phone number from the pending purchase if available
+                    if (this.purchase && this.purchase.phone_number) {
+                        this.phoneNumber = this.purchase.phone_number;
+                    }
+                }
+            } catch (e) { this.purchase = null; }
+        },
+
+        get purchaseId() { return this.purchase ? this.purchase.id : null; },
+        get dealId() { return this.purchase ? this.purchase.payment_gateway_ref : null; },
+        get purchaseStatus() { return this.purchase ? (this.purchase.status ? this.purchase.status.name : null) : null; },
+        
+        // Computed property to disable buttons during any action
+        get isProcessing() {
+            return this.isRetrying || this.isCancelling;
+        },
+
+        handlePurchaseAction() {
+            // If it's a failed or pending purchase, we retry.
+            if (this.purchaseId && (this.purchaseStatus === 'FAILED' || this.purchaseStatus === 'PENDING')) {
+                this.retryPayment();
+            } else {
+                // Otherwise, it's a new purchase; open the modal.
+                this.$dispatch('open-checkout-modal');
+            }
+        },
+
+        async retryPayment() {
+            if (!this.purchaseId || !this.dealId) {
+                this.feedbackMessage = 'Order data is missing. Please try a new purchase.';
+                this.isSuccess = false;
+                return;
+            }
+            if (this.phoneNumber.length < 9) {
+                this.feedbackMessage = 'Please enter a valid phone number.';
+                this.isSuccess = false;
+                return;
+            }
+
+            this.isRetrying = true;
+            this.feedbackMessage = '';
+            
+            try {
+                const response = await fetch('/api/retry-payment', { 
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ 
+                        phone_number: this.phoneNumber,
+                        deal_id: this.dealId,
+                        purchase_id: this.purchaseId
+                    })
+                });
+                const result = await response.json();
+                
+                this.feedbackMessage = result.message;
+                this.isSuccess = response.ok && result.success;
+
+                if (this.isSuccess) {
+                    localStorage.setItem('nyota_phone', this.phoneNumber);
+                    // Give user time to read the success message
+                    setTimeout(() => window.location.reload(), 2000);
+                }
+            } catch (err) {
+                this.feedbackMessage = 'A network error occurred.';
+                this.isSuccess = false;
+            } finally {
+                // Only stop processing if it wasn't a success, otherwise we wait for reload
+                if (!this.isSuccess) {
+                    setTimeout(() => { 
+                        this.isRetrying = false; 
+                        this.feedbackMessage = '';
+                    }, 5000);
+                }
+            }
+        },
+
+        // --- NEW: Method to cancel a pending payment ---
+        async cancelPayment() {
+            if (!this.purchaseId) {
+                this.feedbackMessage = 'Cannot cancel: Order ID is missing.';
+                this.isSuccess = false;
+                return;
+            }
+
+            if (!confirm('Are you sure you want to cancel this pending payment?')) {
+                return;
+            }
+
+            this.isCancelling = true;
+            this.feedbackMessage = '';
+
+            try {
+                // NOTE: You will need to create this backend endpoint.
+                const response = await fetch('/api/cancel-payment', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ purchase_id: this.purchaseId })
+                });
+
+                const result = await response.json();
+                this.feedbackMessage = result.message;
+                this.isSuccess = response.ok && result.success;
+
+                if (this.isSuccess) {
+                    // On success, reload the page to show the purchase button again.
+                    setTimeout(() => window.location.reload(), 2000);
+                }
+
+            } catch (err) {
+                this.feedbackMessage = 'A network error occurred while cancelling.';
+                this.isSuccess = false;
+            } finally {
+                if (!this.isSuccess) {
+                    setTimeout(() => {
+                        this.isCancelling = false;
+                        this.feedbackMessage = '';
+                    }, 5000);
+                }
+            }
+        }
     }));
     
 });

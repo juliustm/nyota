@@ -379,6 +379,18 @@ class Purchase(db.Model):
     ticket_data = db.Column(JSON, nullable=True)
     customer = db.relationship('Customer', back_populates='purchases')
     asset = db.relationship('DigitalAsset', back_populates='purchases')
+    def to_dict(self):
+        """Serializes the Purchase object to a dictionary."""
+        return {
+            "id": self.id,
+            "asset_id": self.asset_id,
+            "status": {
+                "name": self.status.name,
+                "value": self.status.value
+            },
+            "transaction_token": self.transaction_token,
+            "payment_gateway_ref": self.payment_gateway_ref
+        }
 
 class Subscription(db.Model):
     __tablename__ = 'subscription'

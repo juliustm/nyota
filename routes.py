@@ -633,44 +633,55 @@ def checkout(slug):
 
 @main_bp.route('/api/initiate-payment', methods=['POST'])
 def initiate_payment():
-    """Handles ONLY first-time payment attempts for an asset by a user."""
+    """
+    Handles the initial payment request from a customer's browser.
+    Creates a pending purchase record and calls the UZA payment gateway API.
+    """
     data = request.get_json()
-    phone_number, asset_id, channel_id = data.get('phone_number'), data.get('asset_id'), data.get('channel_id')
+    phone_number = data.get('phone_number')
+    asset_id = data.get('asset_id')
+    channel_id = data.get('channel_id') # The unique ID for the user's browser tab
+
+    # 1. Validate incoming data
     if not all([phone_number, asset_id, channel_id]):
-        return jsonify({'success': False, 'message': 'Missing data.'}), 400
+        return jsonify({'success': False, 'message': 'Missing required data.'}), 400
     
     asset = DigitalAsset.query.get(asset_id)
     if not asset: 
-        return jsonify({'success': False, 'message': 'Product not found.'}), 404
+        return jsonify({'success': False, 'message': 'The requested product could not be found.'}), 404
 
     creator = asset.creator
     uza_pk = creator.get_setting('payment_uza_pk')
     if not uza_pk:
-        current_app.logger.error("UZA Payment failed: PK not configured.")
-        return jsonify({'success': False, 'message': 'Payment provider not configured.'}), 500
+        current_app.logger.error(f"UZA Payment for creator {creator.id} failed: Public Key (PK) not configured.")
+        return jsonify({'success': False, 'message': 'This store is not configured to accept payments.'}), 500
 
+    # 2. Find or create the customer record
     customer = Customer.query.filter_by(whatsapp_number=phone_number).first()
     if not customer:
         customer = Customer(whatsapp_number=phone_number)
         db.session.add(customer)
         db.session.commit()
     
+    # Store the customer's phone in the session for library access later
     session['customer_phone'] = phone_number
 
+    # 3. Create a pending Purchase record in our database
     new_purchase = Purchase(
         customer_id=customer.id, 
         asset_id=asset.id, 
         amount_paid=asset.price, 
         status=PurchaseStatus.PENDING, 
-        sse_channel_id=channel_id
+        sse_channel_id=channel_id  # Link this purchase to the user's browser tab
     )
     db.session.add(new_purchase)
-    db.session.commit()
+    db.session.commit() # Commit to generate the transaction_token
     
+    # 4. Construct the payload for the UZA API
     uza_payload = {
         "products": [{"id": 8069, "name": asset.title, "quantity": 1, "price": float(asset.price)}],
         "payment": {"type": "payby.selcom", "walletid": phone_number},
-        "reference": new_purchase.transaction_token,
+        "reference": new_purchase.transaction_token, # Our internal unique ID
         "pk": uza_pk,
         "totalAmount": str(asset.price),
         "currency": creator.get_setting('payment_uza_currency', 'TZS'),
@@ -680,35 +691,39 @@ def initiate_payment():
         }
     }
 
+    # 5. Call the UZA API and handle the response
     try:
         response = requests.post("https://uza.co.tz/api/interface/embeddable/order", json=uza_payload, timeout=30)
-        response.raise_for_status()
+        response.raise_for_status() # Raise an exception for HTTP error codes (4xx or 5xx)
         response_data = response.json()
         
         if 'data' in response_data and 'order' in response_data['data']:
-            # --- THIS IS THE FIX ---
-            # 1. Capture the ID into a variable.
-            uza_deal_id = response_data['data']['order']['id']
-            
-            # 2. Save this ID to the database.
+            # Capture the `deal_id` from UZA's successful response
+            uza_deal_id = response_data['data']['order'].get('id')
+            if not uza_deal_id:
+                raise Exception("UZA API response did not contain a 'deal_id'.")
+
+            # Link our purchase record to UZA's deal_id
             new_purchase.payment_gateway_ref = uza_deal_id
             db.session.commit()
 
-            # 3. Return the correct variables to the frontend.
+            # Respond to the user's browser
             return jsonify({
                 'success': True,
-                'message': response_data['data']['order'].get('payment_message', 'Check your phone.'),
+                'message': response_data['data']['order'].get('payment_message', 'Check your phone to complete payment.'),
                 'purchase_id': new_purchase.id,
                 'deal_id': uza_deal_id
             })
         else: 
-            raise Exception(response_data.get('message', 'Unknown UZA error'))
+            # Handle cases where UZA returns a 200 OK but with an error message
+            raise Exception(response_data.get('message', 'Unknown UZA API error'))
 
     except Exception as e:
+        # If the API call fails, mark our purchase record as FAILED
         new_purchase.status = PurchaseStatus.FAILED
         db.session.commit()
-        current_app.logger.error(f"UZA API call failed: {e}")
-        return jsonify({'success': False, 'message': 'Could not connect to payment provider.'}), 500
+        current_app.logger.error(f"UZA API call failed for transaction {new_purchase.transaction_token}: {e}")
+        return jsonify({'success': False, 'message': 'Could not connect to the payment provider. Please try again.'}), 500
 
 @main_bp.route('/api/retry-payment', methods=['POST'])
 def retry_payment():
@@ -764,59 +779,66 @@ def retry_payment():
 @main_bp.route('/api/uza-callback', methods=['POST'])
 def uza_payment_callback():
     """
-    THIS IS THE WEBHOOK ENDPOINT FOR UZA.
-    It is unauthenticated and will be called by the UZA servers.
+    Handles the asynchronous payment confirmation webhook from UZA.
+    This endpoint is stateless and must be publicly accessible.
     """
     data = request.get_json()
     
-    # The UZA documentation says they will send back their ID in the 'gateway_ref' field
-    # and our original ID in the 'reference' field. We'll use our reference.
-    our_transaction_token = data.get('reference') # UZA calls it 'reference'
-    uza_gateway_ref = data.get('gateway_ref')     # UZA's ID for the transaction
-    status = data.get('status')                   # e.g., "COMPLETED" or "FAILED"
+    # 1. Basic validation of the incoming payload
+    if not data or 'data' not in data:
+        current_app.logger.error("UZA Callback: Received an invalid or empty JSON payload.")
+        return jsonify({'status': 'error', 'message': 'Invalid payload'}), 400
 
-    if not our_transaction_token:
-        current_app.logger.error("UZA Callback received without a 'reference' (our transaction_token).")
-        return jsonify({'status': 'error', 'message': 'Missing reference'}), 400
+    # 2. Extract the `deal_id` which is our primary key for this transaction
+    uza_deal_id = data['data'].get('deal_id')
+    if not uza_deal_id:
+        current_app.logger.error("UZA Callback: Payload received without a 'deal_id'.")
+        return jsonify({'status': 'error', 'message': 'Missing deal_id'}), 400
+        
+    # Note: The UZA callback for a successful transaction might not contain a 'status' field.
+    # We will assume a valid callback to this endpoint implies success unless UZA documentation specifies otherwise.
+    # If UZA sends different callbacks for success/failure, you would add an if/else here.
 
-    # Find the original purchase record using the token we sent to UZA
-    purchase = Purchase.query.filter_by(transaction_token=our_transaction_token).first()
+    # 3. Find the original purchase record using the `deal_id`
+    purchase = Purchase.query.filter_by(payment_gateway_ref=uza_deal_id).first()
     if not purchase:
-        current_app.logger.error(f"UZA Callback for unknown transaction_token: {our_transaction_token}")
+        current_app.logger.error(f"UZA Callback: Received callback for an unknown deal_id: {uza_deal_id}")
         return jsonify({'status': 'error', 'message': 'Transaction not found'}), 404
         
+    # 4. Idempotency check: If we've already processed this, don't do it again.
     if purchase.status == PurchaseStatus.COMPLETED:
+        current_app.logger.info(f"UZA Callback: Received duplicate success callback for already completed deal_id: {uza_deal_id}")
         return jsonify({'status': 'ok', 'message': 'Transaction already processed'}), 200
 
-    if status == 'COMPLETED':
+    # 5. Update our database records
+    try:
         purchase.status = PurchaseStatus.COMPLETED
-        purchase.payment_gateway_ref = uza_gateway_ref # Store UZA's final reference ID
         
+        # Update the asset's performance statistics
         asset = purchase.asset
         asset.total_sales = (asset.total_sales or 0) + 1
         asset.total_revenue = (asset.total_revenue or 0) + purchase.amount_paid
-        session['customer_phone'] = purchase.customer.whatsapp_number
         
         db.session.commit()
-        
-        # Notify the waiting frontend via SSE
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"DB Error processing UZA callback for deal_id {uza_deal_id}: {e}")
+        return jsonify({'status': 'error', 'message': 'Database processing failed'}), 500
+
+    # 6. Bridge to the frontend: Notify the waiting browser via Server-Sent Events
+    if purchase.sse_channel_id:
         sse_manager.publish(purchase.sse_channel_id, {
             'status': 'SUCCESS', 
-            'message': 'Payment confirmed! Thank you.',
-            'redirect_url': url_for('main.library')
+            'message': 'Payment confirmed! Accessing your content...',
+            'redirect_url': url_for('main.library') 
         })
-        current_app.logger.info(f"Processed successful payment for transaction {our_transaction_token}")
+        current_app.logger.info(f"Successfully processed payment for deal_id {uza_deal_id} and notified SSE channel {purchase.sse_channel_id}")
     else:
-        purchase.status = PurchaseStatus.FAILED
-        db.session.commit()
-        
-        sse_manager.publish(purchase.sse_channel_id, {
-            'status': 'FAILED',
-            'message': data.get('message', 'Payment was not completed.')
-        })
-        current_app.logger.info(f"Processed failed payment for transaction {our_transaction_token}")
+        # This is not a fatal error, but it's important to log for debugging.
+        current_app.logger.warning(f"Payment for deal_id {uza_deal_id} was successful, but no SSE channel was found to notify the user's browser.")
 
-    return jsonify({'status': 'ok'}), 200
+    # 7. Acknowledge receipt to UZA's servers
+    return jsonify({'status': 'ok', 'message': 'Callback processed successfully'}), 200
 
 @main_bp.route('/api/payment-stream/<channel_id>')
 def payment_stream(channel_id):

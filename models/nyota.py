@@ -362,11 +362,15 @@ class AssetFile(db.Model):
     order_index = db.Column(db.Integer, default=0)
     asset = db.relationship('DigitalAsset', back_populates='files')
     def to_dict(self):
+        link = self.storage_path
+        if link and link.startswith('secure_uploads/'):
+            link = f"/content/{self.id}"
+            
         return { 
             'id': self.id, 
             'title': self.title, 
             'description': self.description, 
-            'link': self.storage_path,
+            'link': link,
             'file_type': self.file_type
         }
 

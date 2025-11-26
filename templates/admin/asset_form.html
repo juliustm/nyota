@@ -151,9 +151,8 @@
     </div>
 
     <!-- Main Form -->
-    <form x-show="step > 1" x-ref="assetForm"
-        action="{{ url_for('admin.asset_new') if not asset.id else url_for('admin.asset_edit', asset_id=asset.id) }}"
-        method="POST" class="space-y-8" enctype="multipart/form-data">
+    <form x-show="step > 1" x-ref="assetForm" action="{{ url_for('admin.save_asset') }}" method="POST" class="space-y-8"
+        enctype="multipart/form-data">
 
         <!-- Navigation Header -->
         <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -454,7 +453,8 @@
                                                     <label
                                                         class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Upload
                                                         File</label>
-                                                    <input type="file" @change="item.file = $event.target.files[0]"
+                                                    <input type="file" :name="'content_file_' + index"
+                                                        @change="item.file = $event.target.files[0]"
                                                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
                                                 </div>
                                                 <div>

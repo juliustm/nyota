@@ -17,7 +17,7 @@ from sqlalchemy import func
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash, session, g,
-    jsonify, current_app, Response
+    jsonify, current_app, Response, send_from_directory, abort
 )
 
 from models.nyota import (
@@ -292,6 +292,84 @@ def update_asset_details(asset_id):
         statuses=[s.value for s in AssetStatus]
     )
 
+@admin_bp.route('/assets/save', methods=['POST'])
+@creator_login_required
+def save_asset():
+    try:
+        if 'asset_data' not in request.form:
+            raise ValueError("Form submission incomplete.")
+        
+        form_data = json.loads(request.form['asset_data'])
+        asset_id = form_data.get('asset', {}).get('id')
+        
+        if asset_id:
+            asset = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
+        else:
+            asset = DigitalAsset(creator_id=g.creator.id)
+            
+        save_asset_from_form(asset, request)
+        
+        if not asset_id:
+            db.session.add(asset)
+            
+        db.session.commit()
+        
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'success': True, 'message': f"Asset '{asset.title}' saved successfully!"})
+            
+        flash(f"Asset '{asset.title}' saved successfully!", "success")
+        return redirect(url_for('admin.list_assets'))
+        
+    except ValueError as e:
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'success': False, 'message': str(e)}), 400
+        flash(str(e), 'danger')
+        return redirect(url_for('admin.asset_new'))
+    except Exception as e:
+        current_app.logger.error(f"Error saving asset: {e}")
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'success': False, 'message': 'A server error occurred.'}), 500
+        flash("An error occurred while saving the asset.", "danger")
+        return redirect(url_for('admin.list_assets'))
+
+@main_bp.route('/content/<int:file_id>')
+def serve_content(file_id):
+    # Check if user is logged in
+    customer_phone = session.get('customer_phone')
+    if not customer_phone:
+        abort(403)
+        
+    # Get the file
+    asset_file = AssetFile.query.get_or_404(file_id)
+    
+    # Check if user purchased the asset
+    customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
+    if not customer:
+        abort(403)
+        
+    purchase = Purchase.query.filter_by(
+        customer_id=customer.id,
+        asset_id=asset_file.asset_id,
+        status=PurchaseStatus.COMPLETED
+    ).first()
+    
+    # Allow creator to view their own assets
+    creator_id = session.get('creator_id')
+    is_creator = creator_id and asset_file.asset.creator_id == creator_id
+    
+    if not purchase and not is_creator:
+        abort(403)
+        
+    # Serve the file
+    # storage_path is stored as "secure_uploads/filename"
+    if asset_file.storage_path.startswith('secure_uploads/'):
+        filename = asset_file.storage_path.replace('secure_uploads/', '')
+        directory = os.path.join(current_app.instance_path, 'secure_uploads')
+        return send_from_directory(directory, filename)
+    else:
+        # It's an external link, redirect to it
+        return redirect(asset_file.storage_path)
+
 def save_asset_from_form(asset, req):
     if 'asset_data' not in req.form: raise ValueError("Form submission incomplete. Please try again.")
     form_data = json.loads(req.form['asset_data'])
@@ -329,13 +407,54 @@ def save_asset_from_form(asset, req):
     elif asset.asset_type == AssetType.SUBSCRIPTION: asset.details = form_data.get('subscriptionDetails', {})
     elif asset.asset_type == AssetType.NEWSLETTER: asset.details = form_data.get('newsletterDetails', {})
     
+    # Preserve existing file paths if not re-uploaded
+    existing_files_map = {}
+    if asset.id:
+        existing_files = AssetFile.query.filter_by(asset_id=asset.id).all()
+        for f in existing_files:
+            existing_files_map[f.id] = {'path': f.storage_path, 'type': f.file_type}
+            
     AssetFile.query.filter_by(asset_id=asset.id).delete()
+    
+    secure_upload_dir = os.path.join(current_app.instance_path, 'secure_uploads')
+    os.makedirs(secure_upload_dir, exist_ok=True)
+    
     for i, item in enumerate(form_data.get('contentItems', [])):
-        # Infer file type from the link/path
-        link = item.get('link', '')
+        # Check for uploaded file
+        file_key = f'content_file_{i}'
+        uploaded_file = req.files.get(file_key)
+        
+        storage_path = item.get('link', '')
         file_type = None
-        if link:
-            extension = link.split('.')[-1].lower().split('?')[0]  # Handle query params
+        
+        if uploaded_file and uploaded_file.filename:
+            # Save new file
+            filename = secure_filename(uploaded_file.filename)
+            unique_filename = f"{int(datetime.now().timestamp())}_{filename}"
+            uploaded_file.save(os.path.join(secure_upload_dir, unique_filename))
+            storage_path = f"secure_uploads/{unique_filename}"
+            
+            # Infer type from filename
+            extension = filename.split('.')[-1].lower()
+        elif storage_path:
+            # Check if it's a secure link that needs resolving
+            if storage_path.startswith('/content/'):
+                try:
+                    old_file_id = int(storage_path.split('/')[-1])
+                    if old_file_id in existing_files_map:
+                        storage_path = existing_files_map[old_file_id]['path']
+                        file_type = existing_files_map[old_file_id]['type']
+                except (ValueError, IndexError):
+                    pass # Keep as is if parsing fails
+            
+            # If we resolved it (or it was external), infer type if missing
+            if not file_type:
+                extension = storage_path.split('.')[-1].lower().split('?')[0]
+        else:
+            extension = ''
+
+        # Infer file type if not already set (from existing file)
+        if not file_type:
             if extension in ['pdf']:
                 file_type = 'pdf'
             elif extension in ['mp3', 'wav', 'ogg', 'm4a', 'aac']:
@@ -351,7 +470,7 @@ def save_asset_from_form(asset, req):
             asset=asset, 
             title=item.get('title'), 
             description=item.get('description'), 
-            storage_path=link,
+            storage_path=storage_path,
             file_type=file_type,
             order_index=i
         ))
@@ -384,7 +503,37 @@ def assets_bulk_action():
 def duplicate_asset(asset_id):
     original = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
     try:
-        db.session.add(DigitalAsset(creator_id=g.creator.id, title=f"Copy of {original.title}", status=AssetStatus.DRAFT, description=original.description, story=original.story, cover_image_url=original.cover_image_url, asset_type=original.asset_type, price=original.price, is_subscription=original.is_subscription, subscription_interval=original.subscription_interval, event_date=original.event_date, event_location=original.event_location, max_attendees=original.max_attendees, custom_fields=original.custom_fields, details=original.details))
+        new_asset = DigitalAsset(
+            creator_id=g.creator.id, 
+            title=f"Copy of {original.title}", 
+            status=AssetStatus.DRAFT, 
+            description=original.description, 
+            story=original.story, 
+            cover_image_url=original.cover_image_url, 
+            asset_type=original.asset_type, 
+            price=original.price, 
+            is_subscription=original.is_subscription, 
+            subscription_interval=original.subscription_interval, 
+            event_date=original.event_date, 
+            event_location=original.event_location, 
+            max_attendees=original.max_attendees, 
+            custom_fields=original.custom_fields, 
+            details=original.details
+        )
+        db.session.add(new_asset)
+        db.session.flush() # Get the ID for the new asset
+        
+        # Duplicate files
+        for file in original.files:
+            db.session.add(AssetFile(
+                asset_id=new_asset.id,
+                title=file.title,
+                description=file.description,
+                storage_path=file.storage_path,
+                file_type=file.file_type,
+                order_index=file.order_index
+            ))
+            
         db.session.commit()
         return jsonify({'success': True, 'message': f"'{original.title}' was duplicated successfully."})
     except Exception as e:

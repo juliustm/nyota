@@ -55,8 +55,40 @@ document.addEventListener('alpine:init', () => {
                     this.assets = Array.isArray(JSON.parse(dataElement.textContent)) ? JSON.parse(dataElement.textContent) : [];
                 }
             } catch (e) { this.assets = []; console.error('Error parsing assets data:', e); }
-            this.applyFiltersAndSort();
-            this.$watch(() => [this.searchTerm, this.statusFilter, this.typeFilter, this.sortBy, this.sortAsc], () => { this.currentPage = 1; this.applyFiltersAndSort(); });
+
+            // Load UI preferences from localStorage
+            const savedPreferences = JSON.parse(localStorage.getItem('adminAssetsPreferences')) || {};
+            this.viewMode = savedPreferences.viewMode || 'list';
+            this.searchTerm = savedPreferences.searchTerm || '';
+            this.statusFilter = savedPreferences.statusFilter || 'all';
+            this.typeFilter = savedPreferences.typeFilter || 'all';
+            this.sortBy = savedPreferences.sortBy || 'updated_at';
+            this.sortAsc = savedPreferences.sortAsc !== undefined ? savedPreferences.sortAsc : false;
+            this.itemsPerPage = savedPreferences.itemsPerPage || 10;
+            this.currentPage = savedPreferences.currentPage || 1; // Load currentPage
+
+            this.$watch(() => [this.searchTerm, this.statusFilter, this.typeFilter, this.sortBy, this.sortAsc], () => {
+                this.applyFiltersAndSort();
+                this.currentPage = 1; // Reset to first page on filter/sort change
+                this.savePreferences();
+            });
+
+            this.$watch(() => [this.viewMode, this.itemsPerPage, this.currentPage], () => this.savePreferences());
+
+            this.applyFiltersAndSort(); // Initial application of filters and sort
+        },
+
+        savePreferences() {
+            localStorage.setItem('adminAssetsPreferences', JSON.stringify({
+                viewMode: this.viewMode,
+                searchTerm: this.searchTerm,
+                statusFilter: this.statusFilter,
+                typeFilter: this.typeFilter,
+                sortBy: this.sortBy,
+                sortAsc: this.sortAsc,
+                itemsPerPage: this.itemsPerPage,
+                currentPage: this.currentPage,
+            }));
         },
 
         applyFiltersAndSort() {
@@ -68,11 +100,36 @@ document.addEventListener('alpine:init', () => {
             this.filteredAssets = temp;
         },
 
+        // --- Pagination ---
+        get paginatedAssets() {
+            const start = (this.currentPage - 1) * this.itemsPerPage;
+            const end = start + this.itemsPerPage;
+            return this.filteredAssets.slice(start, end);
+        },
+        get totalPages() {
+            return Math.ceil(this.filteredAssets.length / this.itemsPerPage);
+        },
+        goToPage(page) {
+            if (page >= 1 && page <= this.totalPages) {
+                this.currentPage = page;
+            }
+        },
+        nextPage() {
+            if (this.currentPage < this.totalPages) {
+                this.currentPage++;
+            }
+        },
+        prevPage() {
+            if (this.currentPage > 1) {
+                this.currentPage--;
+            }
+        },
+
         // --- Action Methods ---
         async applyBulkAction() {
             if (!this.bulkAction || this.selectedAssets.length === 0) return alert('Please select an action and at least one asset.');
             if (this.bulkAction === 'delete' && !confirm(`Permanently delete ${this.selectedAssets.length} asset(s)? This cannot be undone.`)) return;
-            
+
             try {
                 const response = await fetch('/admin/api/assets/bulk-action', {
                     method: 'POST',
@@ -133,7 +190,7 @@ document.addEventListener('alpine:init', () => {
 
     Alpine.data('assetForm', () => ({
         step: 1, asset: { id: null, title: '', description: '', cover_image_url: null, story_snippet: '' }, assetType: '', assetTypeEnum: '', contentItems: [], customFields: [], eventDetails: { link: '', maxAttendees: null, date: '', time: '' }, subscriptionDetails: { welcomeContent: '', benefits: '' }, newsletterDetails: { welcomeFile: null, welcomeDescription: '', frequency: 'monthly' }, pricing: { type: 'one-time', amount: null, billingCycle: 'monthly' },
-        steps: [{number:1,title:'Type',subtitle:'Choose content format'},{number:2,title:'Details',subtitle:'Describe your asset'},{number:3,title:'Content',subtitle:'Add files/links'},{number:4,title:'Pricing',subtitle:'Set your price'}],
+        steps: [{ number: 1, title: 'Type', subtitle: 'Choose content format' }, { number: 2, title: 'Details', subtitle: 'Describe your asset' }, { number: 3, title: 'Content', subtitle: 'Add files/links' }, { number: 4, title: 'Pricing', subtitle: 'Set your price' }],
         init() {
             const dataElement = document.getElementById('asset-form-data');
             if (dataElement && dataElement.textContent.trim() !== '{}') {
@@ -152,16 +209,16 @@ document.addEventListener('alpine:init', () => {
                 this.step = 2;
             }
         },
-        setAssetType(type){this.assetType=type;this.assetTypeEnum=this.mapFormTypeToEnumType(type);},
-        addContentItem(type){this.contentItems.push({type:type,title:'',link:'',description:''});},
-        removeContentItem(index){this.contentItems.splice(index,1);},
-        addCustomField(){this.customFields.push({type:'text',question:''});},
-        removeCustomField(index){this.customFields.splice(index,1);},
-        previewCoverImage(event){const file=event.target.files[0];if(file){this.asset.cover_image_url=URL.createObjectURL(file);}},
-        submitForm(action){const allData={action:action,asset:this.asset,assetTypeEnum:this.assetTypeEnum,contentItems:this.contentItems,customFields:this.customFields,eventDetails:this.eventDetails,subscriptionDetails:this.subscriptionDetails,newsletterDetails:{...this.newsletterDetails,welcomeFile:null},pricing:this.pricing};const hidden=document.createElement('input');hidden.type='hidden';hidden.name='asset_data';hidden.value=JSON.stringify(allData);this.$refs.assetForm.appendChild(hidden);this.$refs.assetForm.submit();},
-        getAssetTypeDetails(){const details={'video-series':{title:'Video Course',contentDescription:'Add your videos, lessons, or modules below.'},'ticket':{title:'Event & Webinar',contentDescription:'Provide event details and ask for attendee information.'},'digital-file':{title:'Digital Product',contentDescription:'Upload the files your customers will receive.'},'subscription':{title:'Subscription',contentDescription:'Describe the benefits and welcome content for new subscribers.'},'newsletter':{title:'Newsletter',contentDescription:'Set up your welcome content and publishing frequency.'}};return details[this.assetType]||{title:'Asset',contentDescription:''};},
-        mapEnumTypeToFormType(enumType){const map={'VIDEO_SERIES':'video-series','TICKET':'ticket','DIGITAL_PRODUCT':'digital-file','SUBSCRIPTION':'subscription','NEWSLETTER':'newsletter'};return map[enumType];},
-        mapFormTypeToEnumType(formType){const map={'video-series':'VIDEO_SERIES','ticket':'TICKET','digital-file':'DIGITAL_PRODUCT','subscription':'SUBSCRIPTION','newsletter':'NEWSLETTER'};return map[formType];},
+        setAssetType(type) { this.assetType = type; this.assetTypeEnum = this.mapFormTypeToEnumType(type); },
+        addContentItem(type) { this.contentItems.push({ type: type, title: '', link: '', description: '' }); },
+        removeContentItem(index) { this.contentItems.splice(index, 1); },
+        addCustomField() { this.customFields.push({ type: 'text', question: '' }); },
+        removeCustomField(index) { this.customFields.splice(index, 1); },
+        previewCoverImage(event) { const file = event.target.files[0]; if (file) { this.asset.cover_image_url = URL.createObjectURL(file); } },
+        submitForm(action) { const allData = { action: action, asset: this.asset, assetTypeEnum: this.assetTypeEnum, contentItems: this.contentItems, customFields: this.customFields, eventDetails: this.eventDetails, subscriptionDetails: this.subscriptionDetails, newsletterDetails: { ...this.newsletterDetails, welcomeFile: null }, pricing: this.pricing }; const hidden = document.createElement('input'); hidden.type = 'hidden'; hidden.name = 'asset_data'; hidden.value = JSON.stringify(allData); this.$refs.assetForm.appendChild(hidden); this.$refs.assetForm.submit(); },
+        getAssetTypeDetails() { const details = { 'video-series': { title: 'Video Course', contentDescription: 'Add your videos, lessons, or modules below.' }, 'ticket': { title: 'Event & Webinar', contentDescription: 'Provide event details and ask for attendee information.' }, 'digital-file': { title: 'Digital Product', contentDescription: 'Upload the files your customers will receive.' }, 'subscription': { title: 'Subscription', contentDescription: 'Describe the benefits and welcome content for new subscribers.' }, 'newsletter': { title: 'Newsletter', contentDescription: 'Set up your welcome content and publishing frequency.' } }; return details[this.assetType] || { title: 'Asset', contentDescription: '' }; },
+        mapEnumTypeToFormType(enumType) { const map = { 'VIDEO_SERIES': 'video-series', 'TICKET': 'ticket', 'DIGITAL_PRODUCT': 'digital-file', 'SUBSCRIPTION': 'subscription', 'NEWSLETTER': 'newsletter' }; return map[enumType]; },
+        mapFormTypeToEnumType(formType) { const map = { 'video-series': 'VIDEO_SERIES', 'ticket': 'TICKET', 'digital-file': 'DIGITAL_PRODUCT', 'subscription': 'SUBSCRIPTION', 'newsletter': 'NEWSLETTER' }; return map[formType]; },
     }));
 
     Alpine.data('settingsPage', (initialSettings) => ({
@@ -170,13 +227,13 @@ document.addEventListener('alpine:init', () => {
         mainTab: 'storeProfile',
         integrationTab: 'notifications',
         storeLogo: null, // Initialize as null, set in init()
-        
+
         // Form states
         telegramEnabled: false,
         whatsappEnabled: false,
         smtpEnabled: false,
         aiEnabled: false,
-        
+
         // Testing states
         telegramTesting: false,
         telegramTested: false,
@@ -198,19 +255,19 @@ document.addEventListener('alpine:init', () => {
             const theme = localStorage.getItem('theme') || 'system';
             this.$dispatch('set-theme', theme);
         },
-        
+
         setTheme(newTheme) {
             // This method updates the LIVE theme, not the saved setting
             this.$dispatch('set-theme', newTheme);
         },
-        
+
         previewStoreLogo(event) {
             const file = event.target.files[0];
             if (file) {
                 this.storeLogo = URL.createObjectURL(file);
             }
         },
-        
+
         // Test methods (placeholders)
         testTelegram() {
             this.telegramTesting = true;
@@ -244,8 +301,8 @@ document.addEventListener('alpine:init', () => {
         // Original data from the server. Guard against null.
         asset: initialAsset || {},
         // A mutable copy for the form. Initialize as null and build it in init().
-        editableAsset: null, 
-        
+        editableAsset: null,
+
         statuses: allStatuses || [],
         activeTab: 'details',
         isSaving: false,
@@ -266,7 +323,7 @@ document.addEventListener('alpine:init', () => {
                     this.editableAsset.details = { welcomeContent: '', benefits: '' };
                 }
             });
-            
+
             // Other setup can run immediately.
             this.applyUtilityClasses();
         },
@@ -276,42 +333,92 @@ document.addEventListener('alpine:init', () => {
             return `${window.location.origin}/asset/${this.asset.slug || ''}`;
         },
 
+        addContentItem() {
+            if (!this.editableAsset.files) this.editableAsset.files = [];
+            this.editableAsset.files.push({ title: '', link: '', description: '', newFile: null });
+        },
+
+        removeContentItem(index) {
+            this.editableAsset.files.splice(index, 1);
+        },
+
+        handleFileSelect(event, index) {
+            const file = event.target.files[0];
+            if (file) {
+                // Ensure the object is reactive
+                this.editableAsset.files[index].newFile = file;
+                // Force Alpine to notice the change if needed (usually automatic)
+            }
+        },
+
         async saveChanges() {
             this.isSaving = true;
             this.hideNotification();
 
-            // This check prevents saving if the component didn't initialize correctly.
             if (!this.editableAsset || !this.asset.id) {
                 this.showNotification('Error: Asset data is missing. Cannot save.', 'error');
                 this.isSaving = false;
                 return;
             }
 
-            const payload = {
-                title: this.editableAsset.title,
-                description: this.editableAsset.description,
-                story: this.editableAsset.story,
-                price: this.editableAsset.price,
-                status: this.editableAsset.status,
-                eventDetails: this.editableAsset.eventDetails,
-                details: this.editableAsset.details
+            const formData = new FormData();
+
+            // Construct the asset_data JSON structure expected by save_asset_from_form
+            const contentItems = (this.editableAsset.files || []).map(f => ({
+                title: f.title,
+                link: f.link,
+                description: f.description
+            }));
+
+            const assetData = {
+                action: this.editableAsset.status === 'Draft' ? 'draft' : 'publish',
+                asset: {
+                    id: this.asset.id,
+                    title: this.editableAsset.title,
+                    description: this.editableAsset.description,
+                    story_snippet: this.editableAsset.story
+                },
+                assetTypeEnum: this.asset.asset_type,
+                contentItems: contentItems,
+                customFields: this.editableAsset.customFields || [],
+                eventDetails: this.editableAsset.eventDetails || {},
+                subscriptionDetails: this.editableAsset.details || {},
+                newsletterDetails: this.editableAsset.details || {},
+                pricing: {
+                    amount: this.editableAsset.price,
+                    type: this.editableAsset.is_subscription ? 'recurring' : 'one-time',
+                    billingCycle: this.editableAsset.subscription_interval || 'monthly'
+                }
             };
 
+            formData.append('asset_data', JSON.stringify(assetData));
+
+            // Append files
+            (this.editableAsset.files || []).forEach((f, index) => {
+                if (f.newFile) {
+                    formData.append(`content_file_${index}`, f.newFile);
+                }
+            });
+
             try {
-                const response = await fetch(`/admin/api/assets/${this.asset.id}/update`, {
+                // Use the robust save_asset endpoint
+                const response = await fetch('/admin/assets/save', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    headers: { 'Accept': 'application/json' },
+                    body: formData
                 });
+
                 const result = await response.json();
+
                 if (response.ok && result.success) {
                     this.showNotification(result.message, 'success');
-                    // Use a fresh copy from editableAsset to update the original `asset`
-                    this.asset = JSON.parse(JSON.stringify(this.editableAsset));
+                    // Reload to reflect changes (especially file links)
+                    setTimeout(() => window.location.reload(), 1000);
                 } else {
                     this.showNotification(result.message || 'An unknown error occurred.', 'error');
                 }
             } catch (e) {
+                console.error(e);
                 this.showNotification('A server connection error occurred.', 'error');
             } finally {
                 this.isSaving = false;
@@ -328,7 +435,7 @@ document.addEventListener('alpine:init', () => {
         hideNotification() {
             this.notification.show = false;
         },
-        
+
         applyUtilityClasses() {
             const map = {
                 '.input-label': 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5',
@@ -373,7 +480,7 @@ document.addEventListener('alpine:init', () => {
         closeModal() { this.isOpen = false; if (this.eventSource) this.eventSource.close(); },
 
         formatPhoneNumber() { /* ... unchanged ... */ },
-        
+
         async initiatePayment() {
             if (this.phoneNumber.length < 9) {
                 this.errorMessage = 'Please enter a valid phone number.';
@@ -386,7 +493,7 @@ document.addEventListener('alpine:init', () => {
             try {
                 const response = await fetch(this.paymentUrl, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         phone_number: this.phoneNumber,
                         asset_id: this.asset.id,
@@ -399,7 +506,7 @@ document.addEventListener('alpine:init', () => {
                 if (response.ok && result.success) {
                     this.status = 'waiting';
                     this.statusMessage = result.message || 'Check your phone...';
-                    
+
                     // --- THIS IS THE KEY CHANGE ---
                     // The backend now gives us the IDs we need to store for a potential retry.
                     // We'll store this in localStorage, scoped to the asset ID.
@@ -409,7 +516,7 @@ document.addEventListener('alpine:init', () => {
                         status: { name: 'PENDING' }
                     };
                     localStorage.setItem(`nyota_purchase_${this.asset.id}`, JSON.stringify(pendingPurchase));
-                    
+
                     this.listenForPaymentResult();
                 } else {
                     this.status = 'failed';
@@ -460,7 +567,7 @@ document.addEventListener('alpine:init', () => {
         viewMode: 'list',
         searchTerm: '',
         typeFilter: 'all',
-        sortBy: 'spent', 
+        sortBy: 'spent',
         sortAsc: false,
         selectedSupporters: [],
         bulkAction: '',
@@ -486,8 +593,8 @@ document.addEventListener('alpine:init', () => {
             } else {
                 this.supporters = []; // Fallback if data element is missing or empty
             }
-            
-            this.applyFiltersAndSort(); 
+
+            this.applyFiltersAndSort();
 
             this.$watch(() => [this.searchTerm, this.typeFilter, this.sortBy], () => {
                 this.applyFiltersAndSort();
@@ -500,12 +607,12 @@ document.addEventListener('alpine:init', () => {
 
             if (this.searchTerm.trim()) {
                 const s = this.searchTerm.toLowerCase();
-                temp = temp.filter(supporter => 
+                temp = temp.filter(supporter =>
                     supporter.name.toLowerCase().includes(s) ||
                     (supporter.email && supporter.email.toLowerCase().includes(s))
                 );
             }
-            
+
             if (this.typeFilter !== 'all') {
                 temp = temp.filter(supporter => {
                     if (this.typeFilter === 'customer') return supporter.purchases > 0;
@@ -549,7 +656,7 @@ document.addEventListener('alpine:init', () => {
             if (!iso) return 'N/A';
             return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
         },
-        
+
         // --- UI State Helpers ---
         hasActiveFilters() { return this.searchTerm.trim() || this.typeFilter !== 'all'; },
         getActiveFilters() {
@@ -560,12 +667,12 @@ document.addEventListener('alpine:init', () => {
         },
         removeFilter(key) { this[key] = (key === 'searchTerm') ? '' : 'all'; },
         clearAllFilters() { this.searchTerm = ''; this.typeFilter = 'all'; },
-        
+
         // --- Actions ---
         applyBulkAction() { alert(`Applying action "${this.bulkAction}" to ${this.selectedSupporters.length} supporters.`); },
         viewSupporter(id) { alert(`Viewing supporter ${id}`); },
         messageSupporter(id) { alert(`Messaging supporter ${id}`); },
-        
+
         toggleSelectAll(event) {
             this.selectedSupporters = event.target.checked ? this.filteredSupporters.map(s => s.id) : [];
         },
@@ -574,7 +681,7 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('assetPageController', () => ({
         purchase: null,
         phoneNumber: localStorage.getItem('nyota_phone') || '',
-        
+
         // --- IMPROVED STATE MANAGEMENT ---
         isRetrying: false,
         isCancelling: false,
@@ -597,7 +704,7 @@ document.addEventListener('alpine:init', () => {
         get purchaseId() { return this.purchase ? this.purchase.id : null; },
         get dealId() { return this.purchase ? this.purchase.payment_gateway_ref : null; },
         get purchaseStatus() { return this.purchase ? (this.purchase.status ? this.purchase.status.name : null) : null; },
-        
+
         // Computed property to disable buttons during any action
         get isProcessing() {
             return this.isRetrying || this.isCancelling;
@@ -627,19 +734,19 @@ document.addEventListener('alpine:init', () => {
 
             this.isRetrying = true;
             this.feedbackMessage = '';
-            
+
             try {
-                const response = await fetch('/api/retry-payment', { 
+                const response = await fetch('/api/retry-payment', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ 
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
                         phone_number: this.phoneNumber,
                         deal_id: this.dealId,
                         purchase_id: this.purchaseId
                     })
                 });
                 const result = await response.json();
-                
+
                 this.feedbackMessage = result.message;
                 this.isSuccess = response.ok && result.success;
 
@@ -654,8 +761,8 @@ document.addEventListener('alpine:init', () => {
             } finally {
                 // Only stop processing if it wasn't a success, otherwise we wait for reload
                 if (!this.isSuccess) {
-                    setTimeout(() => { 
-                        this.isRetrying = false; 
+                    setTimeout(() => {
+                        this.isRetrying = false;
                         this.feedbackMessage = '';
                     }, 5000);
                 }
@@ -681,7 +788,7 @@ document.addEventListener('alpine:init', () => {
                 // NOTE: You will need to create this backend endpoint.
                 const response = await fetch('/api/cancel-payment', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ purchase_id: this.purchaseId })
                 });
 
@@ -707,5 +814,5 @@ document.addEventListener('alpine:init', () => {
             }
         }
     }));
-    
+
 });

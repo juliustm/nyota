@@ -9,18 +9,27 @@
     <aside class="lg:col-span-1 lg:sticky lg:top-24 fade-in">
         <div class="p-6 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
             <div class="text-center">
-                <img src="{{ creator.get_setting('store_logo_url') or 'https://i.pravatar.cc/128?u=' + creator.username }}" alt="{{ creator.store_name }} Logo" class="w-20 h-20 rounded-full mx-auto mb-4 border-2 border-white dark:border-gray-800 shadow">
+                <img src="{{ creator.get_setting('store_logo_url') or 'https://i.pravatar.cc/128?u=' + creator.username }}"
+                    alt="{{ creator.store_name }} Logo"
+                    class="w-20 h-20 rounded-full mx-auto mb-4 border-2 border-white dark:border-gray-800 shadow">
                 <h1 class="text-xl font-bold text-gray-900 dark:text-white">{{ creator.store_name }}</h1>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">by {{ creator.username }}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">{{ translate('by') }} {{ creator.username }}
+                </p>
                 <p class="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
-                    {{ creator.get_setting('store_bio', 'Premium digital products to elevate your workflow. No fluff, just results.') }}
+                    {{ creator.get_setting('store_bio', 'Premium digital products to elevate your workflow. No fluff,
+                    just results.') }}
                 </p>
             </div>
-            
+
             <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-6">
-                <a href="{{ url_for('main.library') }}" class="w-full py-2.5 text-sm font-medium text-white rounded-lg shadow-sm flex items-center justify-center gap-2" style="background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.3s ease;">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
-                    My Library
+                <a href="{{ url_for('main.library') }}"
+                    class="w-full py-2.5 text-sm font-medium text-white rounded-lg shadow-sm flex items-center justify-center gap-2"
+                    style="background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.3s ease;">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                    {{ translate('my_library') }}
                 </a>
             </div>
         </div>
@@ -28,7 +37,7 @@
 
     <!-- MAIN CONTENT: Focused Product Showcase -->
     <main class="lg:col-span-3 space-y-16 fade-in" style="animation-delay: 100ms;">
-        
+
         {% for category, asset_list in categorized_assets.items() %}
         {% if asset_list %}
         <section>
@@ -36,11 +45,11 @@
             <div class="mb-8">
                 <h2 class="text-3xl font-bold text-gray-900 dark:text-white">{{ category.value }}s</h2>
                 <p class="mt-1 text-gray-600 dark:text-gray-400">
-                    {% if category.name == 'VIDEO_SERIES' %}In-depth courses to master new skills.
-                    {% elif category.name == 'TICKET' %}Join live events, webinars, and workshops.
-                    {% elif category.name == 'DIGITAL_PRODUCT' %}Premium resources to elevate your work.
-                    {% elif category.name == 'SUBSCRIPTION' %}Get exclusive content and perks every month.
-                    {% elif category.name == 'NEWSLETTER' %}Stay ahead with insights delivered to your inbox.
+                    {% if category.name == 'VIDEO_SERIES' %}{{ translate('category_video_series') }}
+                    {% elif category.name == 'TICKET' %}{{ translate('category_ticket') }}
+                    {% elif category.name == 'DIGITAL_PRODUCT' %}{{ translate('category_digital_product') }}
+                    {% elif category.name == 'SUBSCRIPTION' %}{{ translate('category_subscription') }}
+                    {% elif category.name == 'NEWSLETTER' %}{{ translate('category_newsletter') }}
                     {% endif %}
                 </p>
             </div>
@@ -50,12 +59,14 @@
                 {% for asset in asset_list %}
                 <div class="group relative product-card" style="transition: all 0.3s ease;">
                     <div class="glow-hover absolute inset-0 rounded-xl z-0"></div>
-                    
-                    <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}" class="relative block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden h-full flex flex-col z-10">
+
+                    <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}"
+                        class="relative block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden h-full flex flex-col z-10">
                         <div class="relative">
-                            <img src="{{ asset.cover_image_url }}" alt="{{ asset.title }}" class="w-full h-48 object-cover">
+                            <img src="{{ asset.cover_image_url }}" alt="{{ asset.title }}"
+                                class="w-full h-48 object-cover">
                             <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
-                            
+
                             <!--
                             ===========================================================
                             == DYNAMIC OVERLAY based on purchase status
@@ -63,25 +74,37 @@
                             -->
                             {% set purchase_status = user_purchases.get(asset.id) %}
                             {% if purchase_status == 'COMPLETED' %}
-                                <div class="absolute top-3 left-3 bg-green-500/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg flex items-center gap-1.5">
-                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
-                                    Owned
-                                </div>
+                            <div
+                                class="absolute top-3 left-3 bg-green-500/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg flex items-center gap-1.5">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd"
+                                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                        clip-rule="evenodd" />
+                                </svg>
+                                {{ translate('owned') }}
+                            </div>
                             {% elif purchase_status == 'PENDING' %}
-                                <div class="absolute top-3 left-3 bg-yellow-500/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg flex items-center gap-1.5">
-                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" /></svg>
-                                    Pending
-                                </div>
+                            <div
+                                class="absolute top-3 left-3 bg-yellow-500/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-lg flex items-center gap-1.5">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd"
+                                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                                        clip-rule="evenodd" />
+                                </svg>
+                                {{ translate('pending') }}
+                            </div>
                             {% endif %}
 
                             <div class="absolute bottom-4 left-4">
-                                <h3 class="text-lg font-bold text-white" title="{{ asset.title }}">{{ asset.title | truncate(45) }}</h3>
+                                <h3 class="text-lg font-bold text-white" title="{{ asset.title }}">{{ asset.title |
+                                    truncate(45) }}</h3>
                             </div>
-                            <div class="absolute top-3 right-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-bold text-gray-800 dark:text-gray-200">
+                            <div
+                                class="absolute top-3 right-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-bold text-gray-800 dark:text-gray-200">
                                 {{ currency_symbol }}{{ "%.2f"|format(asset.price) }}
                             </div>
                         </div>
-                        
+
                         <div class="p-5 flex-grow flex flex-col">
                             <p class="text-gray-600 dark:text-gray-400 text-sm leading-relaxed flex-grow">
                                 {{ asset.description | truncate(100) }}
@@ -93,22 +116,26 @@
                                 ===========================================================
                                 -->
                                 {% if purchase_status == 'COMPLETED' %}
-                                    <span class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-white bg-green-600 rounded-lg">
-                                        Access Content
-                                    </span>
+                                <span
+                                    class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-white bg-green-600 rounded-lg">
+                                    {{ translate('access_content') }}
+                                </span>
                                 {% elif purchase_status == 'PENDING' %}
-                                    <span class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200 bg-gray-200 dark:bg-gray-700 rounded-lg">
-                                        Awaiting Payment
-                                    </span>
+                                <span
+                                    class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-gray-700 dark:text-gray-200 bg-gray-200 dark:bg-gray-700 rounded-lg">
+                                    {{ translate('awaiting_payment') }}
+                                </span>
                                 {% elif purchase_status == 'FAILED' %}
-                                    <span class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-white bg-red-600 rounded-lg group-hover:bg-red-700 transition-colors">
-                                        Retry Purchase
-                                    </span>
+                                <span
+                                    class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-white bg-red-600 rounded-lg group-hover:bg-red-700 transition-colors">
+                                    {{ translate('retry_purchase') }}
+                                </span>
                                 {% else %}
-                                    <span class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-white rounded-lg group-hover:opacity-90" 
-                                          style="background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.3s ease;">
-                                        View Details
-                                    </span>
+                                <span
+                                    class="inline-flex items-center justify-center w-full px-4 py-2.5 font-semibold text-white rounded-lg group-hover:opacity-90"
+                                    style="background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.3s ease;">
+                                    {{ translate('view_details') }}
+                                </span>
                                 {% endif %}
                             </div>
                         </div>
@@ -125,16 +152,31 @@
 
 {% block scripts_extra %}
 <style>
-    .fade-in { opacity: 0; animation: fadeIn 0.6s ease-out forwards; }
-    @keyframes fadeIn { to { opacity: 1; } }
-    .product-card:hover { transform: translateY(-5px); }
+    .fade-in {
+        opacity: 0;
+        animation: fadeIn 0.6s ease-out forwards;
+    }
+
+    @keyframes fadeIn {
+        to {
+            opacity: 1;
+        }
+    }
+
+    .product-card:hover {
+        transform: translateY(-5px);
+    }
+
     .glow-hover {
         background: radial-gradient(400px circle at var(--x) var(--y), rgba(139, 92, 246, 0.2), transparent 40%);
         border-radius: inherit;
         opacity: 0;
         transition: opacity 0.4s ease;
     }
-    .product-card:hover .glow-hover { opacity: 1; }
+
+    .product-card:hover .glow-hover {
+        opacity: 1;
+    }
 </style>
 <script>
     // This script adds the interactive mouse-following glow effect to the cards

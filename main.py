@@ -24,6 +24,8 @@ def format_currency(value, symbol='$'):
         return f"{symbol} 0.00"
     return f"{symbol} {float(value):,.2f}"
 
+from utils.translator import translate
+
 # --- Language Selection for Babel ---
 
 def get_locale():
@@ -65,7 +67,8 @@ def create_app(config_class=Config):
     def inject_global_vars():
         return dict(
             store_name="Nyota ✨",
-            currency_symbol="TZS"
+            currency_symbol="TZS",
+            translate=translate
         )
         
     return app

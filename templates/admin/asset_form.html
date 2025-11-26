@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 
 {% block title %}
-    {% if asset.id %}Edit Asset{% else %}Add New Asset{% endif %}
+{% if asset.id %}Edit Asset{% else %}Add New Asset{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -12,10 +12,12 @@
     <div class="mb-8">
         <div class="flex justify-between items-center mb-8">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900 dark:text-white" x-text="asset.id ? 'Edit Asset' : 'Create New Asset'"></h1>
+                <h1 class="text-2xl font-bold text-gray-900 dark:text-white"
+                    x-text="asset.id ? 'Edit Asset' : 'Create New Asset'"></h1>
                 <p class="text-gray-600 dark:text-gray-400 mt-1">Follow these simple steps to publish your content</p>
             </div>
-            <a href="{{ url_for('admin.list_assets') }}" class="text-sm text-gray-500 hover:text-indigo-600 dark:text-gray-400 transition-colors">
+            <a href="{{ url_for('admin.list_assets') }}"
+                class="text-sm text-gray-500 hover:text-indigo-600 dark:text-gray-400 transition-colors">
                 ← Back to Assets
             </a>
         </div>
@@ -25,15 +27,15 @@
             <div class="text-center mb-6">
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Create in 4 Simple Steps</h2>
             </div>
-            
+
             <div class="flex justify-center items-center space-x-8">
                 <template x-for="(stepInfo, index) in steps" :key="index">
                     <div class="flex flex-col items-center text-center">
-                        
+
                         <div class="text-center">
-                            <div class="text-sm font-medium text-gray-900 dark:text-white mb-1" 
-                                 :class="step >= stepInfo.number ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'"
-                                 x-text="stepInfo.title"></div>
+                            <div class="text-sm font-medium text-gray-900 dark:text-white mb-1"
+                                :class="step >= stepInfo.number ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'"
+                                x-text="stepInfo.title"></div>
                             <div class="text-xs text-gray-500 dark:text-gray-400" x-text="stepInfo.subtitle"></div>
                         </div>
                     </div>
@@ -50,65 +52,75 @@
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <button @click="setAssetType('video-series')" 
-                    :class="{ 'ring-2 ring-indigo-500 border-indigo-500 shadow-lg': assetType === 'video-series' }"
-                    class="text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-all">
+            <button @click="setAssetType('video-series')"
+                :class="{ 'ring-2 ring-indigo-500 border-indigo-500 shadow-lg': assetType === 'video-series' }"
+                class="text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-all">
                 <div class="flex flex-col items-center text-center space-y-2">
                     <div class="w-12 h-12 bg-indigo-100 dark:bg-indigo-900 rounded-lg flex items-center justify-center">
-                        <svg class="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <svg class="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                         </svg>
                     </div>
                     <h3 class="font-semibold text-gray-900 dark:text-white text-sm">Video Course</h3>
                 </div>
             </button>
 
-            <button @click="setAssetType('ticket')" 
-                    :class="{ 'ring-2 ring-indigo-500 border-indigo-500 shadow-lg': assetType === 'ticket' }"
-                    class="text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-all">
+            <button @click="setAssetType('ticket')"
+                :class="{ 'ring-2 ring-indigo-500 border-indigo-500 shadow-lg': assetType === 'ticket' }"
+                class="text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-all">
                 <div class="flex flex-col items-center text-center space-y-2">
                     <div class="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                        <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                        <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
                         </svg>
                     </div>
                     <h3 class="font-semibold text-gray-900 dark:text-white text-sm">Event & Webinar</h3>
                 </div>
             </button>
 
-            <button @click="setAssetType('digital-file')" 
-                    :class="{ 'ring-2 ring-indigo-500 border-indigo-500 shadow-lg': assetType === 'digital-file' }"
-                    class="text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-all">
+            <button @click="setAssetType('digital-file')"
+                :class="{ 'ring-2 ring-indigo-500 border-indigo-500 shadow-lg': assetType === 'digital-file' }"
+                class="text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-all">
                 <div class="flex flex-col items-center text-center space-y-2">
                     <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                        <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
                     </div>
                     <h3 class="font-semibold text-gray-900 dark:text-white text-sm">Digital Product</h3>
                 </div>
             </button>
 
-            <button @click="setAssetType('subscription')" 
-                    :class="{ 'ring-2 ring-indigo-500 border-indigo-500 shadow-lg': assetType === 'subscription' }"
-                    class="text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-all">
+            <button @click="setAssetType('subscription')"
+                :class="{ 'ring-2 ring-indigo-500 border-indigo-500 shadow-lg': assetType === 'subscription' }"
+                class="text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-all">
                 <div class="flex flex-col items-center text-center space-y-2">
                     <div class="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
-                        <svg class="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                        <svg class="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
                         </svg>
                     </div>
                     <h3 class="font-semibold text-gray-900 dark:text-white text-sm">Subscription</h3>
                 </div>
             </button>
 
-            <button @click="setAssetType('newsletter')" 
-                    :class="{ 'ring-2 ring-indigo-500 border-indigo-500 shadow-lg': assetType === 'newsletter' }"
-                    class="text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-all">
+            <button @click="setAssetType('newsletter')"
+                :class="{ 'ring-2 ring-indigo-500 border-indigo-500 shadow-lg': assetType === 'newsletter' }"
+                class="text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 transition-all">
                 <div class="flex flex-col items-center text-center space-y-2">
                     <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
-                        <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                         </svg>
                     </div>
                     <h3 class="font-semibold text-gray-900 dark:text-white text-sm">Newsletter</h3>
@@ -121,7 +133,8 @@
             <div class="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-4 mb-4 max-w-md mx-auto">
                 <div class="flex items-center justify-center gap-3">
                     <div class="w-8 h-8 bg-indigo-100 dark:bg-indigo-800 rounded-full flex items-center justify-center">
-                        <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                         </svg>
                     </div>
@@ -130,37 +143,38 @@
                     </span>
                 </div>
             </div>
-            <button @click="step = 2" class="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors shadow-lg">
+            <button @click="step = 2"
+                class="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors shadow-lg">
                 Continue to Details →
             </button>
         </div>
     </div>
 
     <!-- Main Form -->
-    <form x-show="step > 1"
-      x-ref="assetForm"
-      action="{{ url_for('admin.asset_new') if not asset.id else url_for('admin.asset_edit', asset_id=asset.id) }}"
-      method="POST"
-      class="space-y-8"
-      enctype="multipart/form-data">
-        
+    <form x-show="step > 1" x-ref="assetForm"
+        action="{{ url_for('admin.asset_new') if not asset.id else url_for('admin.asset_edit', asset_id=asset.id) }}"
+        method="POST" class="space-y-8" enctype="multipart/form-data">
+
         <!-- Navigation Header -->
         <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
             <div class="flex justify-between items-center">
-                <button type="button" @click="step = step - 1" 
-                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
+                <button type="button" @click="step = step - 1"
+                    class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                     </svg>
                     <span x-text="step === 2 ? 'Back to Type Selection' : `Back to ${steps[step - 2]?.title}`"></span>
                 </button>
-                
+
                 <div class="flex items-center gap-4">
                     <div class="text-sm text-gray-500 dark:text-gray-400">
-                        Creating: <span class="font-medium text-indigo-600 dark:text-indigo-400" x-text="getAssetTypeDetails().title"></span>
+                        Creating: <span class="font-medium text-indigo-600 dark:text-indigo-400"
+                            x-text="getAssetTypeDetails().title"></span>
                     </div>
                     <div class="w-1 h-1 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
-                    <div class="text-sm font-medium text-gray-900 dark:text-white" x-text="`Step ${step} of ${steps.length}`"></div>
+                    <div class="text-sm font-medium text-gray-900 dark:text-white"
+                        x-text="`Step ${step} of ${steps.length}`"></div>
                 </div>
             </div>
         </div>
@@ -168,9 +182,10 @@
         <div class="grid grid-cols-1 xl:grid-cols-4 gap-8">
             <!-- Form Content -->
             <div class="xl:col-span-3 space-y-8">
-                
+
                 <!-- Step 2: Core Details -->
-                <section x-show="step === 2" class="space-y-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+                <section x-show="step === 2"
+                    class="space-y-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
                     <div class="border-b border-gray-200 dark:border-gray-700 pb-4">
                         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Core Details</h2>
                         <p class="text-gray-600 dark:text-gray-400 text-sm">Tell people what your content is about</p>
@@ -179,81 +194,97 @@
                     <div class="space-y-6">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div class="md:col-span-2">
-                                <label for="title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                <label for="title"
+                                    class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                     Title *
                                 </label>
                                 <input type="text" id="title" name="title" x-model="asset.title" required
-                                       class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
-                                       placeholder="Enter a clear, descriptive title">
-                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">This is the first thing people will see</p>
+                                    class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                                    placeholder="Enter a clear, descriptive title">
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">This is the first thing people
+                                    will see</p>
                             </div>
 
                             <div class="md:col-span-2">
-                                <label for="description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                <label for="description"
+                                    class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                     Short Description *
                                 </label>
-                                <textarea id="description" name="description" rows="3" x-model="asset.description" required
-                                          class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
-                                          placeholder="Briefly describe what people will get"></textarea>
-                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Appears in search results and preview cards</p>
+                                <textarea id="description" name="description" rows="3" x-model="asset.description"
+                                    required
+                                    class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                                    placeholder="Briefly describe what people will get"></textarea>
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Appears in search results and
+                                    preview cards</p>
                             </div>
 
                             <div class="md:col-span-2">
-                                <label for="cover_image" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                <label for="cover_image"
+                                    class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                     Cover Image
                                 </label>
                                 <div class="flex items-center gap-4">
-                                    <div class="flex-shrink-0 w-24 h-24 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
+                                    <div
+                                        class="flex-shrink-0 w-24 h-24 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
                                         <template x-if="!asset.cover_image_url">
                                             <div class="text-center p-2">
-                                                <svg class="w-6 h-6 text-gray-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                <svg class="w-6 h-6 text-gray-400 mx-auto" fill="none"
+                                                    viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2"
+                                                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                                 </svg>
                                                 <span class="text-xs text-gray-500 mt-1 block">Upload Image</span>
                                             </div>
                                         </template>
                                         <template x-if="asset.cover_image_url">
-                                            <img :src="asset.cover_image_url" alt="Cover preview" class="w-full h-full object-cover rounded-lg">
+                                            <img :src="asset.cover_image_url" alt="Cover preview"
+                                                class="w-full h-full object-cover rounded-lg">
                                         </template>
                                     </div>
                                     <div class="flex-1">
-                                        <input type="file" id="cover_image" name="cover_image" accept="image/*" 
-                                               class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-                                               @change="previewCoverImage">
-                                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Recommended: 1200×630px, JPG or PNG</p>
+                                        <input type="file" id="cover_image" name="cover_image" accept="image/*"
+                                            class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                            @change="previewCoverImage">
+                                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Recommended:
+                                            1200×630px, JPG or PNG</p>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="md:col-span-2">
-                                <label for="story" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                <label for="story"
+                                    class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                     Full Description
                                 </label>
                                 <textarea id="story" name="story" rows="5" x-model="asset.story_snippet"
-                                          class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
-                                          placeholder="Tell the full story behind your content..."></textarea>
-                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">This is your chance to connect with your audience</p>
+                                    class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                                    placeholder="Tell the full story behind your content..."></textarea>
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">This is your chance to connect
+                                    with your audience</p>
                             </div>
                         </div>
                     </div>
 
                     <div class="flex justify-between pt-6 border-t border-gray-200 dark:border-gray-700">
-                        <button type="button" @click="step = 1" 
-                                class="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <button type="button" @click="step = 1"
+                            class="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             ← Change Content Type
                         </button>
-                        <button type="button" @click="step = 3" 
-                                class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
+                        <button type="button" @click="step = 3"
+                            class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
                             Continue to Content →
                         </button>
                     </div>
                 </section>
 
                 <!-- Step 3: Content & Files -->
-                <section x-show="step === 3" class="space-y-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+                <section x-show="step === 3"
+                    class="space-y-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
                     <div class="border-b border-gray-200 dark:border-gray-700 pb-4">
                         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Content & Files</h2>
-                        <p class="text-gray-600 dark:text-gray-400 text-sm" x-text="getAssetTypeDetails().contentDescription"></p>
+                        <p class="text-gray-600 dark:text-gray-400 text-sm"
+                            x-text="getAssetTypeDetails().contentDescription"></p>
                     </div>
 
                     <!-- Dynamic content based on asset type -->
@@ -263,36 +294,50 @@
                             <div class="space-y-4">
                                 <div class="flex justify-between items-center">
                                     <h3 class="font-medium text-gray-900 dark:text-white">Course Videos</h3>
-                                    <button type="button" @click="addContentItem('video')" class="text-sm text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
+                                    <button type="button" @click="addContentItem('video')"
+                                        class="text-sm text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
                                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 4v16m8-8H4" />
                                         </svg>
                                         Add Video
                                     </button>
                                 </div>
                                 <div class="space-y-3">
                                     <template x-for="(item, index) in contentItems" :key="index">
-                                        <div class="flex gap-4 items-start p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                        <div
+                                            class="flex gap-4 items-start p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                                             <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
                                                 <div>
-                                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Video Title</label>
-                                                    <input type="text" x-model="item.title" placeholder="Lesson title" 
-                                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
+                                                    <label
+                                                        class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Video
+                                                        Title</label>
+                                                    <input type="text" x-model="item.title" placeholder="Lesson title"
+                                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
                                                 </div>
                                                 <div>
-                                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Video URL/File</label>
-                                                    <input type="text" x-model="item.link" placeholder="YouTube URL or upload" 
-                                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
+                                                    <label
+                                                        class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Video
+                                                        URL/File</label>
+                                                    <input type="text" x-model="item.link"
+                                                        placeholder="YouTube URL or upload"
+                                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
                                                 </div>
                                                 <div class="md:col-span-2">
-                                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
-                                                    <textarea x-model="item.description" rows="2" placeholder="Video description"
-                                                              class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"></textarea>
+                                                    <label
+                                                        class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                                                    <textarea x-model="item.description" rows="2"
+                                                        placeholder="Video description"
+                                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"></textarea>
                                                 </div>
                                             </div>
-                                            <button type="button" @click="removeContentItem(index)" class="text-red-600 hover:text-red-500 mt-6">
-                                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            <button type="button" @click="removeContentItem(index)"
+                                                class="text-red-600 hover:text-red-500 mt-6">
+                                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2"
+                                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                 </svg>
                                             </button>
                                         </div>
@@ -309,31 +354,31 @@
                                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Event Link
                                         </label>
-                                        <input type="url" x-model="eventDetails.link" 
-                                               class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
-                                               placeholder="https://zoom.us/j/... or physical address">
+                                        <input type="url" x-model="eventDetails.link"
+                                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                            placeholder="https://zoom.us/j/... or physical address">
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Max Attendees
                                         </label>
-                                        <input type="number" x-model="eventDetails.maxAttendees" 
-                                               class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
-                                               placeholder="Leave empty for unlimited">
+                                        <input type="number" x-model="eventDetails.maxAttendees"
+                                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                            placeholder="Leave empty for unlimited">
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Event Date
                                         </label>
-                                        <input type="date" x-model="eventDetails.date" 
-                                               class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                                        <input type="date" x-model="eventDetails.date"
+                                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                             Event Time
                                         </label>
-                                        <input type="time" x-model="eventDetails.time" 
-                                               class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                                        <input type="time" x-model="eventDetails.time"
+                                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
                                     </div>
                                 </div>
 
@@ -341,26 +386,34 @@
                                 <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
                                     <div class="flex justify-between items-center mb-4">
                                         <h3 class="font-medium text-gray-900 dark:text-white">Attendee Information</h3>
-                                        <button type="button" @click="addCustomField()" class="text-sm text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
+                                        <button type="button" @click="addCustomField()"
+                                            class="text-sm text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
                                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M12 4v16m8-8H4" />
                                             </svg>
                                             Add Question
                                         </button>
                                     </div>
                                     <div class="space-y-3">
                                         <template x-for="(field, index) in customFields" :key="index">
-                                            <div class="flex gap-3 items-center p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                                <select x-model="field.type" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
+                                            <div
+                                                class="flex gap-3 items-center p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                                <select x-model="field.type"
+                                                    class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
                                                     <option value="text">Text</option>
                                                     <option value="dropdown">Dropdown</option>
                                                     <option value="checkbox">Checkbox</option>
                                                 </select>
-                                                <input type="text" x-model="field.question" placeholder="Question (e.g., T-shirt size, dietary restrictions)" 
-                                                       class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
-                                                <button type="button" @click="removeCustomField(index)" class="text-red-600 hover:text-red-500">
-                                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                <input type="text" x-model="field.question"
+                                                    placeholder="Question (e.g., T-shirt size, dietary restrictions)"
+                                                    class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
+                                                <button type="button" @click="removeCustomField(index)"
+                                                    class="text-red-600 hover:text-red-500">
+                                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                        stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                                                     </svg>
                                                 </button>
                                             </div>
@@ -375,41 +428,57 @@
                             <div class="space-y-4">
                                 <div class="flex justify-between items-center">
                                     <h3 class="font-medium text-gray-900 dark:text-white">Files</h3>
-                                    <button type="button" @click="addContentItem('file')" class="text-sm text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
+                                    <button type="button" @click="addContentItem('file')"
+                                        class="text-sm text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
                                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 4v16m8-8H4" />
                                         </svg>
                                         Add File
                                     </button>
                                 </div>
                                 <div class="space-y-3">
                                     <template x-for="(item, index) in contentItems" :key="index">
-                                        <div class="flex gap-4 items-start p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                        <div
+                                            class="flex gap-4 items-start p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                                             <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
-                                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">File Description</label>
-                                                    <input type="text" x-model="item.title" placeholder="What is this file?" 
-                                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
+                                                    <label
+                                                        class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">File
+                                                        Description</label>
+                                                    <input type="text" x-model="item.title"
+                                                        placeholder="What is this file?"
+                                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
                                                 </div>
                                                 <div>
-                                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Upload File</label>
+                                                    <label
+                                                        class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Upload
+                                                        File</label>
                                                     <input type="file" @change="item.file = $event.target.files[0]"
-                                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
+                                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
                                                 </div>
                                                 <div>
-                                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Release Date</label>
-                                                    <input type="date" x-model="item.releaseDate" 
-                                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
+                                                    <label
+                                                        class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Release
+                                                        Date</label>
+                                                    <input type="date" x-model="item.releaseDate"
+                                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
                                                 </div>
                                                 <div>
-                                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Expiration Date</label>
-                                                    <input type="date" x-model="item.expirationDate" 
-                                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
+                                                    <label
+                                                        class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Expiration
+                                                        Date</label>
+                                                    <input type="date" x-model="item.expirationDate"
+                                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
                                                 </div>
                                             </div>
-                                            <button type="button" @click="removeContentItem(index)" class="text-red-600 hover:text-red-500 mt-6">
-                                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            <button type="button" @click="removeContentItem(index)"
+                                                class="text-red-600 hover:text-red-500 mt-6">
+                                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2"
+                                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                 </svg>
                                             </button>
                                         </div>
@@ -426,16 +495,16 @@
                                         Welcome Content
                                     </label>
                                     <textarea rows="4" x-model="subscriptionDetails.welcomeContent"
-                                              class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
-                                              placeholder="What new subscribers receive immediately..."></textarea>
+                                        class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                        placeholder="What new subscribers receive immediately..."></textarea>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                         Ongoing Benefits
                                     </label>
                                     <textarea rows="3" x-model="subscriptionDetails.benefits"
-                                              class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
-                                              placeholder="What subscribers receive regularly..."></textarea>
+                                        class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                        placeholder="What subscribers receive regularly..."></textarea>
                                 </div>
                             </div>
                         </template>
@@ -448,10 +517,12 @@
                                         Welcome PDF/Content
                                     </label>
                                     <div class="flex gap-3">
-                                        <input type="file" @change="newsletterDetails.welcomeFile = $event.target.files[0]"
-                                               class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
-                                        <input type="text" x-model="newsletterDetails.welcomeDescription" placeholder="Description of welcome content"
-                                               class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
+                                        <input type="file"
+                                            @change="newsletterDetails.welcomeFile = $event.target.files[0]"
+                                            class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
+                                        <input type="text" x-model="newsletterDetails.welcomeDescription"
+                                            placeholder="Description of welcome content"
+                                            class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700">
                                     </div>
                                 </div>
                                 <div>
@@ -459,7 +530,7 @@
                                         Newsletter Frequency
                                     </label>
                                     <select x-model="newsletterDetails.frequency"
-                                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                                        class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
                                         <option value="weekly">Weekly</option>
                                         <option value="biweekly">Bi-weekly</option>
                                         <option value="monthly">Monthly</option>
@@ -471,22 +542,24 @@
                     </div>
 
                     <div class="flex justify-between pt-6 border-t border-gray-200 dark:border-gray-700">
-                        <button type="button" @click="step = 2" 
-                                class="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <button type="button" @click="step = 2"
+                            class="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             ← Back to Details
                         </button>
-                        <button type="button" @click="step = 4" 
-                                class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
+                        <button type="button" @click="step = 4"
+                            class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
                             Continue to Pricing →
                         </button>
                     </div>
                 </section>
 
                 <!-- Step 4: Pricing & Delivery -->
-                <section x-show="step === 4" class="space-y-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+                <section x-show="step === 4"
+                    class="space-y-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
                     <div class="border-b border-gray-200 dark:border-gray-700 pb-4">
                         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Pricing & Delivery</h2>
-                        <p class="text-gray-600 dark:text-gray-400 text-sm">Set your price and how customers receive your content</p>
+                        <p class="text-gray-600 dark:text-gray-400 text-sm">Set your price and how customers receive
+                            your content</p>
                     </div>
 
                     <div class="space-y-6">
@@ -497,11 +570,13 @@
                             </label>
                             <div class="flex gap-4">
                                 <label class="flex items-center">
-                                    <input type="radio" name="pricingType" value="one-time" x-model="pricing.type" class="mr-2">
+                                    <input type="radio" name="pricingType" value="one-time" x-model="pricing.type"
+                                        class="mr-2">
                                     <span class="text-sm text-gray-700 dark:text-gray-300">One-time Payment</span>
                                 </label>
                                 <label class="flex items-center">
-                                    <input type="radio" name="pricingType" value="recurring" x-model="pricing.type" class="mr-2">
+                                    <input type="radio" name="pricingType" value="recurring" x-model="pricing.type"
+                                        class="mr-2">
                                     <span class="text-sm text-gray-700 dark:text-gray-300">Recurring Subscription</span>
                                 </label>
                             </div>
@@ -513,9 +588,9 @@
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                                     Price ($)
                                 </label>
-                                <input type="number" step="0.01" x-model="pricing.amount" 
-                                       class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
-                                       placeholder="0.00">
+                                <input type="number" step="0.01" x-model="pricing.amount"
+                                    class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+                                    placeholder="0.00">
                             </div>
                             <template x-if="pricing.type === 'recurring'">
                                 <div>
@@ -523,7 +598,7 @@
                                         Billing Cycle
                                     </label>
                                     <select x-model="pricing.billingCycle"
-                                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                                        class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
                                         <option value="monthly">Monthly</option>
                                         <option value="yearly">Yearly</option>
                                         <option value="weekly">Weekly</option>
@@ -539,30 +614,41 @@
                             </label>
                             <div class="space-y-3">
                                 <template x-if="assetType === 'digital-file'">
-                                    <div class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                    <div
+                                        class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
                                         <div>
-                                            <div class="font-medium text-gray-900 dark:text-white">Instant Download</div>
-                                            <div class="text-sm text-gray-500 dark:text-gray-400">Files available immediately after purchase</div>
+                                            <div class="font-medium text-gray-900 dark:text-white">Instant Download
+                                            </div>
+                                            <div class="text-sm text-gray-500 dark:text-gray-400">Files available
+                                                immediately after purchase</div>
                                         </div>
-                                        <input type="checkbox" checked class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                        <input type="checkbox" checked
+                                            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                                     </div>
                                 </template>
                                 <template x-if="assetType === 'ticket'">
-                                    <div class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                    <div
+                                        class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
                                         <div>
-                                            <div class="font-medium text-gray-900 dark:text-white">Email Confirmation</div>
-                                            <div class="text-sm text-gray-500 dark:text-gray-400">Send event details and tickets via email</div>
+                                            <div class="font-medium text-gray-900 dark:text-white">Email Confirmation
+                                            </div>
+                                            <div class="text-sm text-gray-500 dark:text-gray-400">Send event details and
+                                                tickets via email</div>
                                         </div>
-                                        <input type="checkbox" checked class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                        <input type="checkbox" checked
+                                            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                                     </div>
                                 </template>
                                 <template x-if="assetType === 'subscription' || assetType === 'newsletter'">
-                                    <div class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                    <div
+                                        class="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
                                         <div>
                                             <div class="font-medium text-gray-900 dark:text-white">Welcome Email</div>
-                                            <div class="text-sm text-gray-500 dark:text-gray-400">Send immediate welcome content</div>
+                                            <div class="text-sm text-gray-500 dark:text-gray-400">Send immediate welcome
+                                                content</div>
                                         </div>
-                                        <input type="checkbox" checked class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                        <input type="checkbox" checked
+                                            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                                     </div>
                                 </template>
                             </div>
@@ -570,20 +656,18 @@
                     </div>
 
                     <div class="flex justify-between pt-6 border-t border-gray-200 dark:border-gray-700">
-                        <button type="button" @click="step = 3" 
-                                class="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <button type="button" @click="step = 3"
+                            class="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             ← Back to Content
                         </button>
                         <div class="flex gap-3">
-                            <button type="button" 
-                                    @click="submitForm('draft')"
-                                    class="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            <button type="button" @click="submitForm('draft')"
+                                class="px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                                 Save Draft
                             </button>
-                            <button type="button" 
-                                    @click="submitForm('publish')"
-                                    class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors shadow-lg"
-                                    x-text="asset.id ? 'Update Asset' : 'Publish Asset'">
+                            <button type="button" @click="submitForm('publish')"
+                                class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors shadow-lg"
+                                x-text="asset.id ? 'Update Asset' : 'Publish Asset'">
                             </button>
                         </div>
                     </div>
@@ -592,18 +676,22 @@
 
             <!-- Preview Sidebar -->
             <div class="xl:col-span-1">
-                <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 sticky top-6">
+                <div
+                    class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 sticky top-6">
                     <h3 class="font-semibold text-gray-900 dark:text-white mb-4 flex items-center justify-between">
                         <span>Live Preview</span>
-                        <button type="button" @click="refreshPreview()" class="text-gray-400 hover:text-gray-500" title="Refresh preview">
+                        <button type="button" @click="refreshPreview()" class="text-gray-400 hover:text-gray-500"
+                            title="Refresh preview">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                         </button>
                     </h3>
-                    
+
                     <!-- Preview Card -->
-                    <div class="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <div
+                        class="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
                         <!-- Cover Image -->
                         <div class="aspect-w-16 aspect-h-9 bg-gray-200 dark:bg-gray-800">
                             <template x-if="asset.cover_image_url">
@@ -612,30 +700,35 @@
                             <template x-if="!asset.cover_image_url">
                                 <div class="w-full h-32 flex items-center justify-center text-gray-400">
                                     <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                     </svg>
                                 </div>
                             </template>
                         </div>
-                        
+
                         <!-- Content -->
                         <div class="p-4 space-y-3">
                             <div>
-                                <h4 class="font-semibold text-gray-900 dark:text-white text-sm" x-text="asset.title || 'Your Asset Title'"></h4>
-                                <p class="text-gray-600 dark:text-gray-400 text-xs mt-1" x-text="asset.description || 'Short description will appear here'"></p>
+                                <h4 class="font-semibold text-gray-900 dark:text-white text-sm"
+                                    x-text="asset.title || 'Your Asset Title'"></h4>
+                                <p class="text-gray-600 dark:text-gray-400 text-xs mt-1"
+                                    x-text="asset.description || 'Short description will appear here'"></p>
                             </div>
-                            
+
                             <div class="flex items-center justify-between text-xs">
-                                <span class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded" 
-                                      x-text="getAssetTypeDetails().title || 'Content'"></span>
+                                <span
+                                    class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded"
+                                    x-text="getAssetTypeDetails().title || 'Content'"></span>
                                 <div class="text-right">
-                                    <div class="font-semibold text-gray-900 dark:text-white" 
-                                         x-text="pricing.amount ? '$' + pricing.amount : 'Free'"></div>
-                                    <div class="text-gray-500 dark:text-gray-400" 
-                                         x-text="pricing.type === 'recurring' ? '/ ' + pricing.billingCycle : 'one-time'"></div>
+                                    <div class="font-semibold text-gray-900 dark:text-white"
+                                        x-text="pricing.amount ? '$' + pricing.amount : 'Free'"></div>
+                                    <div class="text-gray-500 dark:text-gray-400"
+                                        x-text="pricing.type === 'recurring' ? '/ ' + pricing.billingCycle : 'one-time'">
+                                    </div>
                                 </div>
                             </div>
-                            
+
                             <!-- Features List -->
                             <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
                                 <div class="text-xs font-medium text-gray-900 dark:text-white mb-2">Includes:</div>
@@ -668,20 +761,25 @@
                     <!-- Quick Stats -->
                     <div class="mt-4 grid grid-cols-2 gap-2 text-xs">
                         <div class="text-center p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
-                            <div class="font-semibold text-blue-900 dark:text-blue-100" x-text="contentItems.length"></div>
+                            <div class="font-semibold text-blue-900 dark:text-blue-100" x-text="contentItems.length">
+                            </div>
                             <div class="text-blue-600 dark:text-blue-400">Items</div>
                         </div>
                         <div class="text-center p-2 bg-green-50 dark:bg-green-900/20 rounded">
-                            <div class="font-semibold text-green-900 dark:text-green-100" x-text="pricing.amount ? '$' + pricing.amount : 'Free'"></div>
+                            <div class="font-semibold text-green-900 dark:text-green-100"
+                                x-text="pricing.amount ? '$' + pricing.amount : 'Free'"></div>
                             <div class="text-green-600 dark:text-green-400">Price</div>
                         </div>
                     </div>
 
                     <!-- Help Text -->
-                    <div class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                    <div
+                        class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
                         <div class="flex items-start gap-2">
-                            <svg class="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <svg class="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                             <div class="text-xs text-yellow-700 dark:text-yellow-300">
                                 <strong>Tip:</strong> This is how customers will see your asset

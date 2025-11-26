@@ -868,17 +868,31 @@ def library():
             return redirect(url_for('main.library'))
 
     purchases = []
+    purchases_data = []
     if customer_phone:
         customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
         if customer:
             purchases = Purchase.query.filter_by(customer_id=customer.id).order_by(Purchase.purchase_date.desc()).all()
+            # Serialize purchases with asset data
+            for purchase in purchases:
+                purchases_data.append({
+                    'id': purchase.id,
+                    'status': purchase.status.name,
+                    'purchase_date': purchase.purchase_date.isoformat(),
+                    'asset': {
+                        'title': purchase.asset.title,
+                        'slug': purchase.asset.slug,
+                        'cover_image_url': purchase.asset.cover_image_url,
+                        'description': purchase.asset.description
+                    }
+                })
     
     creator = Creator.query.first()
 
     return render_template(
         'user/library.html',
         customer_phone=customer_phone,
-        purchases=purchases,
+        purchases=purchases_data,
         store_name=creator.store_name if creator else "Creator Store"
     )
 

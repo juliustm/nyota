@@ -1,88 +1,272 @@
 {% extends "user/base.html" %}
 
-{% block title %}My Library{% endblock %}
+{% block title %}{{ translate('my_library') }} - {{ store_name }}{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto" x-data="{
-    retryingId: null,
-    retryMessage: '',
-    retrySuccess: false,
-    async retryPayment(purchaseId) {
-        this.retryingId = purchaseId;
-        this.retryMessage = '';
-        try {
-            const response = await fetch(`/api/retry-payment/${purchaseId}`, { method: 'POST' });
-            const result = await response.json();
-            this.retryMessage = result.message;
-            if (response.ok && result.success) {
-                this.retrySuccess = true;
-                // Optionally, refresh the page to show the new 'PENDING' status
-                setTimeout(() => window.location.reload(), 2000);
-            } else {
-                this.retrySuccess = false;
-                if (result.redirect) {
-                    window.location.href = result.redirect;
-                }
-            }
-        } catch (err) {
-            this.retryMessage = 'A network error occurred. Please try again.';
-            this.retrySuccess = false;
-        } finally {
-            setTimeout(() => { this.retryingId = null; this.retryMessage = ''; }, 4000);
-        }
-    }
-}">
-    
-    <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-8">
-        <!-- Header -->
+<script type="application/json" id="purchases-data">{{ purchases|tojson|safe }}</script>
+
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24" x-data="libraryPage()">
+
+    <!-- Header -->
+    <div class="py-8 md:py-12 fade-in">
+        <h1 class="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-4">{{
+            translate('my_library') }}</h1>
+        <p class="text-gray-600 dark:text-gray-400 max-w-2xl">{{ translate('library_intro') }}</p>
     </div>
 
     {% if not customer_phone %}
-        <!-- "Logged Out" State Form -->
-    {% else %}
-    <div class="space-y-6">
-        {% for purchase in purchases %}
-        <div class="bg-white dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 flex flex-col sm:flex-row items-center gap-6 shadow-sm">
-            <a href="{{ url_for('main.asset_detail', slug=purchase.asset.slug) }}" class="block flex-shrink-0">
-                <img src="{{ purchase.asset.cover_image_url }}" alt="{{ purchase.asset.title }}" class="w-full sm:w-32 h-32 object-cover rounded-xl">
-            </a>
-            <div class="flex-1 text-center sm:text-left">
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white">{{ purchase.asset.title }}</h3>
-                <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Attempted on {{ purchase.purchase_date.strftime('%b %d, %Y') }}</p>
+    <!-- Logged Out State -->
+    <div
+        class="bg-white dark:bg-gray-800 rounded-2xl p-8 md:p-12 text-center border border-gray-200 dark:border-gray-700 shadow-sm fade-in">
+        <div
+            class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg class="w-8 h-8 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-3">{{ translate('access_your_content') }}</h2>
+        <p class="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">{{ translate('enter_phone_to_access') }}</p>
 
-                <!-- Dynamic Status Display -->
-                {% if purchase.status.name == 'COMPLETED' %}
-                    <p class="mt-3 font-semibold flex items-center justify-center sm:justify-start gap-2 text-green-600 dark:text-green-400"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>Payment Completed</p>
-                {% elif purchase.status.name == 'PENDING' %}
-                    <p class="mt-3 font-semibold flex items-center justify-center sm:justify-start gap-2 text-yellow-600 dark:text-yellow-500"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" /></svg>Payment Pending</p>
-                {% else %} {# FAILED #}
-                    <p class="mt-3 font-semibold flex items-center justify-center sm:justify-start gap-2 text-red-600 dark:text-red-500"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>Payment Failed</p>
-                {% endif %}
-                
-                <!-- Feedback message after retry -->
-                <p x-show="retryingId === {{ purchase.id }} && retryMessage" 
-                   :class="retrySuccess ? 'text-green-600' : 'text-red-600'" 
-                   class="text-sm font-semibold mt-2" 
-                   x-text="retryMessage" x-transition></p>
+        <form action="{{ url_for('main.library') }}" method="POST" class="max-w-sm mx-auto">
+            <div class="mb-4">
+                <label for="phone_number" class="sr-only">{{ translate('mobile_phone_number') }}</label>
+                <input type="tel" name="phone_number" id="phone_number" required
+                    class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 text-center text-lg"
+                    placeholder="e.g., 0712345678">
             </div>
-            <div class="flex-shrink-0 w-full sm:w-auto mt-4 sm:mt-0">
-                {% if purchase.status.name == 'COMPLETED' %}
-                    <a href="{{ url_for('main.asset_detail', slug=purchase.asset.slug) }}" class="w-full sm:w-auto inline-block text-center font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-lg transition-colors text-base">Access Content</a>
-                {% elif purchase.status.name == 'FAILED' %}
-                    <!-- THIS BUTTON NOW WORKS -->
-                    <button @click="retryPayment({{ purchase.id }})" :disabled="retryingId === {{ purchase.id }}" class="w-full sm:w-auto inline-flex items-center justify-center font-semibold text-white bg-red-600 hover:bg-red-700 px-6 py-3 rounded-lg transition-colors text-base disabled:opacity-50">
-                        <svg x-show="retryingId === {{ purchase.id }}" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        <span x-text="retryingId === {{ purchase.id }} ? 'Sending...' : 'Retry Purchase'"></span>
-                    </button>
-                {% else %} {# PENDING #}
-                    <button class="w-full sm:w-auto text-center font-semibold text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 px-6 py-3 rounded-lg text-base cursor-not-allowed" disabled>Awaiting Payment</button>
-                {% endif %}
+            <button type="submit"
+                class="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors shadow-lg hover:shadow-indigo-500/30">
+                {{ translate('access_library') }}
+            </button>
+        </form>
+    </div>
+    {% else %}
+    <!-- Logged In - Show Library -->
+    {% if purchases %}
+    <!-- Controls -->
+    <div class="flex flex-col md:flex-row gap-4 mb-8 fade-in" style="animation-delay: 100ms;">
+        <div class="relative flex-1">
+            <input type="text" x-model="searchQuery" placeholder="{{ translate('search_purchases') }}"
+                class="w-full pl-10 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500">
+            <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
             </div>
         </div>
-        {% else %}
-            <!-- Empty state -->
-        {% endfor %}
+        <div class="flex gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
+            <button @click="filterStatus = 'all'"
+                :class="filterStatus === 'all' ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' : 'bg-white text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'"
+                class="px-4 py-3 rounded-xl font-medium whitespace-nowrap transition-colors">
+                {{ translate('all') }}
+            </button>
+            <button @click="filterStatus = 'COMPLETED'"
+                :class="filterStatus === 'COMPLETED' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'"
+                class="px-4 py-3 rounded-xl font-medium whitespace-nowrap transition-colors">
+                {{ translate('completed') }}
+            </button>
+            <button @click="filterStatus = 'PENDING'"
+                :class="filterStatus === 'PENDING' ? 'bg-yellow-500 text-white' : 'bg-white text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'"
+                class="px-4 py-3 rounded-xl font-medium whitespace-nowrap transition-colors">
+                {{ translate('pending') }}
+            </button>
+            <button @click="filterStatus = 'FAILED'"
+                :class="filterStatus === 'FAILED' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'"
+                class="px-4 py-3 rounded-xl font-medium whitespace-nowrap transition-colors">
+                {{ translate('failed') }}
+            </button>
+        </div>
+    </div>
+
+    <!-- Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 fade-in" style="animation-delay: 200ms;">
+        <template x-for="purchase in filteredPurchases" :key="purchase.id">
+            <div
+                class="group bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col">
+
+                <!-- Image -->
+                <a :href="'/asset/' + purchase.asset.slug"
+                    class="relative aspect-[16/9] overflow-hidden bg-gray-100 dark:bg-gray-900 block">
+                    <img :src="purchase.asset.cover_image_url" :alt="purchase.asset.title"
+                        class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105">
+                    <div
+                        class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                        <span class="text-white font-medium flex items-center gap-2">
+                            {{ translate('view_details') }} <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                            </svg>
+                        </span>
+                    </div>
+                </a>
+
+                <!-- Content -->
+                <div class="p-5 flex flex-col flex-grow">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide" :class="{
+                                    'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400': purchase.status === 'COMPLETED',
+                                    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400': purchase.status === 'PENDING',
+                                    'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400': purchase.status === 'FAILED'
+                                }" x-text="purchase.status">
+                        </span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400"
+                            x-text="new Date(purchase.purchase_date).toLocaleDateString()"></span>
+                    </div>
+
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2 line-clamp-1">
+                        <a :href="'/asset/' + purchase.asset.slug"
+                            class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                            x-text="purchase.asset.title"></a>
+                    </h3>
+
+                    <p class="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-4 flex-grow"
+                        x-text="purchase.asset.description"></p>
+
+                    <!-- Actions -->
+                    <div class="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700/50">
+                        <template x-if="purchase.status === 'COMPLETED'">
+                            <a :href="'/asset/' + purchase.asset.slug"
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-colors">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                {{ translate('access_content') }}
+                            </a>
+                        </template>
+                        <template x-if="purchase.status === 'PENDING'">
+                            <a :href="'/asset/' + purchase.asset.slug"
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 font-semibold rounded-xl border border-yellow-300 dark:border-yellow-800">
+                                <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                        stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                                {{ translate('processing') }}
+                            </a>
+                        </template>
+                        <template x-if="purchase.status === 'FAILED'">
+                            <a :href="'/asset/' + purchase.asset.slug"
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                {{ translate('retry_payment') }}
+                            </a>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- No Results State -->
+    <div x-show="filteredPurchases.length === 0" class="text-center py-16" x-cloak>
+        <div class="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+        </div>
+        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">{{ translate('no_results_found') }}</h3>
+        <p class="text-gray-500 dark:text-gray-400 mb-6">{{ translate('try_different_filter') }}</p>
+        <button @click="searchQuery = ''; filterStatus = 'all'"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
+            {{ translate('clear_filters') }}
+        </button>
+    </div>
+
+    {% else %}
+    <!-- Empty Library State -->
+    <div class="col-span-1 md:col-span-2 lg:col-span-3 text-center py-12 fade-in">
+        <div class="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+        </div>
+        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">{{ translate('no_purchases_yet') }}</h3>
+        <p class="text-gray-500 dark:text-gray-400 mb-6">{{ translate('browse_store_message') }}</p>
+        <a href="{{ url_for('main.landing_page') }}"
+            class="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors">
+            {{ translate('browse_store') }}
+        </a>
     </div>
     {% endif %}
+    {% endif %}
 </div>
+
+<style>
+    .fade-in {
+        opacity: 0;
+        animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+</style>
+
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('libraryPage', () => ({
+            searchQuery: '',
+            filterStatus: 'all',
+            purchases: [],
+
+            init() {
+                // Load purchases data from JSON script tag
+                const dataEl = document.getElementById('purchases-data');
+                if (dataEl) {
+                    try {
+                        this.purchases = JSON.parse(dataEl.textContent) || [];
+                    } catch (e) {
+                        console.error('Failed to parse purchases data:', e);
+                        this.purchases = [];
+                    }
+                }
+            },
+
+            get filteredPurchases() {
+                let results = this.purchases;
+
+                if (this.filterStatus !== 'all') {
+                    results = results.filter(p => p.status === this.filterStatus);
+                }
+
+                if (this.searchQuery) {
+                    const query = this.searchQuery.toLowerCase();
+                    results = results.filter(p => p.asset.title.toLowerCase().includes(query));
+                }
+
+                return results;
+            }
+        }));
+    });
+</script>
 {% endblock %}

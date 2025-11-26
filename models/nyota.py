@@ -362,7 +362,13 @@ class AssetFile(db.Model):
     order_index = db.Column(db.Integer, default=0)
     asset = db.relationship('DigitalAsset', back_populates='files')
     def to_dict(self):
-        return { 'id': self.id, 'title': self.title, 'description': self.description, 'link': self.storage_path }
+        return { 
+            'id': self.id, 
+            'title': self.title, 
+            'description': self.description, 
+            'link': self.storage_path,
+            'file_type': self.file_type
+        }
 
 class Purchase(db.Model):
     __tablename__ = 'purchase'

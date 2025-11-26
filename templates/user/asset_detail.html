@@ -88,13 +88,17 @@
                 <!-- ACCESS CONTENT SECTION (Viewers)           -->
                 <!-- ========================================== -->
                 <section id="content-access-section" class="fade-in" style="animation-delay: 200ms;">
-                    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden shadow-sm">
-                        
+                    <div
+                        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden shadow-sm">
+
                         <!-- Header -->
-                        <div class="p-6 md:p-8 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                        <div
+                            class="p-6 md:p-8 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                             <h2 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                                <svg class="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                <svg class="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                                 {{ translate('access_your_content') }}
                             </h2>
@@ -103,41 +107,76 @@
                         <!-- Content Loop -->
                         <div class="divide-y divide-gray-200 dark:divide-gray-700">
                             <template x-for="(file, index) in asset.files" :key="file.id">
-                                <div class="p-6 md:p-8" x-data="{ type: getFileType(file.link) }">
-                                    
+                                <div class="p-6 md:p-8" x-data="{ type: file.file_type || getFileType(file.link) }">
+
                                     <div class="mb-4">
-                                        <h3 class="text-lg font-bold text-gray-900 dark:text-white" x-text="file.title"></h3>
-                                        <p class="text-sm text-gray-500 dark:text-gray-400" x-text="file.description"></p>
+                                        <h3 class="text-lg font-bold text-gray-900 dark:text-white" x-text="file.title">
+                                        </h3>
+                                        <p class="text-sm text-gray-500 dark:text-gray-400" x-text="file.description">
+                                        </p>
                                     </div>
 
                                     <!-- 1. PDF VIEWER -->
                                     <template x-if="type === 'pdf'">
-                                        <div x-data="pdfViewer(file.link)" x-init="loadPdf()" 
-                                             class="bg-gray-100 dark:bg-gray-900 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
-                                            
+                                        <div x-data="pdfViewer(file.link)" x-init="loadPdf()"
+                                            class="bg-gray-100 dark:bg-gray-900 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+
                                             <!-- Toolbar -->
-                                            <div class="flex items-center justify-between p-3 bg-gray-200 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700">
+                                            <div
+                                                class="flex items-center justify-between p-3 bg-gray-200 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700">
                                                 <div class="flex items-center gap-2">
-                                                    <button @click="prevPage()" :disabled="page <= 1" class="p-1.5 hover:bg-gray-300 dark:hover:bg-gray-700 rounded disabled:opacity-50">
-                                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                                                    <button @click="prevPage()" :disabled="page <= 1"
+                                                        class="p-1.5 hover:bg-gray-300 dark:hover:bg-gray-700 rounded disabled:opacity-50">
+                                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                            stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M15 19l-7-7 7-7" />
+                                                        </svg>
                                                     </button>
                                                     <span class="text-xs font-mono font-medium">
-                                                        <span x-text="page"></span> / <span x-text="numPages || '-'"></span>
+                                                        <span x-text="page"></span> / <span
+                                                            x-text="numPages || '-'"></span>
                                                     </span>
-                                                    <button @click="nextPage()" :disabled="page >= numPages" class="p-1.5 hover:bg-gray-300 dark:hover:bg-gray-700 rounded disabled:opacity-50">
-                                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                                                    <button @click="nextPage()" :disabled="page >= numPages"
+                                                        class="p-1.5 hover:bg-gray-300 dark:hover:bg-gray-700 rounded disabled:opacity-50">
+                                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                            stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M9 5l7 7-7 7" />
+                                                        </svg>
                                                     </button>
                                                 </div>
                                                 <div class="flex items-center gap-2">
-                                                    <button @click="zoomOut()" class="p-1.5 hover:bg-gray-300 dark:hover:bg-gray-700 rounded"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" /></svg></button>
-                                                    <button @click="zoomIn()" class="p-1.5 hover:bg-gray-300 dark:hover:bg-gray-700 rounded"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg></button>
+                                                    <button @click="zoomOut()"
+                                                        class="p-1.5 hover:bg-gray-300 dark:hover:bg-gray-700 rounded"><svg
+                                                            class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                                                            stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M20 12H4" />
+                                                        </svg></button>
+                                                    <button @click="zoomIn()"
+                                                        class="p-1.5 hover:bg-gray-300 dark:hover:bg-gray-700 rounded"><svg
+                                                            class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                                                            stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M12 4v16m8-8H4" />
+                                                        </svg></button>
                                                 </div>
                                             </div>
 
                                             <!-- Canvas -->
-                                            <div class="relative w-full overflow-auto bg-gray-500/10 flex justify-center p-4 min-h-[300px]" @contextmenu.prevent>
-                                                <div x-show="loading" class="absolute inset-0 flex items-center justify-center bg-gray-100/50 dark:bg-gray-900/50 z-10">
-                                                    <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                            <div class="relative w-full overflow-auto bg-gray-500/10 flex justify-center p-4 min-h-[300px]"
+                                                @contextmenu.prevent>
+                                                <div x-show="loading"
+                                                    class="absolute inset-0 flex items-center justify-center bg-gray-100/50 dark:bg-gray-900/50 z-10">
+                                                    <svg class="animate-spin h-8 w-8 text-indigo-600"
+                                                        xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24">
+                                                        <circle class="opacity-25" cx="12" cy="12" r="10"
+                                                            stroke="currentColor" stroke-width="4"></circle>
+                                                        <path class="opacity-75" fill="currentColor"
+                                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                                    </svg>
                                                 </div>
                                                 <canvas x-ref="canvas" class="shadow-lg max-w-full"></canvas>
                                             </div>
@@ -146,34 +185,53 @@
 
                                     <!-- 2. AUDIO VIEWER -->
                                     <template x-if="type === 'audio'">
-                                        <div x-data="mediaPlayer(file.link, 'audio')" 
-                                             class="bg-gray-100 dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 select-none"
-                                             @contextmenu.prevent>
-                                            <audio x-ref="media" :src="file.link" class="hidden" @timeupdate="updateProgress" @loadedmetadata="initMedia" @ended="playing=false"></audio>
-                                            
+                                        <div x-data="mediaPlayer(file.link, 'audio')"
+                                            class="bg-gray-100 dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 select-none"
+                                            @contextmenu.prevent>
+                                            <audio x-ref="media" :src="file.link" class="hidden"
+                                                @timeupdate="updateProgress" @loadedmetadata="initMedia"
+                                                @ended="playing=false"></audio>
+
                                             <div class="flex items-center gap-4">
-                                                <button @click="togglePlay" class="w-12 h-12 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-md">
-                                                    <svg x-show="!playing" class="w-5 h-5 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
-                                                    <svg x-show="playing" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                                                <button @click="togglePlay"
+                                                    class="w-12 h-12 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-md">
+                                                    <svg x-show="!playing" class="w-5 h-5 ml-1" fill="currentColor"
+                                                        viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd"
+                                                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                                                            clip-rule="evenodd" />
+                                                    </svg>
+                                                    <svg x-show="playing" class="w-5 h-5" fill="currentColor"
+                                                        viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd"
+                                                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                                            clip-rule="evenodd" />
+                                                    </svg>
                                                 </button>
-                                                
+
                                                 <div class="flex-1 space-y-1">
-                                                    <div class="flex justify-between text-xs font-medium text-gray-500 dark:text-gray-400">
+                                                    <div
+                                                        class="flex justify-between text-xs font-medium text-gray-500 dark:text-gray-400">
                                                         <span x-text="formatTime(currentTime)"></span>
                                                         <span x-text="formatTime(duration)"></span>
                                                     </div>
                                                     <div class="relative w-full h-2 bg-gray-300 dark:bg-gray-700 rounded-full cursor-pointer group"
-                                                         @click="seek($event)">
-                                                        <div class="absolute top-0 left-0 h-full bg-indigo-500 rounded-full group-hover:bg-indigo-400" 
-                                                             :style="`width: ${(currentTime/duration)*100}%`"></div>
+                                                        @click="seek($event)">
+                                                        <div class="absolute top-0 left-0 h-full bg-indigo-500 rounded-full group-hover:bg-indigo-400"
+                                                            :style="`width: ${(currentTime/duration)*100}%`"></div>
                                                     </div>
                                                 </div>
-                                                
+
                                                 <!-- Volume (Simple Toggle) -->
                                                 <button @click="toggleMute" class="text-gray-500 hover:text-indigo-500">
-                                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path x-show="!muted" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                                                        <path x-show="muted" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                        stroke="currentColor">
+                                                        <path x-show="!muted" stroke-linecap="round"
+                                                            stroke-linejoin="round" stroke-width="2"
+                                                            d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                                        <path x-show="muted" stroke-linecap="round"
+                                                            stroke-linejoin="round" stroke-width="2"
+                                                            d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
                                                     </svg>
                                                 </button>
                                             </div>
@@ -182,42 +240,68 @@
 
                                     <!-- 3. VIDEO VIEWER -->
                                     <template x-if="type === 'video'">
-                                        <div x-data="mediaPlayer(file.link, 'video')" 
-                                             class="relative bg-black rounded-xl overflow-hidden shadow-lg group select-none"
-                                             @contextmenu.prevent @mouseleave="showControls = false" @mouseenter="showControls = true">
-                                            
-                                            <video x-ref="media" :src="file.link" class="w-full aspect-video bg-black" 
-                                                   @timeupdate="updateProgress" @loadedmetadata="initMedia" @click="togglePlay" @ended="playing=false"></video>
-                                            
+                                        <div x-data="mediaPlayer(file.link, 'video')"
+                                            class="relative bg-black rounded-xl overflow-hidden shadow-lg group select-none"
+                                            @contextmenu.prevent @mouseleave="showControls = false"
+                                            @mouseenter="showControls = true">
+
+                                            <video x-ref="media" :src="file.link" class="w-full aspect-video bg-black"
+                                                @timeupdate="updateProgress" @loadedmetadata="initMedia"
+                                                @click="togglePlay" @ended="playing=false"></video>
+
                                             <!-- Big Play Button Overlay -->
-                                            <div x-show="!playing" @click="togglePlay" class="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer">
-                                                <div class="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center transition-transform hover:scale-110">
-                                                    <svg class="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
+                                            <div x-show="!playing" @click="togglePlay"
+                                                class="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer">
+                                                <div
+                                                    class="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center transition-transform hover:scale-110">
+                                                    <svg class="w-8 h-8 text-white ml-1" fill="currentColor"
+                                                        viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd"
+                                                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                                                            clip-rule="evenodd" />
+                                                    </svg>
                                                 </div>
                                             </div>
 
                                             <!-- Custom Controls Bar -->
                                             <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 transition-opacity duration-300"
-                                                 :class="(playing && !showControls) ? 'opacity-0' : 'opacity-100'">
-                                                
+                                                :class="(playing && !showControls) ? 'opacity-0' : 'opacity-100'">
+
                                                 <!-- Progress -->
                                                 <div class="relative w-full h-1 bg-white/30 rounded-full cursor-pointer mb-3 hover:h-2 transition-all"
-                                                     @click="seek($event)">
-                                                    <div class="absolute top-0 left-0 h-full bg-indigo-500 rounded-full" :style="`width: ${(currentTime/duration)*100}%`"></div>
+                                                    @click="seek($event)">
+                                                    <div class="absolute top-0 left-0 h-full bg-indigo-500 rounded-full"
+                                                        :style="`width: ${(currentTime/duration)*100}%`"></div>
                                                 </div>
 
                                                 <div class="flex items-center justify-between text-white">
                                                     <div class="flex items-center gap-3">
                                                         <button @click="togglePlay" class="hover:text-indigo-400">
-                                                            <svg x-show="!playing" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
-                                                            <svg x-show="playing" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                                                            <svg x-show="!playing" class="w-6 h-6" fill="currentColor"
+                                                                viewBox="0 0 20 20">
+                                                                <path fill-rule="evenodd"
+                                                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                                                                    clip-rule="evenodd" />
+                                                            </svg>
+                                                            <svg x-show="playing" class="w-6 h-6" fill="currentColor"
+                                                                viewBox="0 0 20 20">
+                                                                <path fill-rule="evenodd"
+                                                                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                                                    clip-rule="evenodd" />
+                                                            </svg>
                                                         </button>
                                                         <span class="text-xs font-mono">
-                                                            <span x-text="formatTime(currentTime)"></span> / <span x-text="formatTime(duration)"></span>
+                                                            <span x-text="formatTime(currentTime)"></span> / <span
+                                                                x-text="formatTime(duration)"></span>
                                                         </span>
                                                     </div>
                                                     <button @click="toggleFullscreen" class="hover:text-indigo-400">
-                                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                            stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2"
+                                                                d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                                        </svg>
                                                     </button>
                                                 </div>
                                             </div>
@@ -226,15 +310,28 @@
 
                                     <!-- 4. FALLBACK / OTHER -->
                                     <template x-if="type === 'other'">
-                                        <a :href="file.link" target="_blank" class="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                            <div class="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                                                <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                        <a :href="file.link" target="_blank"
+                                            class="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                            <div
+                                                class="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                                                <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2"
+                                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                </svg>
                                             </div>
                                             <div class="flex-1">
-                                                <p class="font-bold text-sm text-gray-900 dark:text-white">{{ translate('download_file') }}</p>
-                                                <p class="text-xs text-gray-500" x-text="file.link.split('/').pop()"></p>
+                                                <p class="font-bold text-sm text-gray-900 dark:text-white">{{
+                                                    translate('download_file') }}</p>
+                                                <p class="text-xs text-gray-500" x-text="file.link.split('/').pop()">
+                                                </p>
                                             </div>
-                                            <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                                            <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24"
+                                                stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                            </svg>
                                         </a>
                                     </template>
 
@@ -253,41 +350,59 @@
                         </div>
                     </section>
                     <!-- ... (Rest of sales pitch remains same) ... -->
-                    <section x-show="asset.files && asset.files.length > 0" x-cloak class="fade-in" style="animation-delay: 300ms;">
-                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ translate('what_you_get')}}</h2>
+                    <section x-show="asset.files && asset.files.length > 0" x-cloak class="fade-in"
+                        style="animation-delay: 300ms;">
+                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ translate('what_you_get')}}
+                        </h2>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <template x-for="file in asset.files" :key="file.id">
-                                <div class="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl">
-                                    <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm border border-gray-100 dark:border-gray-700">
+                                <div
+                                    class="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl">
+                                    <div
+                                        class="flex-shrink-0 w-10 h-10 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm border border-gray-100 dark:border-gray-700">
                                         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
                                     </div>
                                     <div class="flex-1 min-w-0 pt-1">
-                                        <p class="font-medium text-gray-900 dark:text-white text-sm" x-text="file.title"></p>
-                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1" x-text="file.description || '{{ translate('included_resource') }}'"></p>
+                                        <p class="font-medium text-gray-900 dark:text-white text-sm"
+                                            x-text="file.title"></p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1"
+                                            x-text="file.description || '{{ translate('included_resource') }}'"></p>
                                     </div>
                                 </div>
                             </template>
                         </div>
                     </section>
 
-                    <section x-show="asset.reviews && asset.reviews.length > 0" x-cloak class="fade-in" style="animation-delay: 400ms;">
-                         <!-- (Reviews code remains exactly the same as previous) -->
-                         <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ translate('loved_by_customers') }}</h2>
-                         <div class="grid gap-6">
+                    <section x-show="asset.reviews && asset.reviews.length > 0" x-cloak class="fade-in"
+                        style="animation-delay: 400ms;">
+                        <!-- (Reviews code remains exactly the same as previous) -->
+                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">{{
+                            translate('loved_by_customers') }}</h2>
+                        <div class="grid gap-6">
                             <template x-for="review in asset.reviews.slice(0, visibleReviews)" :key="review.author">
-                                <div class="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-2xl p-6">
+                                <div
+                                    class="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-2xl p-6">
                                     <div class="flex items-start gap-4">
-                                        <img :src="review.avatar" :alt="review.author" class="w-10 h-10 rounded-full flex-shrink-0 bg-gray-200">
+                                        <img :src="review.avatar" :alt="review.author"
+                                            class="w-10 h-10 rounded-full flex-shrink-0 bg-gray-200">
                                         <div class="flex-1">
                                             <div class="flex items-center justify-between mb-2">
-                                                <p class="font-bold text-gray-900 dark:text-white text-sm" x-text="review.author"></p>
+                                                <p class="font-bold text-gray-900 dark:text-white text-sm"
+                                                    x-text="review.author"></p>
                                                 <div class="flex text-yellow-400">
-                                                    <template x-for="i in 5"><svg class="w-4 h-4" :class="i <= review.rating ? 'fill-current' : 'text-gray-300 dark:text-gray-600'" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg></template>
+                                                    <template x-for="i in 5"><svg class="w-4 h-4"
+                                                            :class="i <= review.rating ? 'fill-current' : 'text-gray-300 dark:text-gray-600'"
+                                                            viewBox="0 0 20 20">
+                                                            <path
+                                                                d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                                        </svg></template>
                                                 </div>
                                             </div>
-                                            <p class="text-gray-600 dark:text-gray-300 text-sm leading-relaxed" x-text="review.text"></p>
+                                            <p class="text-gray-600 dark:text-gray-300 text-sm leading-relaxed"
+                                                x-text="review.text"></p>
                                         </div>
                                     </div>
                                 </div>
@@ -303,65 +418,103 @@
                 <div class="lg:sticky lg:top-24 space-y-6 fade-in" style="animation-delay: 250ms;">
 
                     <!-- Purchase Card -->
-                    <div class="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-xl p-6 md:p-8">
+                    <div
+                        class="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-xl p-6 md:p-8">
                         {% if status == 'COMPLETED' %}
                         <div class="text-center py-6">
-                            <div class="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-6">
-                                <svg class="w-10 h-10 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            <div
+                                class="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-6">
+                                <svg class="w-10 h-10 text-green-600 dark:text-green-400" fill="none"
+                                    viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 13l4 4L19 7" />
                                 </svg>
                             </div>
-                            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{ translate('you_own_this') }}</h2>
+                            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{
+                                translate('you_own_this') }}</h2>
                             <p class="text-gray-600 dark:text-gray-400 mb-6">{{ translate('access_message') }}</p>
-                            <a href="{{ url_for('main.library') }}" class="block w-full text-center font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-6 py-4 rounded-xl transition-transform hover:scale-[1.02] shadow-lg shadow-indigo-500/20">
+                            <a href="{{ url_for('main.library') }}"
+                                class="block w-full text-center font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-6 py-4 rounded-xl transition-transform hover:scale-[1.02] shadow-lg shadow-indigo-500/20">
                                 {{ translate('go_to_library') }}
                             </a>
                         </div>
                         {% else %}
                         <!-- (Purchase Card Logic for unowned items remains exact same as previous) -->
                         <div class="flex items-baseline gap-2 mb-8">
-                            <span class="text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight" x-text="currency + formatCurrency(asset.price)"></span>
+                            <span class="text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight"
+                                x-text="currency + formatCurrency(asset.price)"></span>
                         </div>
-                        
+
                         {% if status == 'PENDING' %}
-                            <!-- Pending Status UI ... -->
-                             <div class="mb-6 p-5 bg-yellow-50 dark:bg-yellow-900/20 rounded-2xl border border-yellow-100 dark:border-yellow-900/50">
-                                <div class="flex items-center gap-3 mb-3 text-yellow-800 dark:text-yellow-300 font-bold">
-                                    <div class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
-                                    {{ translate('awaiting_payment') }}
-                                </div>
-                                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">
-                                    {{ translate('check_phone_payment') }}
-                                    <span class="font-mono font-bold text-gray-900 dark:text-white bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded">{{ latest_purchase.phone_number }}</span>
-                                </p>
-                                <div class="flex gap-3 text-xs font-semibold">
-                                    <button @click="$dispatch('open-checkout-modal', { phoneNumber: phoneNumber })" :disabled="isProcessing" class="text-indigo-600 hover:text-indigo-500 underline decoration-2 underline-offset-2">{{ translate('change_number') }}</button>
-                                    <button @click="cancelPayment()" :disabled="isProcessing" class="text-red-600 hover:text-red-500 underline decoration-2 underline-offset-2">{{ translate('cancel_payment') }}</button>
-                                </div>
+                        <!-- Pending Status UI ... -->
+                        <div
+                            class="mb-6 p-5 bg-yellow-50 dark:bg-yellow-900/20 rounded-2xl border border-yellow-100 dark:border-yellow-900/50">
+                            <div class="flex items-center gap-3 mb-3 text-yellow-800 dark:text-yellow-300 font-bold">
+                                <div class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
+                                {{ translate('awaiting_payment') }}
                             </div>
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">
+                                {{ translate('check_phone_payment') }}
+                                <span
+                                    class="font-mono font-bold text-gray-900 dark:text-white bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded">{{
+                                    latest_purchase.phone_number }}</span>
+                            </p>
+                            <div class="flex gap-3 text-xs font-semibold">
+                                <button @click="$dispatch('open-checkout-modal', { phoneNumber: phoneNumber })"
+                                    :disabled="isProcessing"
+                                    class="text-indigo-600 hover:text-indigo-500 underline decoration-2 underline-offset-2">{{
+                                    translate('change_number') }}</button>
+                                <button @click="cancelPayment()" :disabled="isProcessing"
+                                    class="text-red-600 hover:text-red-500 underline decoration-2 underline-offset-2">{{
+                                    translate('cancel_payment') }}</button>
+                            </div>
+                        </div>
                         {% elif status == 'FAILED' %}
-                            <div class="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl text-sm font-medium flex items-start gap-3">
-                                <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                {{ translate('payment_failed_retry') }}
-                            </div>
+                        <div
+                            class="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl text-sm font-medium flex items-start gap-3">
+                            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            {{ translate('payment_failed_retry') }}
+                        </div>
                         {% endif %}
 
                         <button @click="handlePurchaseAction()" :disabled="isProcessing"
                             class="w-full group relative flex items-center justify-center gap-3 px-8 py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold text-lg rounded-2xl shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-wait disabled:scale-100">
-                            <span class="absolute inset-0 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 opacity-0 group-hover:opacity-10 transition-opacity"></span>
-                            <svg x-show="isProcessing" class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                            <span
+                                class="absolute inset-0 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 opacity-0 group-hover:opacity-10 transition-opacity"></span>
+                            <svg x-show="isProcessing" class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                    stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor"
+                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
                             <span x-show="isRetrying">{{ translate('sending_request') }}</span>
                             <span x-show="isCancelling">{{ translate('cancelling') }}</span>
                             <span x-show="!isProcessing">
                                 {% if status == 'FAILED' or status == 'PENDING' %}{{ translate('retry_payment') }}
-                                {% else %}<span x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{% endif %}
+                                {% else %}<span
+                                    x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{%
+                                endif %}
                             </span>
                         </button>
-                        <p x-show="feedbackMessage" :class="isSuccess ? 'text-green-600' : 'text-red-600'" class="text-sm font-semibold mt-4 text-center animate-pulse" x-text="feedbackMessage" x-transition></p>
+                        <p x-show="feedbackMessage" :class="isSuccess ? 'text-green-600' : 'text-red-600'"
+                            class="text-sm font-semibold mt-4 text-center animate-pulse" x-text="feedbackMessage"
+                            x-transition></p>
                         <!-- ... Security Icons ... -->
                         <div class="mt-6 flex items-center justify-center gap-6 text-gray-400 dark:text-gray-500">
-                            <div class="flex items-center gap-1.5 text-xs font-medium" title="Secure Payment"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg> Secure</div>
-                            <div class="flex items-center gap-1.5 text-xs font-medium" title="Instant Access"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg> Instant</div>
+                            <div class="flex items-center gap-1.5 text-xs font-medium" title="Secure Payment"><svg
+                                    class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg> Secure</div>
+                            <div class="flex items-center gap-1.5 text-xs font-medium" title="Instant Access"><svg
+                                    class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg> Instant</div>
                         </div>
                         {% endif %}
                     </div>
@@ -371,71 +524,111 @@
 
         <!-- (Mobile Sticky Footer & Checkout Modal remain exact same as previous) -->
         <!-- ... -->
-        <div class="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] pb-safe animate-slide-up" x-show="purchaseStatus !== 'COMPLETED'">
-             <div class="px-4 py-3 max-w-md mx-auto flex items-center gap-4">
+        <div class="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] pb-safe animate-slide-up"
+            x-show="purchaseStatus !== 'COMPLETED'">
+            <div class="px-4 py-3 max-w-md mx-auto flex items-center gap-4">
                 <div class="flex-1 min-w-0">
                     <p class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate" x-text="asset.title"></p>
-                    <p class="text-xl font-bold text-gray-900 dark:text-white leading-none mt-0.5"><span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span></p>
+                    <p class="text-xl font-bold text-gray-900 dark:text-white leading-none mt-0.5"><span
+                            x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span></p>
                 </div>
-                <button @click="handlePurchaseAction()" :disabled="isProcessing" class="flex-shrink-0 px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl shadow-lg disabled:opacity-70 disabled:cursor-wait active:scale-95 transition-transform">
-                     <!-- ... Button Text Logic ... -->
-                    <span x-show="!isProcessing">{% if status == 'FAILED' %}{{ translate('retry_payment') }}{% elif status == 'PENDING' %}{{ translate('retry_payment') }}{% else %}<span x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{% endif %}</span>
+                <button @click="handlePurchaseAction()" :disabled="isProcessing"
+                    class="flex-shrink-0 px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl shadow-lg disabled:opacity-70 disabled:cursor-wait active:scale-95 transition-transform">
+                    <!-- ... Button Text Logic ... -->
+                    <span x-show="!isProcessing">{% if status == 'FAILED' %}{{ translate('retry_payment') }}{% elif
+                        status == 'PENDING' %}{{ translate('retry_payment') }}{% else %}<span
+                            x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{%
+                        endif %}</span>
                 </button>
             </div>
         </div>
 
         <!-- The Checkout Modal -->
         <div x-data="checkout(asset, '{{ currency_symbol }}', '{{ url_for('main.initiate_payment') }}')">
-             <div x-show="isOpen" class="fixed inset-0 z-[99] bg-gray-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4" x-cloak>
-                 <div @click.outside="closeModal()" class="relative bg-white dark:bg-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md mx-auto p-6 sm:p-8 transform-gpu transition-all"
-                    x-show="isOpen" 
-                    x-transition:enter="ease-out duration-300" x-transition:enter-start="translate-y-full sm:translate-y-10 opacity-0" x-transition:enter-end="translate-y-0 opacity-100" 
-                    x-transition:leave="ease-in duration-200" x-transition:leave-start="translate-y-0 opacity-100" x-transition:leave-end="translate-y-full sm:translate-y-10 opacity-0">
+            <div x-show="isOpen"
+                class="fixed inset-0 z-[99] bg-gray-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
+                x-cloak>
+                <div @click.outside="closeModal()"
+                    class="relative bg-white dark:bg-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md mx-auto p-6 sm:p-8 transform-gpu transition-all"
+                    x-show="isOpen" x-transition:enter="ease-out duration-300"
+                    x-transition:enter-start="translate-y-full sm:translate-y-10 opacity-0"
+                    x-transition:enter-end="translate-y-0 opacity-100" x-transition:leave="ease-in duration-200"
+                    x-transition:leave-start="translate-y-0 opacity-100"
+                    x-transition:leave-end="translate-y-full sm:translate-y-10 opacity-0">
                     <!-- ... Modal Content (Drag Handle, Form, Loading States) ... -->
                     <!-- Same as previous version, abbreviated here for brevity since it didn't change -->
                     <div class="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-6 sm:hidden"></div>
-                    
+
                     <!-- Ready State -->
                     <div x-show="status === 'ready' || status === 'failed'">
-                        <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{ translate('complete_purchase') }}</h3>
-                        <p class="text-gray-600 dark:text-gray-400 mb-8 leading-relaxed">{{ translate('enter_mobile_instruction') }}</p>
+                        <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{
+                            translate('complete_purchase') }}</h3>
+                        <p class="text-gray-600 dark:text-gray-400 mb-8 leading-relaxed">{{
+                            translate('enter_mobile_instruction') }}</p>
                         <form @submit.prevent="initiatePayment()">
-                             <div class="mb-6">
+                            <div class="mb-6">
                                 <label for="phone" class="input-label">{{ translate('mobile_phone_number') }}</label>
                                 <div class="relative">
-                                    <input type="tel" id="phone" x-ref="phoneInput" x-model="phoneNumber" @input="formatPhoneNumber()" placeholder="07XX XXX XXX" class="input-field pl-4 text-lg tracking-wide font-mono" required>
-                                    <div class="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-400"><svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg></div>
+                                    <input type="tel" id="phone" x-ref="phoneInput" x-model="phoneNumber"
+                                        @input="formatPhoneNumber()" placeholder="07XX XXX XXX"
+                                        class="input-field pl-4 text-lg tracking-wide font-mono" required>
+                                    <div
+                                        class="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-400">
+                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                        </svg>
+                                    </div>
                                 </div>
                             </div>
-                            <p x-show="errorMessage" x-text="errorMessage" class="p-3 mb-6 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 rounded-lg text-sm font-medium text-center"></p>
-                            <button type="submit" class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl text-lg shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all">Pay <span x-text="currency + formatCurrency(asset.price)"></span></button>
+                            <p x-show="errorMessage" x-text="errorMessage"
+                                class="p-3 mb-6 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 rounded-lg text-sm font-medium text-center">
+                            </p>
+                            <button type="submit"
+                                class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl text-lg shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all">Pay
+                                <span x-text="currency + formatCurrency(asset.price)"></span></button>
                         </form>
                     </div>
 
                     <!-- Loading State -->
                     <div x-show="status === 'initiating' || status === 'waiting'" class="text-center py-8">
-                         <div class="relative w-20 h-20 mx-auto mb-6">
-                            <div class="absolute inset-0 border-4 border-gray-100 dark:border-gray-700 rounded-full"></div>
-                            <div class="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
+                        <div class="relative w-20 h-20 mx-auto mb-6">
+                            <div class="absolute inset-0 border-4 border-gray-100 dark:border-gray-700 rounded-full">
+                            </div>
+                            <div
+                                class="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin">
+                            </div>
                         </div>
-                        <h3 class="text-2xl font-bold mt-6 text-gray-900 dark:text-white" x-text="status === 'initiating' ? '{{ translate('sending_request') }}' : '{{ translate('awaiting_payment') }}'"></h3>
+                        <h3 class="text-2xl font-bold mt-6 text-gray-900 dark:text-white"
+                            x-text="status === 'initiating' ? '{{ translate('sending_request') }}' : '{{ translate('awaiting_payment') }}'">
+                        </h3>
                         <p class="mt-2 text-gray-600 dark:text-gray-300" x-text="statusMessage"></p>
                     </div>
 
                     <!-- Success State -->
                     <div x-show="status === 'success'" class="text-center py-8">
-                         <div class="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-6 animate-[bounce_1s_infinite]">
-                            <svg class="w-10 h-10 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg>
+                        <div
+                            class="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-6 animate-[bounce_1s_infinite]">
+                            <svg class="w-10 h-10 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
                         </div>
-                        <h3 class="text-2xl font-bold mt-6 text-gray-900 dark:text-white">{{ translate('payment_successful') }}</h3>
+                        <h3 class="text-2xl font-bold mt-6 text-gray-900 dark:text-white">{{
+                            translate('payment_successful') }}</h3>
                         <p class="mt-2 text-gray-600 dark:text-gray-300" x-text="statusMessage"></p>
                     </div>
 
-                    <button @click="closeModal()" class="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    <button @click="closeModal()"
+                        class="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12" />
+                        </svg>
                     </button>
-                 </div>
-             </div>
+                </div>
+            </div>
         </div>
 
     </div>
@@ -451,7 +644,7 @@
             numPages: 0,
             scale: 1.0,
             loading: true,
-            
+
             async loadPdf() {
                 try {
                     const loadingTask = pdfjsLib.getDocument(this.url);
@@ -463,24 +656,24 @@
                     this.loading = false;
                 }
             },
-            
+
             async renderPage(num) {
                 this.loading = true;
                 const canvas = this.$refs.canvas;
                 const ctx = canvas.getContext('2d');
-                
+
                 try {
                     const page = await this.pdfDoc.getPage(num);
                     const viewport = page.getViewport({ scale: this.scale });
-                    
+
                     canvas.height = viewport.height;
                     canvas.width = viewport.width;
-                    
+
                     const renderContext = {
                         canvasContext: ctx,
                         viewport: viewport
                     };
-                    
+
                     await page.render(renderContext).promise;
                     this.loading = false;
                 } catch (e) {
@@ -488,24 +681,24 @@
                     this.loading = false;
                 }
             },
-            
+
             prevPage() {
                 if (this.page <= 1) return;
                 this.page--;
                 this.renderPage(this.page);
             },
-            
+
             nextPage() {
                 if (this.page >= this.numPages) return;
                 this.page++;
                 this.renderPage(this.page);
             },
-            
+
             zoomIn() {
                 this.scale += 0.2;
                 this.renderPage(this.page);
             },
-            
+
             zoomOut() {
                 if (this.scale <= 0.4) return;
                 this.scale -= 0.2;
@@ -520,13 +713,13 @@
             duration: 0,
             showControls: false,
             muted: false,
-            
+
             initMedia() {
                 const el = this.$refs.media;
-                if(!el) return;
+                if (!el) return;
                 this.duration = el.duration;
             },
-            
+
             togglePlay() {
                 const el = this.$refs.media;
                 if (el.paused) {
@@ -537,12 +730,12 @@
                     this.playing = false;
                 }
             },
-            
+
             updateProgress() {
                 const el = this.$refs.media;
                 this.currentTime = el.currentTime;
             },
-            
+
             seek(e) {
                 const el = this.$refs.media;
                 // Calculate click position relative to progress bar
@@ -550,7 +743,7 @@
                 const pos = (e.clientX - rect.left) / rect.width;
                 el.currentTime = pos * el.duration;
             },
-            
+
             toggleMute() {
                 const el = this.$refs.media;
                 el.muted = !el.muted;
@@ -558,14 +751,14 @@
             },
 
             toggleFullscreen() {
-                 const el = this.$el; // Container
-                 if (!document.fullscreenElement) {
+                const el = this.$el; // Container
+                if (!document.fullscreenElement) {
                     el.requestFullscreen().catch(err => console.log(err));
-                 } else {
+                } else {
                     document.exitFullscreen();
-                 }
+                }
             },
-            
+
             formatTime(seconds) {
                 if (!seconds || isNaN(seconds)) return '0:00';
                 const m = Math.floor(seconds / 60);
@@ -573,20 +766,130 @@
                 return `${m}:${s < 10 ? '0' : ''}${s}`;
             }
         }));
+
+        // Main Asset Detail Component
+        Alpine.data('assetDetail', (currencySymbol) => ({
+            asset: {},
+            purchase: null,
+            currency: currencySymbol,
+            purchaseStatus: 'NONE',
+
+            init() {
+                // Load asset data
+                const assetDataEl = document.getElementById('asset-data');
+                if (assetDataEl) {
+                    try {
+                        this.asset = JSON.parse(assetDataEl.textContent);
+                        console.log('Asset loaded:', this.asset);
+                    } catch (e) {
+                        console.error('Failed to parse asset data:', e);
+                    }
+                }
+
+                // Load purchase data
+                const purchaseDataEl = document.getElementById('purchase-data');
+                if (purchaseDataEl) {
+                    try {
+                        this.purchase = JSON.parse(purchaseDataEl.textContent);
+                        if (this.purchase) {
+                            this.purchaseStatus = this.purchase.status;
+                        }
+                        console.log('Purchase status:', this.purchaseStatus);
+                    } catch (e) {
+                        console.error('Failed to parse purchase data:', e);
+                    }
+                }
+            },
+
+            formatCurrency(val) {
+                return parseFloat(val || 0).toFixed(2);
+            }
+        }));
+
+        // Asset Page Controller (for reviews, etc.)
+        Alpine.data('assetPageController', () => ({
+            visibleReviews: 3,
+
+            init() {
+                // Component initialization
+            },
+
+            showMoreReviews() {
+                this.visibleReviews += 3;
+            }
+        }));
     });
 </script>
 
 <style>
     .input-label {
-        @apply block text-sm font-bold text-gray-900 dark:text-white mb-2;
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: rgb(17 24 39);
+        margin-bottom: 0.5rem;
     }
+
+    :is(.dark .input-label) {
+        color: rgb(255 255 255);
+    }
+
+
     .input-field {
-        @apply w-full px-4 py-3.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none;
+        width: 100%;
+        padding: 0.875rem 1rem;
+        border: 1px solid rgb(229 231 235);
+        border-radius: 0.75rem;
+        background-color: rgb(249 250 251);
+        color: rgb(17 24 39);
+        transition: all 0.15s;
+        outline: none;
     }
-    .fade-in { opacity: 0; animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-    .animate-slide-up { animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
-    .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+    .input-field:focus {
+        box-shadow: 0 0 0 2px rgb(99 102 241);
+        border-color: rgb(99 102 241);
+    }
+
+    :is(.dark .input-field) {
+        border-color: rgb(55 65 81);
+        background-color: rgb(17 24 39);
+        color: rgb(255 255 255);
+    }
+
+    .fade-in {
+        opacity: 0;
+        animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes slide-up {
+        from {
+            transform: translateY(100%);
+        }
+
+        to {
+            transform: translateY(0);
+        }
+    }
+
+    .animate-slide-up {
+        animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
 </style>
 {% endblock %}

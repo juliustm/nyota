@@ -331,7 +331,30 @@ def save_asset_from_form(asset, req):
     
     AssetFile.query.filter_by(asset_id=asset.id).delete()
     for i, item in enumerate(form_data.get('contentItems', [])):
-        db.session.add(AssetFile(asset=asset, title=item.get('title'), description=item.get('description'), storage_path=item.get('link'), order_index=i))
+        # Infer file type from the link/path
+        link = item.get('link', '')
+        file_type = None
+        if link:
+            extension = link.split('.')[-1].lower().split('?')[0]  # Handle query params
+            if extension in ['pdf']:
+                file_type = 'pdf'
+            elif extension in ['mp3', 'wav', 'ogg', 'm4a', 'aac']:
+                file_type = 'audio'
+            elif extension in ['mp4', 'webm', 'mov', 'avi']:
+                file_type = 'video'
+            elif extension in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']:
+                file_type = 'image'
+            else:
+                file_type = 'other'
+        
+        db.session.add(AssetFile(
+            asset=asset, 
+            title=item.get('title'), 
+            description=item.get('description'), 
+            storage_path=link,
+            file_type=file_type,
+            order_index=i
+        ))
 
     asset.status = AssetStatus.DRAFT if form_data.get('action') == 'draft' else AssetStatus.PUBLISHED
     return asset

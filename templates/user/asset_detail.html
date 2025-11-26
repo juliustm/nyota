@@ -13,12 +13,14 @@
     {{ latest_purchase.to_dict()|tojson|safe if latest_purchase else 'null' }}
 </script>
 
-<div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-48">
+<div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()"
+    class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32 md:pb-24">
     <div x-data="assetPageController" x-init="init()">
-        <!-- Back Navigation & Page Header -->
-        <header class="py-8 fade-in">
+
+        <!-- Back Navigation -->
+        <nav class="py-6 md:py-8 fade-in">
             <a href="{{ url_for('main.landing_page') }}"
-                class="inline-flex items-center gap-2 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors group">
+                class="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors group">
                 <svg class="w-5 h-5 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24"
                     stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -26,21 +28,32 @@
                 </svg>
                 {{ translate('back_to_store') }}
             </a>
-        </header>
+        </nav>
 
-        <main class="grid grid-cols-1 lg:grid-cols-5 gap-8 lg:gap-12 items-start">
+        <main class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-16 items-start">
 
-            <div class="lg:col-span-3 space-y-16">
-                <!-- Hero Section: Title, Description, Image -->
+            <!-- LEFT COLUMN: Media & Description -->
+            <div class="lg:col-span-7 space-y-12">
+                <!-- Hero Section -->
                 <section class="fade-in" style="animation-delay: 100ms;">
-                    <span
-                        class="inline-block bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-semibold px-3 py-1 rounded-full text-sm mb-4">{{
-                        asset_obj.asset_type.value }}</span>
-                    <h1 class="text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-4"
+                    <div class="flex flex-wrap gap-3 mb-6">
+                        <span
+                            class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">
+                            {{ asset_obj.asset_type.value }}
+                        </span>
+                    </div>
+
+                    <h1 class="text-3xl md:text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight leading-tight mb-6"
                         x-text="asset.title"></h1>
-                    <p class="text-xl text-gray-600 dark:text-gray-300 leading-relaxed" x-text="asset.description"></p>
-                    <div class="relative rounded-2xl overflow-hidden shadow-2xl mt-8 aspect-[16/9]"><img
-                            :src="asset.cover_image_url" :alt="asset.title" class="w-full h-full object-cover"></div>
+
+                    <div
+                        class="relative rounded-2xl overflow-hidden shadow-2xl bg-gray-100 dark:bg-gray-800 aspect-video mb-8">
+                        <img :src="asset.cover_image_url" :alt="asset.title" class="w-full h-full object-cover">
+                    </div>
+
+                    <div class="prose prose-lg dark:prose-invert max-w-none">
+                        <p class="lead text-xl text-gray-600 dark:text-gray-300" x-text="asset.description"></p>
+                    </div>
                 </section>
 
                 {% set status = latest_purchase.status.name if latest_purchase else 'NONE' %}
@@ -48,33 +61,44 @@
                 {% if status == 'COMPLETED' %}
                 <!-- User Owns This: Show Access Content Section -->
                 <section id="content-access-section" class="fade-in" style="animation-delay: 200ms;">
-                    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl">
-                        <header class="p-6 border-b border-gray-200 dark:border-gray-700">
-                            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{{
-                                translate('access_your_content') }}</h2>
-                            <p class="text-gray-600 dark:text-gray-400 mt-1">{{ translate('thank_you_purchase') }}</p>
-                        </header>
-                        <div class="p-6 space-y-4">
+                    <div
+                        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden shadow-sm">
+                        <div
+                            class="p-6 md:p-8 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                            <h2 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                                <svg class="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                {{ translate('access_your_content') }}
+                            </h2>
+                            <p class="text-gray-600 dark:text-gray-400 mt-2">{{ translate('thank_you_purchase') }}</p>
+                        </div>
+                        <div class="p-6 md:p-8 space-y-4">
                             <template x-for="file in asset.files" :key="file.id">
                                 <a :href="file.link" target="_blank"
-                                    class="flex items-center gap-4 p-5 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl hover:shadow-lg hover:border-indigo-500 dark:hover:border-indigo-400 transition-all duration-300 group">
+                                    class="flex items-start gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all group">
                                     <div
-                                        class="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
+                                        class="flex-shrink-0 w-12 h-12 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                                         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                        </svg></div>
-                                    <div class="flex-1 min-w-0">
+                                        </svg>
+                                    </div>
+                                    <div class="flex-1 min-w-0 pt-1">
                                         <p class="font-semibold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors"
                                             x-text="file.title"></p>
                                         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1"
                                             x-text="file.description || '{{ translate('click_to_download') }}'"></p>
                                     </div>
-                                    <svg class="w-6 h-6 text-gray-400 dark:text-gray-500 group-hover:text-indigo-500 transition-transform group-hover:translate-x-1"
-                                        fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M9 5l7 7-7 7" />
-                                    </svg>
+                                    <div class="self-center">
+                                        <svg class="w-5 h-5 text-gray-400 group-hover:text-indigo-500 transition-transform group-hover:translate-x-1"
+                                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M9 5l7 7-7 7" />
+                                        </svg>
+                                    </div>
                                 </a>
                             </template>
                         </div>
@@ -85,132 +109,149 @@
                 <div class="space-y-16">
                     <section x-show="asset.story" class="fade-in" style="animation-delay: 200ms;">
                         <div class="prose prose-lg dark:prose-invert max-w-none">
-                            <h2 class="text-3xl font-bold">{{ translate('about_this_product') }}</h2>
+                            <h2 class="text-3xl font-bold mb-6">{{ translate('about_this_product') }}</h2>
                             <div x-html="renderMarkdown(asset.story)"></div>
                         </div>
                     </section>
+
                     <section x-show="asset.files && asset.files.length > 0" x-cloak class="fade-in"
                         style="animation-delay: 300ms;">
-                        <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">{{ translate('what_you_get')
+                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ translate('what_you_get')
                             }}</h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><template x-for="file in asset.files"
-                                :key="file.id">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <template x-for="file in asset.files" :key="file.id">
                                 <div
-                                    class="flex items-start gap-4 p-5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl">
+                                    class="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl">
                                     <div
-                                        class="flex-shrink-0 w-12 h-12 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        class="flex-shrink-0 w-10 h-10 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm border border-gray-100 dark:border-gray-700">
+                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                                 d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg></div>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="font-medium text-gray-900 dark:text-white" x-text="file.title"></p>
-                                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1"
+                                        </svg>
+                                    </div>
+                                    <div class="flex-1 min-w-0 pt-1">
+                                        <p class="font-medium text-gray-900 dark:text-white text-sm"
+                                            x-text="file.title"></p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1"
                                             x-text="file.description || '{{ translate('included_resource') }}'"></p>
                                     </div>
                                 </div>
-                            </template></div>
+                            </template>
+                        </div>
                     </section>
+
                     <section x-show="asset.reviews && asset.reviews.length > 0" x-cloak class="fade-in"
                         style="animation-delay: 400ms;">
-                        <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">{{
+                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">{{
                             translate('loved_by_customers') }}</h2>
-                        <div class="space-y-6"><template x-for="review in asset.reviews.slice(0, visibleReviews)"
-                                :key="review.author">
+                        <div class="grid gap-6">
+                            <template x-for="review in asset.reviews.slice(0, visibleReviews)" :key="review.author">
                                 <div
-                                    class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6">
-                                    <div class="flex items-start gap-4"><img :src="review.avatar" :alt="review.author"
-                                            class="w-12 h-12 rounded-full flex-shrink-0">
+                                    class="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-2xl p-6">
+                                    <div class="flex items-start gap-4">
+                                        <img :src="review.avatar" :alt="review.author"
+                                            class="w-10 h-10 rounded-full flex-shrink-0 bg-gray-200">
                                         <div class="flex-1">
-                                            <div class="flex items-center justify-between mb-1">
-                                                <p class="font-semibold" x-text="review.author"></p>
-                                                <div class="flex items-center gap-0.5"><template x-for="i in 5"><svg
-                                                            class="w-5 h-5"
-                                                            :class="i <= review.rating ? 'text-yellow-400' : 'text-gray-300'"
-                                                            fill="currentColor" viewBox="0 0 20 20">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <p class="font-bold text-gray-900 dark:text-white text-sm"
+                                                    x-text="review.author"></p>
+                                                <div class="flex text-yellow-400">
+                                                    <template x-for="i in 5"><svg class="w-4 h-4"
+                                                            :class="i <= review.rating ? 'fill-current' : 'text-gray-300 dark:text-gray-600'"
+                                                            viewBox="0 0 20 20">
                                                             <path
                                                                 d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                                        </svg></template></div>
+                                                        </svg></template>
+                                                </div>
                                             </div>
-                                            <p class="text-gray-700 dark:text-gray-300 leading-relaxed"
+                                            <p class="text-gray-600 dark:text-gray-300 text-sm leading-relaxed"
                                                 x-text="review.text"></p>
                                         </div>
                                     </div>
                                 </div>
-                            </template></div>
-                        <div x-show="visibleReviews < asset.reviews.length" class="text-center mt-8"><button
-                                @click="showMoreReviews()"
-                                class="px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50">{{
-                                translate('load_more_reviews') }}</button></div>
+                            </template>
+                        </div>
+                        <div x-show="visibleReviews < asset.reviews.length" class="text-center mt-8">
+                            <button @click="showMoreReviews()"
+                                class="px-6 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-full font-medium text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">{{
+                                translate('load_more_reviews') }}</button>
+                        </div>
                     </section>
                 </div>
                 {% endif %}
             </div>
 
-            <div class="lg:col-span-2">
-                <div class="lg:sticky lg:top-24 space-y-8 fade-in" style="animation-delay: 250ms;">
+            <!-- RIGHT COLUMN: Sticky Purchase Card (Desktop) -->
+            <div class="lg:col-span-5 relative">
+                <div class="lg:sticky lg:top-24 space-y-6 fade-in" style="animation-delay: 250ms;">
+
+                    <!-- Purchase Card -->
                     <div
-                        class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
+                        class="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-xl p-6 md:p-8">
                         {% if status == 'COMPLETED' %}
-                        <div class="text-center">
+                        <div class="text-center py-6">
                             <div
-                                class="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center mx-auto">
+                                class="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-6">
                                 <svg class="w-10 h-10 text-green-600 dark:text-green-400" fill="none"
                                     viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M5 13l4 4L19 7" />
-                                </svg></div>
-                            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mt-4">{{
+                                </svg>
+                            </div>
+                            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{
                                 translate('you_own_this') }}</h2>
-                            <p class="text-gray-600 dark:text-gray-400 mt-2">{{ translate('access_message') }}</p><a
-                                href="{{ url_for('main.library') }}"
-                                class="mt-4 inline-block w-full text-center font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-lg">{{
-                                translate('go_to_library') }}</a>
+                            <p class="text-gray-600 dark:text-gray-400 mb-6">{{ translate('access_message') }}</p>
+                            <a href="{{ url_for('main.library') }}"
+                                class="block w-full text-center font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-6 py-4 rounded-xl transition-transform hover:scale-[1.02] shadow-lg shadow-indigo-500/20">
+                                {{ translate('go_to_library') }}
+                            </a>
                         </div>
                         {% else %}
-                        <div class="flex items-baseline gap-2 mb-6"><span class="text-4xl font-bold"
-                                x-text="currency + formatCurrency(asset.price)"></span></div>
+                        <div class="flex items-baseline gap-2 mb-8">
+                            <span class="text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight"
+                                x-text="currency + formatCurrency(asset.price)"></span>
+                        </div>
 
                         {% if status == 'PENDING' %}
-                        <div class="mb-4 text-center p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-xl space-y-2">
-                            <p
-                                class="font-semibold flex items-center justify-center gap-2 text-yellow-800 dark:text-yellow-300">
-                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd"
-                                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-                                        clip-rule="evenodd" />
-                                </svg>
+                        <div
+                            class="mb-6 p-5 bg-yellow-50 dark:bg-yellow-900/20 rounded-2xl border border-yellow-100 dark:border-yellow-900/50">
+                            <div class="flex items-center gap-3 mb-3 text-yellow-800 dark:text-yellow-300 font-bold">
+                                <div class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
                                 {{ translate('awaiting_payment') }}
-                            </p>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">
+                            </div>
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">
                                 {{ translate('check_phone_payment') }}
-                                <strong class="font-semibold text-gray-800 dark:text-gray-200">{{
-                                    latest_purchase.phone_number }}</strong>.
+                                <span
+                                    class="font-mono font-bold text-gray-900 dark:text-white bg-white dark:bg-gray-800 px-1.5 py-0.5 rounded">{{
+                                    latest_purchase.phone_number }}</span>
                             </p>
-                            <div class="pt-2 text-xs">
+                            <div class="flex gap-3 text-xs font-semibold">
                                 <button @click="$dispatch('open-checkout-modal', { phoneNumber: phoneNumber })"
                                     :disabled="isProcessing"
-                                    class="font-semibold text-indigo-600 hover:text-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">{{
+                                    class="text-indigo-600 hover:text-indigo-500 underline decoration-2 underline-offset-2">{{
                                     translate('change_number') }}</button>
-                                <span class="mx-2 text-gray-400">|</span>
                                 <button @click="cancelPayment()" :disabled="isProcessing"
-                                    class="font-semibold text-red-600 hover:text-red-500 disabled:opacity-50 disabled:cursor-not-allowed">{{
+                                    class="text-red-600 hover:text-red-500 underline decoration-2 underline-offset-2">{{
                                     translate('cancel_payment') }}</button>
                             </div>
                         </div>
 
                         {% elif status == 'FAILED' %}
                         <div
-                            class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg text-sm">
-                            {{ translate('payment_failed_retry') }}</div>
-                        <div><label for="retry_phone" class="input-label">{{ translate('payment_phone_number')
-                                }}</label><input type="tel" id="retry_phone" x-model="phoneNumber"
-                                placeholder="{{ translate('enter_number_placeholder') }}" class="input-field mb-3">
+                            class="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl text-sm font-medium flex items-start gap-3">
+                            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            {{ translate('payment_failed_retry') }}
                         </div>
                         {% endif %}
 
                         <button @click="handlePurchaseAction()" :disabled="isProcessing"
-                            class="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl shadow-lg transition-transform hover:scale-[1.02] active:scale-100 disabled:opacity-60 disabled:cursor-wait">
+                            class="w-full group relative flex items-center justify-center gap-3 px-8 py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold text-lg rounded-2xl shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-wait disabled:scale-100">
+                            <span
+                                class="absolute inset-0 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 opacity-0 group-hover:opacity-10 transition-opacity"></span>
                             <svg x-show="isProcessing" class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
                                     stroke-width="4"></circle>
@@ -219,97 +260,161 @@
                             </svg>
                             <span x-show="isRetrying">{{ translate('sending_request') }}</span>
                             <span x-show="isCancelling">{{ translate('cancelling') }}</span>
-                            <span x-show="!isProcessing">{% if status == 'FAILED' or status == 'PENDING' %}{{
-                                translate('retry_payment') }}{% else %}<span
+                            <span x-show="!isProcessing">
+                                {% if status == 'FAILED' or status == 'PENDING' %}{{ translate('retry_payment') }}
+                                {% else %}<span
                                     x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{%
-                                endif %}</span>
+                                endif %}
+                            </span>
                         </button>
 
                         <p x-show="feedbackMessage" :class="isSuccess ? 'text-green-600' : 'text-red-600'"
-                            class="text-sm font-semibold mt-3 text-center" x-text="feedbackMessage" x-transition></p>
+                            class="text-sm font-semibold mt-4 text-center animate-pulse" x-text="feedbackMessage"
+                            x-transition></p>
+
+                        <div class="mt-6 flex items-center justify-center gap-6 text-gray-400 dark:text-gray-500">
+                            <div class="flex items-center gap-1.5 text-xs font-medium" title="Secure Payment"><svg
+                                    class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg> Secure</div>
+                            <div class="flex items-center gap-1.5 text-xs font-medium" title="Instant Access"><svg
+                                    class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg> Instant</div>
+                        </div>
                         {% endif %}
                     </div>
                 </div>
             </div>
         </main>
 
-        <!-- STICKY FOOTER CTA -->
-        <div class="fixed bottom-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 shadow-lg animate-slide-up"
+        <!-- MOBILE STICKY FOOTER CTA -->
+        <div class="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] pb-safe animate-slide-up"
             x-show="purchaseStatus !== 'COMPLETED'">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                <div class="flex items-center justify-between gap-4">
-                    <div>
-                        <p class="text-sm text-gray-600 dark:text-gray-400" x-text="asset.title"></p>
-                        <p class="text-2xl font-bold"><span x-text="currency"></span><span
-                                x-text="formatCurrency(asset.price)"></span></p>
-                    </div>
-                    <button @click="handlePurchaseAction()" :disabled="isProcessing"
-                        class="w-full sm:w-auto flex-shrink-0 px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-lg shadow-lg disabled:opacity-60 disabled:cursor-wait">
-                        <span x-show="isRetrying">{{ translate('sending_request') }}</span>
-                        <span x-show="isCancelling">{{ translate('cancelling') }}</span>
-                        <span x-show="!isProcessing">{% if status == 'FAILED' %}{{ translate('retry_payment') }}{% elif
-                            status == 'PENDING' %}{{ translate('retry_payment') }}{% else %}<span
-                                x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{%
-                            endif %}</span>
-                    </button>
+            <div class="px-4 py-3 max-w-md mx-auto flex items-center gap-4">
+                <div class="flex-1 min-w-0">
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 truncate" x-text="asset.title"></p>
+                    <p class="text-xl font-bold text-gray-900 dark:text-white leading-none mt-0.5"><span
+                            x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span></p>
                 </div>
+                <button @click="handlePurchaseAction()" :disabled="isProcessing"
+                    class="flex-shrink-0 px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl shadow-lg disabled:opacity-70 disabled:cursor-wait active:scale-95 transition-transform">
+                    <span x-show="isRetrying">{{ translate('sending_request') }}</span>
+                    <span x-show="isCancelling">{{ translate('cancelling') }}</span>
+                    <span x-show="!isProcessing">
+                        {% if status == 'FAILED' %}{{ translate('retry_payment') }}
+                        {% elif status == 'PENDING' %}{{ translate('retry_payment') }}
+                        {% else %}<span
+                            x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{%
+                        endif %}
+                    </span>
+                </button>
             </div>
         </div>
 
         <!-- The Checkout Modal -->
         <div x-data="checkout(asset, '{{ currency_symbol }}', '{{ url_for('main.initiate_payment') }}')">
             <div x-show="isOpen"
-                class="fixed inset-0 z-[99] bg-gray-900/80 backdrop-blur-sm flex items-center justify-center p-4"
+                class="fixed inset-0 z-[99] bg-gray-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
                 x-cloak>
                 <div @click.outside="closeModal()"
-                    class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-auto p-8 transform-gpu transition-all"
+                    class="relative bg-white dark:bg-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md mx-auto p-6 sm:p-8 transform-gpu transition-all"
                     x-show="isOpen" x-transition:enter="ease-out duration-300"
-                    x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
-                    x-transition:leave="ease-in duration-200" x-transition:leave-start="opacity-100 scale-100"
-                    x-transition:leave-end="opacity-0 scale-95">
+                    x-transition:enter-start="translate-y-full sm:translate-y-10 opacity-0"
+                    x-transition:enter-end="translate-y-0 opacity-100" x-transition:leave="ease-in duration-200"
+                    x-transition:leave-start="translate-y-0 opacity-100"
+                    x-transition:leave-end="translate-y-full sm:translate-y-10 opacity-0">
+
+                    <!-- Drag Handle (Mobile) -->
+                    <div class="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-6 sm:hidden"></div>
+
                     <div x-show="status === 'ready' || status === 'failed'">
                         <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{
                             translate('complete_purchase') }}</h3>
-                        <p class="text-gray-600 dark:text-gray-400 mb-6">{{ translate('enter_mobile_instruction') }}</p>
+                        <p class="text-gray-600 dark:text-gray-400 mb-8 leading-relaxed">{{
+                            translate('enter_mobile_instruction') }}</p>
+
                         <form @submit.prevent="initiatePayment()">
-                            <div class="mb-4"><label for="phone" class="input-label">{{ translate('mobile_phone_number')
-                                    }}</label><input type="tel" id="phone" x-ref="phoneInput" x-model="phoneNumber"
-                                    @input="formatPhoneNumber()" placeholder="e.g. 0712345678" class="input-field"
-                                    required></div>
+                            <div class="mb-6">
+                                <label for="phone" class="input-label">{{ translate('mobile_phone_number') }}</label>
+                                <div class="relative">
+                                    <input type="tel" id="phone" x-ref="phoneInput" x-model="phoneNumber"
+                                        @input="formatPhoneNumber()" placeholder="07XX XXX XXX"
+                                        class="input-field pl-4 text-lg tracking-wide font-mono" required>
+                                    <div
+                                        class="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-400">
+                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+
                             <p x-show="errorMessage" x-text="errorMessage"
-                                class="text-sm text-red-600 dark:text-red-400 mb-4"></p><button type="submit"
-                                class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-lg">Pay
-                                <span x-text="currency + formatCurrency(asset.price)"></span></button>
+                                class="p-3 mb-6 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 rounded-lg text-sm font-medium text-center">
+                            </p>
+
+                            <button type="submit"
+                                class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl text-lg shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all">
+                                Pay <span x-text="currency + formatCurrency(asset.price)"></span>
+                            </button>
+
+                            <p
+                                class="mt-4 text-center text-xs text-gray-400 dark:text-gray-500 flex items-center justify-center gap-1">
+                                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                                {{ translate('bank_level_encryption') }}
+                            </p>
                         </form>
                     </div>
-                    <div x-show="status === 'initiating' || status === 'waiting'" class="text-center py-8"><svg
-                            class="animate-spin h-12 w-12 text-indigo-500 mx-auto" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
-                            </circle>
-                            <path class="opacity-75" fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                        </svg>
-                        <h3 class="text-2xl font-bold mt-6"
+
+                    <div x-show="status === 'initiating' || status === 'waiting'" class="text-center py-8">
+                        <div class="relative w-20 h-20 mx-auto mb-6">
+                            <div class="absolute inset-0 border-4 border-gray-100 dark:border-gray-700 rounded-full">
+                            </div>
+                            <div
+                                class="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin">
+                            </div>
+                        </div>
+                        <h3 class="text-2xl font-bold mt-6 text-gray-900 dark:text-white"
                             x-text="status === 'initiating' ? '{{ translate('sending_request') }}' : '{{ translate('awaiting_payment') }}'">
                         </h3>
-                        <p class="mt-2" x-text="statusMessage"></p>
-                        <p class="text-sm text-gray-500 mt-4">{{ translate('check_phone_complete') }}</p>
+                        <p class="mt-2 text-gray-600 dark:text-gray-300" x-text="statusMessage"></p>
+                        <div class="mt-8 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl">
+                            <p class="text-sm font-medium text-gray-900 dark:text-white mb-1">{{
+                                translate('check_phone_complete') }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Keep this window open</p>
+                        </div>
                     </div>
+
                     <div x-show="status === 'success'" class="text-center py-8">
-                        <div class="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto"><svg
-                                class="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        <div
+                            class="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-6 animate-[bounce_1s_infinite]">
+                            <svg class="w-10 h-10 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
                                     d="M5 13l4 4L19 7" />
-                            </svg></div>
-                        <h3 class="text-2xl font-bold mt-6">{{ translate('payment_successful') }}</h3>
-                        <p class="mt-2" x-text="statusMessage"></p>
-                        <p class="text-sm text-gray-500 mt-4">{{ translate('redirecting') }}</p>
+                            </svg>
+                        </div>
+                        <h3 class="text-2xl font-bold mt-6 text-gray-900 dark:text-white">{{
+                            translate('payment_successful') }}</h3>
+                        <p class="mt-2 text-gray-600 dark:text-gray-300" x-text="statusMessage"></p>
+                        <p class="text-sm text-indigo-600 dark:text-indigo-400 mt-6 font-medium animate-pulse">{{
+                            translate('redirecting') }}</p>
                     </div>
-                    <button @click="closeModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><svg
-                            class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+
+                    <button @click="closeModal()"
+                        class="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M6 18L18 6M6 6l12 12" />
-                        </svg></button>
+                        </svg>
+                    </button>
                 </div>
             </div>
         </div>
@@ -319,16 +424,16 @@
 
 <style>
     .input-label {
-        @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5;
+        @apply block text-sm font-bold text-gray-900 dark:text-white mb-2;
     }
 
     .input-field {
-        @apply w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 transition-colors text-base;
+        @apply w-full px-4 py-3.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none;
     }
 
     .fade-in {
         opacity: 0;
-        animation: fadeInUp 0.6s ease-out forwards;
+        animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
     @keyframes fadeInUp {
@@ -354,34 +459,11 @@
     }
 
     .animate-slide-up {
-        animation: slide-up 0.4s ease-out;
+        animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .prose {
-        line-height: 1.75;
-    }
-
-    .prose h2,
-    .prose h3 {
-        font-weight: 800;
-        color: #111827;
-    }
-
-    .dark .prose h2,
-    .dark .prose h3 {
-        color: #f9fafb;
-    }
-
-    .prose p,
-    .prose ul,
-    .prose li {
-        color: #4b5563;
-    }
-
-    .dark .prose p,
-    .dark .prose ul,
-    .dark .prose li {
-        color: #d1d5db;
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
     }
 </style>
 {% endblock %}

@@ -67,8 +67,15 @@ def create_app(config_class=Config):
     def inject_global_vars():
         return dict(
             store_name="Nyota ✨",
-            currency_symbol="TZS",
+            currency_symbol=get_currency_symbol(),
             translate=translate
         )
+
+    def get_currency_symbol():
+        from models.nyota import Creator
+        creator = Creator.query.first()
+        if creator:
+            return creator.get_setting('payment_uza_currency', 'TZS')
+        return 'TZS'
         
     return app

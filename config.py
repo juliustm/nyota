@@ -10,9 +10,10 @@ class Config:
     PERMANENT_SESSION_LIFETIME = timedelta(days=365)
 
     # --- THE PROVEN DATABASE CONFIGURATION ---
-    # 1. Define the absolute path for our data directory inside the container.
-    #    The application's root is '/app'.
-    DATA_DIR = '/app/data'
+    # 1. Define the absolute path for our data directory.
+    #    Use current working directory for local development.
+    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+    DATA_DIR = os.path.join(BASE_DIR, 'instance')
     
     # 2. Proactively ensure this directory exists. This is the critical step.
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -27,5 +28,5 @@ class Config:
 
     # --- UPLOAD FOLDER CONFIGURATION ---
     # Also use an absolute path for consistency.
-    UPLOAD_FOLDER = '/app/static/uploads'
+    UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)

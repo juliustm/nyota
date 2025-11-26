@@ -1,267 +1,197 @@
 {% extends "user/base.html" %}
 
-{% block title %}Checkout - {{ asset.title }}{% endblock %}
+{% block title %}{{ translate('checkout') }} - {{ asset.title }}{% endblock %}
 
 {% block content %}
 <script type="application/json" id="checkout-data">{{ asset|tojson|safe }}</script>
 
 <div x-data="checkoutForm(JSON.parse(document.getElementById('checkout-data').textContent), '{{ channel_id }}')"
     data-payment-url="{{ url_for('main.initiate_payment') }}"
-    data-session-url="{{ url_for('main.set_payment_success_session') }}" class="max-w-4xl mx-auto px-4">
+    data-session-url="{{ url_for('main.set_payment_success_session') }}"
+    class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
 
-    <!-- Simplified Header Section -->
-    <div class="text-center mb-8 fade-in">
-        <div class="inline-flex items-center gap-2 bg-gray-100 dark:bg-gray-800 px-4 py-2 rounded-lg mb-4">
-            <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24"
-                stroke="currentColor">
+    <!-- Header -->
+    <div class="text-center py-8 md:py-12 fade-in">
+        <div
+            class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold uppercase tracking-wide mb-4">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ translate('secure_checkout') }}</span>
+            {{ translate('secure_checkout') }}
         </div>
-        <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-3">{{ translate('complete_purchase')
-            }}</h1>
-        <p class="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">{{ translate('one_step_away') }} <span
-                class="font-semibold text-gray-700 dark:text-gray-200" x-text="asset.title"></span></p>
-        <div class="mt-4">
-            <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}"
-                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-600 transition-colors">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                {{ translate('back_to_details') }}
-            </a>
-        </div>
+        <h1 class="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-2">{{
+            translate('complete_purchase') }}</h1>
+        <p class="text-gray-500 dark:text-gray-400">{{ translate('one_step_away') }}</p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-        <!-- Simplified Order Summary Card -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 fade-in"
-            style="animation-delay: 0.1s;">
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">{{ translate('order_summary') }}</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
 
-            <!-- Product Display -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-4">
-                <div class="flex items-start gap-4">
+        <!-- Order Summary -->
+        <div class="order-2 md:order-1 fade-in" style="animation-delay: 100ms;">
+            <div class="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">{{ translate('order_summary') }}</h2>
+
+                <div class="flex gap-4 mb-6">
                     <img src="{{ asset.cover_image_url }}" alt="{{ asset.title }}"
-                        class="w-16 h-16 rounded-lg object-cover">
-                    <div class="flex-1">
-                        <h3 class="font-bold text-gray-900 dark:text-white text-lg mb-1" x-text="asset.title"></h3>
-                        <p class="text-gray-600 dark:text-gray-400 text-sm mb-2" x-text="asset.details_line"></p>
-                        <div class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                            <svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M5 13l4 4L19 7" />
-                            </svg>
-                            <span>{{ translate('instant_delivery') }}</span>
+                        class="w-20 h-20 rounded-xl object-cover shadow-sm bg-gray-200">
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-bold text-gray-900 dark:text-white text-base leading-tight mb-1">{{ asset.title
+                            }}</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{{ asset.description }}</p>
+                    </div>
+                </div>
+
+                <div class="space-y-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600 dark:text-gray-400">{{ translate('subtotal') }}</span>
+                        <span class="font-medium text-gray-900 dark:text-white">{{ currency_symbol }}{{
+                            "%.2f"|format(asset.price) }}</span>
+                    </div>
+
+                    <!-- Quantity Selector (if applicable) -->
+                    <div x-show="asset.allow_multiple" x-cloak class="flex justify-between items-center">
+                        <span class="text-gray-600 dark:text-gray-400">{{ translate('quantity') }}</span>
+                        <div
+                            class="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800">
+                            <button @click="quantity > 1 ? quantity-- : null"
+                                :class="{ 'opacity-50 cursor-not-allowed': quantity <= 1 }"
+                                class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-indigo-600"><svg
+                                    class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M20 12H4" />
+                                </svg></button>
+                            <span class="w-8 text-center font-semibold text-sm" x-text="quantity"></span>
+                            <button @click="quantity++"
+                                class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-indigo-600"><svg
+                                    class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 4v16m8-8H4" />
+                                </svg></button>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- Dynamic Quantity Selector -->
-            <div x-show="asset.allow_multiple" x-cloak class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-4">
-                <div class="flex items-center justify-between mb-3">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ translate('quantity')
-                        }}</label>
-                    <span class="text-xs text-gray-500 dark:text-gray-400">{{ translate('bulk_discount') }}</span>
-                </div>
-                <div class="flex items-center justify-between">
-                    <div
-                        class="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
-                        <button @click="quantity > 1 ? quantity-- : null"
-                            :class="{ 'opacity-50 cursor-not-allowed': quantity <= 1 }"
-                            class="w-10 h-10 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
-                            </svg>
-                        </button>
-                        <div class="w-12 text-center">
-                            <span class="font-bold text-lg text-gray-900 dark:text-white" x-text="quantity"></span>
-                        </div>
-                        <button @click="quantity++"
-                            class="w-10 h-10 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M12 4v16m8-8H4" />
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="text-right">
-                        <div class="text-sm text-gray-500 dark:text-gray-400">{{ translate('unit_price') }}</div>
-                        <div class="font-semibold text-gray-900 dark:text-white"
-                            x-text="`{{ currency_symbol }}${asset.price.toFixed(2)}`"></div>
+                    <div class="flex justify-between items-center pt-3 border-t border-gray-200 dark:border-gray-700">
+                        <span class="font-bold text-gray-900 dark:text-white">{{ translate('total') }}</span>
+                        <span class="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400">{{ currency_symbol
+                            }}<span x-text="totalPrice.toFixed(2)"></span></span>
                     </div>
                 </div>
-            </div>
 
-            <!-- Total Price Display -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 p-4">
-                <div class="flex justify-between items-center">
-                    <div>
-                        <span class="text-lg font-semibold text-gray-600 dark:text-gray-400">{{
-                            translate('total_amount') }}</span>
-                        <div class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ translate('including_taxes') }}
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <div class="text-2xl font-bold text-gray-900 dark:text-white"
-                            x-text="`{{ currency_symbol }}${totalPrice.toFixed(2)}`"></div>
-                        <template x-if="asset.purchase_type === 'subscription'">
-                            <div class="text-sm text-gray-500 dark:text-gray-400 mt-1"
-                                x-text="`per ${asset.subscription_interval}`"></div>
-                        </template>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Trust Badges -->
-            <div class="mt-4 flex items-center justify-center gap-4 text-center">
-                <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                    <svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    <span>{{ translate('secure_payment') }}</span>
-                </div>
-                <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                    <svg class="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    <span>{{ translate('instant_access') }}</span>
+                <div class="mt-6 flex items-center justify-center gap-4 text-xs text-gray-400 dark:text-gray-500">
+                    <span class="flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg> {{ translate('instant_delivery') }}</span>
+                    <span class="flex items-center gap-1"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg> {{ translate('secure_payment') }}</span>
                 </div>
             </div>
         </div>
 
-        <!-- Simplified Payment Form Card -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 fade-in"
-            style="animation-delay: 0.2s;">
-            <!-- Ready State -->
-            <div x-show="state === 'ready'">
-                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">{{ translate('payment_details') }}
-                </h2>
+        <!-- Payment Form -->
+        <div class="order-1 md:order-2 fade-in" style="animation-delay: 200ms;">
+            <div
+                class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6 md:p-8 relative overflow-hidden">
 
-                <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-4">
-                    <p class="text-gray-600 dark:text-gray-300 mb-4 text-center">{{ translate('secure_request_message')
-                        }}</p>
+                <!-- Loading Overlay -->
+                <div x-show="state === 'waiting'"
+                    class="absolute inset-0 bg-white/90 dark:bg-gray-800/95 z-10 flex flex-col items-center justify-center p-6 text-center"
+                    x-transition>
+                    <div class="relative w-20 h-20 mb-6">
+                        <div class="absolute inset-0 border-4 border-gray-100 dark:border-gray-700 rounded-full"></div>
+                        <div
+                            class="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin">
+                        </div>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">{{ translate('waiting_for_payment')
+                        }}</h3>
+                    <p class="text-gray-600 dark:text-gray-300 mb-6" x-text="statusMessage"></p>
+                    <div class="w-full max-w-xs bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                        <div class="h-full bg-indigo-500 animate-progress origin-left"></div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-4">{{ translate('check_phone_complete') }}</p>
+                </div>
 
-                    <div class="space-y-4">
-                        <div>
-                            <label for="phone_number"
-                                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                {{ translate('mobile_phone_number') }}
-                            </label>
+                <div x-show="state === 'ready'">
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-6">{{ translate('payment_details') }}
+                    </h2>
+
+                    <form @submit.prevent="submitPayment()">
+                        <div class="mb-6">
+                            <label for="phone" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">{{
+                                translate('mobile_phone_number') }}</label>
                             <div class="relative">
-                                <input type="text" x-model="phoneNumber" id="phone_number" inputmode="tel"
-                                    placeholder="e.g., 0712345678"
-                                    class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-base">
-                                <div class="absolute inset-y-0 right-0 flex items-center pr-3">
-                                    <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24"
-                                        stroke="currentColor">
+                                <input type="tel" id="phone" x-model="phoneNumber" placeholder="07XX XXX XXX"
+                                    class="w-full px-4 py-3.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none text-lg tracking-wide font-mono"
+                                    required>
+                                <div
+                                    class="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-gray-400">
+                                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                            d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
                                     </svg>
                                 </div>
                             </div>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{
-                                translate('enter_mobile_instruction') }}</p>
+                            <p class="text-xs text-gray-500 mt-2">{{ translate('enter_mobile_instruction') }}</p>
                         </div>
+
+                        <p x-show="errorMessage" x-text="errorMessage"
+                            class="mb-6 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 rounded-lg text-sm font-medium text-center border border-red-100 dark:border-red-800/50"
+                            x-cloak></p>
+
+                        <button type="submit" :disabled="!phoneNumber.trim()"
+                            class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-lg shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none">
+                            {{ translate('pay_now', amount='') }} {{ currency_symbol }}<span
+                                x-text="totalPrice.toFixed(2)"></span>
+                        </button>
+                    </form>
+
+                    <div class="mt-6 text-center">
+                        <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}"
+                            class="text-sm font-medium text-gray-500 hover:text-gray-900 dark:hover:text-gray-300 transition-colors">{{
+                            translate('cancel_and_return') }}</a>
                     </div>
                 </div>
-
-                <!-- Dynamic Pay Button -->
-                <button @click="submitPayment()" :disabled="!phoneNumber.trim()"
-                    :class="{ 'opacity-50 cursor-not-allowed': !phoneNumber.trim(), 'hover:bg-indigo-500': phoneNumber.trim() }"
-                    class="w-full inline-flex items-center justify-center gap-2 px-6 py-4 text-lg font-semibold text-white bg-indigo-600 rounded-lg transition-colors">
-                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    <span
-                        x-text="`{{ translate('pay_now', amount='') }} {{ currency_symbol }}${totalPrice.toFixed(2)}`"></span>
-                </button>
-
-                <!-- Payment Security Note -->
-                <div class="mt-4 text-center">
-                    <p class="text-sm text-gray-500 dark:text-gray-400 flex items-center justify-center gap-2">
-                        <svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                        {{ translate('bank_level_encryption') }}
-                    </p>
-                </div>
-            </div>
-
-            <!-- Waiting State -->
-            <div x-show="state === 'waiting'" x-cloak class="text-center py-8">
-                <div
-                    class="w-16 h-16 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <svg class="animate-spin h-8 w-8 text-indigo-600 dark:text-indigo-400" fill="none"
-                        viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
-                        </circle>
-                        <path class="opacity-75" fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                        </path>
-                    </svg>
-                </div>
-                <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">{{ translate('waiting_for_payment') }}
-                </h2>
-                <p class="text-gray-600 dark:text-gray-300 mb-2" x-text="statusMessage"></p>
-                <p class="text-sm text-gray-500 dark:text-gray-400">{{ translate('check_phone_complete') }}</p>
-
-                <!-- Progress Steps -->
-                <div class="mt-6 flex justify-center items-center gap-4">
-                    <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ translate('request_sent') }}</span>
-                    </div>
-                    <div class="w-6 h-0.5 bg-gray-300 dark:bg-gray-600"></div>
-                    <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></div>
-                        <span class="text-sm text-gray-700 dark:text-gray-300">{{ translate('awaiting') }}</span>
-                    </div>
-                    <div class="w-6 h-0.5 bg-gray-300 dark:bg-gray-600"></div>
-                    <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
-                        <span class="text-sm text-gray-500 dark:text-gray-400">{{ translate('complete') }}</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Error Message -->
-            <p x-show="errorMessage" x-text="errorMessage"
-                class="mt-4 p-3 text-center text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 font-medium"
-                x-cloak></p>
-        </div>
-    </div>
-
-    <!-- Support Section -->
-    <div class="mt-8 text-center fade-in" style="animation-delay: 0.3s;">
-        <div
-            class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 max-w-2xl mx-auto">
-            <div class="flex items-center justify-center gap-2 mb-3">
-                <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192L5.636 18.364M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ translate('need_help') }}</h3>
-            </div>
-            <p class="text-gray-600 dark:text-gray-300 mb-3">{{ translate('support_team_message') }}</p>
-            <div class="flex flex-wrap justify-center gap-3 text-sm">
-                <a href="#" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 font-medium">{{
-                    translate('contact_support') }}</a>
-                <span class="text-gray-300 dark:text-gray-600">•</span>
-                <a href="#" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 font-medium">{{
-                    translate('payment_faq') }}</a>
-                <span class="text-gray-300 dark:text-gray-600">•</span>
-                <a href="#" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 font-medium">{{
-                    translate('refund_policy') }}</a>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+    .fade-in {
+        opacity: 0;
+        animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes progress {
+        0% {
+            width: 0%;
+        }
+
+        100% {
+            width: 100%;
+        }
+    }
+
+    .animate-progress {
+        animation: progress 30s linear forwards;
+    }
+</style>
 {% endblock %}

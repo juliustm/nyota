@@ -200,8 +200,7 @@ def creator_dashboard():
     return render_template(
         'admin/dashboard.html', 
         stats=stats, 
-        activity=recent_activity,
-        currency_symbol=g.creator.get_setting('currency_symbol', '$')
+        activity=recent_activity
     )
 
 @admin_bp.route('/assets')
@@ -209,7 +208,7 @@ def creator_dashboard():
 def list_assets():
     creator_assets = DigitalAsset.query.filter_by(creator_id=g.creator.id).order_by(DigitalAsset.updated_at.desc()).all()
     assets_data = [{'id': a.id, 'title': a.title, 'description': a.description, 'cover': a.cover_image_url, 'type': a.asset_type.name, 'status': a.status.value, 'sales': a.total_sales, 'revenue': float(a.total_revenue), 'updated_at': a.updated_at} for a in creator_assets]
-    return render_template('admin/assets.html', assets=json.dumps(assets_data, default=json_serial), currency_symbol=g.creator.get_setting('currency_symbol', '$'))
+    return render_template('admin/assets.html', assets=json.dumps(assets_data, default=json_serial))
 
 @admin_bp.route('/assets/new', methods=['GET', 'POST'])
 @creator_login_required
@@ -233,7 +232,7 @@ def asset_edit(asset_id):
     asset = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
     recent_purchases = Purchase.query.filter_by(asset_id=asset.id).order_by(Purchase.purchase_date.desc()).limit(5).all()
     recent_comments = Comment.query.filter_by(asset_id=asset.id).order_by(Comment.created_at.desc()).limit(5).all()
-    return render_template('admin/asset_view.html', asset=asset, recent_purchases=recent_purchases, recent_comments=recent_comments, currency_symbol=g.creator.get_setting('currency_symbol', '$'), statuses=[s.value for s in AssetStatus])
+    return render_template('admin/asset_view.html', asset=asset, recent_purchases=recent_purchases, recent_comments=recent_comments, statuses=[s.value for s in AssetStatus])
 
 @admin_bp.route('/api/assets/<int:asset_id>/update', methods=['POST'])
 @creator_login_required
@@ -290,7 +289,6 @@ def update_asset_details(asset_id):
         asset=asset,
         recent_purchases=recent_purchases,
         recent_comments=recent_comments,
-        currency_symbol=g.creator.get_setting('currency_symbol', '$'),
         statuses=[s.value for s in AssetStatus]
     )
 
@@ -401,8 +399,7 @@ def supporters():
 
     return render_template(
         'admin/supporters.html', 
-        supporters=json.dumps(supporters_data, default=json_serial),
-        currency_symbol=g.creator.get_setting('currency_symbol', '$')
+        supporters=json.dumps(supporters_data, default=json_serial)
     )
 
 @admin_bp.route('/settings', methods=['GET', 'POST'])
@@ -598,7 +595,6 @@ def landing_page():
         store_name=creator.store_name,
         categorized_assets=categorized_assets,
         user_purchases=user_purchases, # Pass the purchase map to the template
-        currency_symbol=creator.get_setting('currency_symbol', '$')
     )
 
 @main_bp.route('/set-language/<lang_code>')
@@ -628,8 +624,7 @@ def asset_detail(slug):
         asset_obj=asset_obj,
         asset_json=asset_json,
         latest_purchase=latest_purchase, 
-        store_name=creator.store_name if creator else "Creator Store",
-        currency_symbol=creator.get_setting('currency_symbol', '$') if creator else '$'
+        store_name=creator.store_name if creator else "Creator Store"
     )
 
 @main_bp.route('/checkout/<slug>')
@@ -884,8 +879,7 @@ def library():
         'user/library.html',
         customer_phone=customer_phone,
         purchases=purchases,
-        store_name=creator.store_name if creator else "Creator Store",
-        currency_symbol=creator.get_setting('currency_symbol', '$') if creator else '$'
+        store_name=creator.store_name if creator else "Creator Store"
     )
 
 @main_bp.route('/logout')

@@ -11,8 +11,8 @@
 <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    function renderMarkdown(text) { 
-        return typeof marked !== 'undefined' ? marked.parse(text || '') : text; 
+    function renderMarkdown(text) {
+        return typeof marked !== 'undefined' ? marked.parse(text || '') : text;
     }
 
     function getFileType(url) {
@@ -34,17 +34,19 @@
 </script>
 
 <!-- Main Container: px-0 on mobile for edge-to-edge PDF, padding restored on inner elements -->
-<div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()" 
-     class="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 pb-32 md:pb-24">
-    
+<div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()"
+    class="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 pb-32 md:pb-24">
+
     <div x-data="assetPageController" x-init="init()">
 
         <!-- Back Nav (Padding restored for mobile) -->
         <nav class="py-4 md:py-8 fade-in px-4 sm:px-0">
             <a href="{{ url_for('main.landing_page') }}"
                 class="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors group">
-                <svg class="w-5 h-5 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                <svg class="w-5 h-5 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
                 {{ translate('back_to_store') }}
             </a>
@@ -54,37 +56,141 @@
 
             <!-- LEFT COLUMN: Content -->
             <div class="lg:col-span-7 space-y-8 md:space-y-12">
-                
+
                 <!-- Hero Section (Padding restored for mobile) -->
                 <section class="fade-in px-4 sm:px-0" style="animation-delay: 100ms;">
                     <div class="flex flex-wrap gap-3 mb-4">
-                        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">
+                        <span
+                            class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">
                             {{ asset_obj.asset_type.value }}
                         </span>
                     </div>
 
-                    <h1 class="text-2xl md:text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight leading-tight mb-4" x-text="asset.title"></h1>
+                    <h1 class="text-2xl md:text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight leading-tight mb-4"
+                        x-text="asset.title"></h1>
 
-                    <div class="relative rounded-2xl overflow-hidden shadow-2xl bg-gray-100 dark:bg-gray-800 aspect-video mb-6">
+                    <div
+                        class="relative rounded-2xl overflow-hidden shadow-2xl bg-gray-100 dark:bg-gray-800 aspect-video mb-6">
                         <img :src="asset.cover_image_url" :alt="asset.title" class="w-full h-full object-cover">
                     </div>
 
                     <div class="prose prose-lg dark:prose-invert max-w-none">
-                        <div class="lead text-lg md:text-xl text-gray-600 dark:text-gray-300 [&>p:first-child]:mt-0" x-html="renderMarkdown(asset.description)"></div>
+                        <div class="lead text-lg md:text-xl text-gray-600 dark:text-gray-300 [&>p:first-child]:mt-0"
+                            x-html="renderMarkdown(asset.description)"></div>
                     </div>
                 </section>
 
                 {% set status = latest_purchase.status.name if latest_purchase else 'NONE' %}
 
                 {% if status == 'COMPLETED' %}
-                <!-- ACCESS CONTENT SECTION -->
+
+                <!-- POST-PURCHASE FORM (For Events/Tickets) -->
+                {% if asset_obj.asset_type.name == 'TICKET' and asset_obj.custom_fields and not
+                latest_purchase.ticket_data %}
+                <section class="fade-in mb-8" style="animation-delay: 150ms;">
+                    <div class="bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900 rounded-2xl shadow-lg overflow-hidden"
+                        x-data="postPurchaseForm({{ asset_obj.id }}, {{ latest_purchase.id }}, {{ asset_obj.custom_fields|tojson|safe }})">
+
+                        <div
+                            class="p-6 md:p-8 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900">
+                            <h2 class="text-xl font-bold text-indigo-900 dark:text-indigo-100 mb-2">
+                                {{ translate('attendee_information_required') }}
+                            </h2>
+                            <p class="text-indigo-700 dark:text-indigo-300 text-sm">
+                                {{ translate('please_complete_registration') }}
+                            </p>
+                        </div>
+
+                        <div class="p-6 md:p-8" x-show="!submitted">
+                            <form @submit.prevent="submit" class="space-y-6">
+                                <template x-for="(field, index) in {{ asset_obj.custom_fields|tojson|safe }}"
+                                    :key="index">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                                            x-text="field.question"></label>
+
+                                        <template x-if="field.type === 'text'">
+                                            <input type="text" x-model="formData[field.question]"
+                                                :required="field.required"
+                                                class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500">
+                                        </template>
+
+                                        <template x-if="field.type === 'dropdown'">
+                                            <select x-model="formData[field.question]" :required="field.required"
+                                                class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500">
+                                                <option value="">Select an option</option>
+                                                <!-- Assuming options are not yet implemented in customFields structure, defaulting to text input behavior fallback or placeholder -->
+                                            </select>
+                                        </template>
+
+                                        <template x-if="field.type === 'checkbox'">
+                                            <label class="flex items-center gap-3">
+                                                <input type="checkbox" x-model="formData[field.question]"
+                                                    :required="field.required"
+                                                    class="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                                <span class="text-sm text-gray-600 dark:text-gray-400">Yes</span>
+                                            </label>
+                                        </template>
+                                    </div>
+                                </template>
+
+                                <button type="submit" :disabled="isSubmitting"
+                                    class="w-full py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors disabled:opacity-70 flex justify-center items-center gap-2">
+                                    <span x-show="!isSubmitting">{{ translate('submit_information') }}</span>
+                                    <span x-show="isSubmitting"
+                                        class="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span>
+                                </button>
+                            </form>
+                        </div>
+
+                        <div class="p-8 text-center" x-show="submitted" x-cloak>
+                            <div
+                                class="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg class="w-8 h-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 13l4 4L19 7" />
+                                </svg>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">{{ translate('thank_you')
+                                }}</h3>
+                            <p class="text-gray-600 dark:text-gray-400">{{ translate('registration_complete') }}</p>
+                        </div>
+                    </div>
+                </section>
+                {% endif %}
+
+                <!-- Post-Purchase Instructions (For Events) -->
+                {% if asset_obj.details and asset_obj.details.postPurchaseInstructions %}
+                <section class="fade-in mb-8" style="animation-delay: 150ms;">
+                    <div
+                        class="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-2xl p-6 md:p-8">
+                        <h3 class="text-lg font-bold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            {{ translate('important_instructions') }}
+                        </h3>
+                        <div class="prose prose-blue dark:prose-invert max-w-none text-sm">
+                            {{ asset_obj.details.postPurchaseInstructions|nl2br }}
+                        </div>
+                    </div>
+                </section>
+                {% endif %}
+
                 <section id="content-access-section" class="fade-in" style="animation-delay: 200ms;">
-                    <div class="bg-white dark:bg-gray-800 sm:border border-gray-200 dark:border-gray-700 sm:rounded-2xl overflow-hidden shadow-sm">
-                        
-                        <div class="p-4 md:p-8 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                            <h2 class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                                <svg class="w-6 h-6 md:w-8 md:h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <div
+                        class="bg-white dark:bg-gray-800 sm:border border-gray-200 dark:border-gray-700 sm:rounded-2xl overflow-hidden shadow-sm">
+
+                        <div
+                            class="p-4 md:p-8 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                            <h2
+                                class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                                <svg class="w-6 h-6 md:w-8 md:h-8 text-green-500" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                                 {{ translate('access_your_content') }}
                             </h2>
@@ -93,115 +199,234 @@
                         <div class="divide-y divide-gray-200 dark:divide-gray-700">
                             <template x-for="(file, index) in asset.files" :key="file.id">
                                 <div class="py-6 sm:p-8" x-data="{ type: file.file_type || getFileType(file.link) }">
-                                    
+
                                     <div class="mb-4 px-4 sm:px-0">
-                                        <h3 class="text-lg font-bold text-gray-900 dark:text-white" x-text="file.title"></h3>
-                                        <p class="text-sm text-gray-500 dark:text-gray-400" x-text="file.description"></p>
+                                        <h3 class="text-lg font-bold text-gray-900 dark:text-white" x-text="file.title">
+                                        </h3>
+                                        <p class="text-sm text-gray-500 dark:text-gray-400" x-text="file.description">
+                                        </p>
                                     </div>
 
                                     <!-- PDF VIEWER -->
                                     <template x-if="type === 'pdf'">
                                         <!-- Container switches to fixed/z-100 on fullscreen to cover overlapping elements -->
-                                        <div x-data="pdfViewer(file.link)" x-init="loadPdf()" 
-                                             :class="isFullscreen ? 'fixed inset-0 z-[100] h-[100dvh] w-screen bg-black' : 'relative h-[60vh] min-h-[500px] bg-gray-100 dark:bg-gray-900 sm:rounded-xl border-y sm:border border-gray-200 dark:border-gray-700'"
-                                             class="flex flex-col group transition-all duration-300">
+                                        <div x-data="pdfViewer(file.link)" x-init="loadPdf()"
+                                            :class="isFullscreen ? 'fixed inset-0 z-[100] h-[100dvh] w-screen bg-black' : 'relative h-[60vh] min-h-[500px] bg-gray-100 dark:bg-gray-900 sm:rounded-xl border-y sm:border border-gray-200 dark:border-gray-700'"
+                                            class="flex flex-col group transition-all duration-300">
 
                                             <!-- Toolbar -->
                                             <div class="flex-none flex items-center justify-between px-3 py-3 bg-gray-900 text-white shadow-lg z-20 transition-transform duration-300"
-                                                 :class="{'translate-y-[-100%]': isFullscreen && controlsHidden}">
-                                                
+                                                :class="{'translate-y-[-100%]': isFullscreen && controlsHidden}">
+
                                                 <div class="flex items-center gap-2">
-                                                    <button @click="prevPage()" :disabled="page <= 1" class="p-2 rounded-full active:bg-gray-700 disabled:opacity-30">
-                                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                                                    <button @click="prevPage()" :disabled="page <= 1"
+                                                        class="p-2 rounded-full active:bg-gray-700 disabled:opacity-30">
+                                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24"
+                                                            stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M15 19l-7-7 7-7" />
+                                                        </svg>
                                                     </button>
                                                     <span class="text-base font-bold min-w-[3rem] text-center">
-                                                        <span x-text="page"></span>/<span x-text="numPages || '-'"></span>
+                                                        <span x-text="page"></span>/<span
+                                                            x-text="numPages || '-'"></span>
                                                     </span>
-                                                    <button @click="nextPage()" :disabled="page >= numPages" class="p-2 rounded-full active:bg-gray-700 disabled:opacity-30">
-                                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                                                    <button @click="nextPage()" :disabled="page >= numPages"
+                                                        class="p-2 rounded-full active:bg-gray-700 disabled:opacity-30">
+                                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24"
+                                                            stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M9 5l7 7-7 7" />
+                                                        </svg>
                                                     </button>
                                                 </div>
 
                                                 <div class="flex items-center gap-1">
-                                                    <button @click="fitWidth()" class="px-3 py-1.5 text-xs font-bold uppercase bg-gray-700 rounded mr-1">Fit</button>
-                                                    <button @click="toggleFullscreen()" class="p-2 rounded-lg bg-indigo-600 active:bg-indigo-700 text-white shadow-sm">
-                                                        <svg x-show="!isFullscreen" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
-                                                        <svg x-show="isFullscreen" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                                                    <button @click="fitWidth()"
+                                                        class="px-3 py-1.5 text-xs font-bold uppercase bg-gray-700 rounded mr-1">Fit</button>
+                                                    <button @click="toggleFullscreen()"
+                                                        class="p-2 rounded-lg bg-indigo-600 active:bg-indigo-700 text-white shadow-sm">
+                                                        <svg x-show="!isFullscreen" class="w-5 h-5" fill="none"
+                                                            viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2"
+                                                                d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                                        </svg>
+                                                        <svg x-show="isFullscreen" class="w-5 h-5" fill="none"
+                                                            viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                        </svg>
                                                     </button>
                                                 </div>
                                             </div>
 
                                             <!-- Scrollable Canvas -->
-                                            <div x-ref="container" 
-                                                 class="flex-grow relative w-full overflow-auto bg-gray-100 dark:bg-gray-900 flex justify-center"
-                                                 @touchstart="handleTouchStart"
-                                                 @touchend="handleTouchEnd"
-                                                 @click="if(isFullscreen) controlsHidden = !controlsHidden"
-                                                 style="-webkit-overflow-scrolling: touch;">
-                                                
-                                                <div x-show="loading" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-100/90 dark:bg-gray-900/90 z-10">
-                                                    <svg class="animate-spin h-10 w-10 text-indigo-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                                                    <span class="text-xs font-bold text-gray-500 uppercase">Loading...</span>
+                                            <div x-ref="container"
+                                                class="flex-grow relative w-full overflow-auto bg-gray-100 dark:bg-gray-900 flex justify-center"
+                                                @touchstart="handleTouchStart" @touchend="handleTouchEnd"
+                                                @click="if(isFullscreen) controlsHidden = !controlsHidden"
+                                                style="-webkit-overflow-scrolling: touch;">
+
+                                                <div x-show="loading"
+                                                    class="absolute inset-0 flex flex-col items-center justify-center bg-gray-100/90 dark:bg-gray-900/90 z-10">
+                                                    <svg class="animate-spin h-10 w-10 text-indigo-600 mb-2"
+                                                        xmlns="http://www.w3.org/2000/svg" fill="none"
+                                                        viewBox="0 0 24 24">
+                                                        <circle class="opacity-25" cx="12" cy="12" r="10"
+                                                            stroke="currentColor" stroke-width="4"></circle>
+                                                        <path class="opacity-75" fill="currentColor"
+                                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                                    </svg>
+                                                    <span
+                                                        class="text-xs font-bold text-gray-500 uppercase">Loading...</span>
                                                 </div>
 
-                                                <canvas x-ref="canvas" class="shadow-xl block origin-top transition-transform duration-150"></canvas>
+                                                <canvas x-ref="canvas"
+                                                    class="shadow-xl block origin-top transition-transform duration-150"></canvas>
                                             </div>
 
                                             <!-- Floating Zoom (Fullscreen) -->
-                                            <div x-show="isFullscreen" 
-                                                 class="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-gray-900/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl z-20 border border-gray-700 transition-transform duration-300"
-                                                 :class="{'translate-y-[200%]': controlsHidden}"
-                                                 @click.stop>
-                                                <button @click="zoomOut()" class="p-2 active:text-indigo-400"><svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" /></svg></button>
+                                            <div x-show="isFullscreen"
+                                                class="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-gray-900/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl z-20 border border-gray-700 transition-transform duration-300"
+                                                :class="{'translate-y-[200%]': controlsHidden}" @click.stop>
+                                                <button @click="zoomOut()" class="p-2 active:text-indigo-400"><svg
+                                                        class="w-8 h-8" fill="none" viewBox="0 0 24 24"
+                                                        stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            stroke-width="2" d="M20 12H4" />
+                                                    </svg></button>
                                                 <div class="w-px h-6 bg-gray-600"></div>
-                                                <button @click="zoomIn()" class="p-2 active:text-indigo-400"><svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg></button>
+                                                <button @click="zoomIn()" class="p-2 active:text-indigo-400"><svg
+                                                        class="w-8 h-8" fill="none" viewBox="0 0 24 24"
+                                                        stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            stroke-width="2" d="M12 4v16m8-8H4" />
+                                                    </svg></button>
                                             </div>
                                         </div>
                                     </template>
 
                                     <!-- AUDIO VIEWER -->
                                     <template x-if="type === 'audio'">
-                                        <div x-data="mediaPlayer(file.link, 'audio')" class="mx-4 sm:mx-0 bg-gray-100 dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 select-none" @contextmenu.prevent>
-                                            <audio x-ref="media" :src="file.link" class="hidden" @timeupdate="updateProgress" @loadedmetadata="initMedia" @ended="playing=false"></audio>
+                                        <div x-data="mediaPlayer(file.link, 'audio')"
+                                            class="mx-4 sm:mx-0 bg-gray-100 dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 select-none"
+                                            @contextmenu.prevent>
+                                            <audio x-ref="media" :src="file.link" class="hidden"
+                                                @timeupdate="updateProgress" @loadedmetadata="initMedia"
+                                                @ended="playing=false"></audio>
                                             <div class="flex items-center gap-4">
-                                                <button @click="togglePlay" class="w-12 h-12 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 shadow-md">
-                                                    <svg x-show="!playing" class="w-5 h-5 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
-                                                    <svg x-show="playing" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                                                <button @click="togglePlay"
+                                                    class="w-12 h-12 flex items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 shadow-md">
+                                                    <svg x-show="!playing" class="w-5 h-5 ml-1" fill="currentColor"
+                                                        viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd"
+                                                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                                                            clip-rule="evenodd" />
+                                                    </svg>
+                                                    <svg x-show="playing" class="w-5 h-5" fill="currentColor"
+                                                        viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd"
+                                                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                                            clip-rule="evenodd" />
+                                                    </svg>
                                                 </button>
                                                 <div class="flex-1 space-y-1">
-                                                    <div class="flex justify-between text-xs font-medium text-gray-500"><span x-text="formatTime(currentTime)"></span><span x-text="formatTime(duration)"></span></div>
-                                                    <div class="relative w-full h-2 bg-gray-300 dark:bg-gray-700 rounded-full cursor-pointer group" @click="seek($event)">
-                                                        <div class="absolute top-0 left-0 h-full bg-indigo-500 rounded-full group-hover:bg-indigo-400" :style="`width: ${(currentTime/duration)*100}%`"></div>
+                                                    <div class="flex justify-between text-xs font-medium text-gray-500">
+                                                        <span x-text="formatTime(currentTime)"></span><span
+                                                            x-text="formatTime(duration)"></span>
+                                                    </div>
+                                                    <div class="relative w-full h-2 bg-gray-300 dark:bg-gray-700 rounded-full cursor-pointer group"
+                                                        @click="seek($event)">
+                                                        <div class="absolute top-0 left-0 h-full bg-indigo-500 rounded-full group-hover:bg-indigo-400"
+                                                            :style="`width: ${(currentTime/duration)*100}%`"></div>
                                                     </div>
                                                 </div>
-                                                <button @click="toggleMute" class="text-gray-500 hover:text-indigo-500"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg></button>
+                                                <button @click="toggleMute"
+                                                    class="text-gray-500 hover:text-indigo-500"><svg class="w-5 h-5"
+                                                        fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            stroke-width="2"
+                                                            d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                                    </svg></button>
                                             </div>
                                         </div>
                                     </template>
 
                                     <!-- VIDEO VIEWER -->
                                     <template x-if="type === 'video'">
-                                        <div x-data="mediaPlayer(file.link, 'video')" class="mx-4 sm:mx-0 relative bg-black rounded-xl overflow-hidden shadow-lg group select-none" @contextmenu.prevent @mouseleave="showControls = false" @mouseenter="showControls = true">
-                                            <video x-ref="media" :src="file.link" class="w-full aspect-video bg-black" @timeupdate="updateProgress" @loadedmetadata="initMedia" @click="togglePlay" @ended="playing=false"></video>
-                                            <div x-show="!playing" @click="togglePlay" class="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer">
-                                                <div class="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center transition-transform hover:scale-110"><svg class="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg></div>
+                                        <div x-data="mediaPlayer(file.link, 'video')"
+                                            class="mx-4 sm:mx-0 relative bg-black rounded-xl overflow-hidden shadow-lg group select-none"
+                                            @contextmenu.prevent @mouseleave="showControls = false"
+                                            @mouseenter="showControls = true">
+                                            <video x-ref="media" :src="file.link" class="w-full aspect-video bg-black"
+                                                @timeupdate="updateProgress" @loadedmetadata="initMedia"
+                                                @click="togglePlay" @ended="playing=false"></video>
+                                            <div x-show="!playing" @click="togglePlay"
+                                                class="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer">
+                                                <div
+                                                    class="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center transition-transform hover:scale-110">
+                                                    <svg class="w-8 h-8 text-white ml-1" fill="currentColor"
+                                                        viewBox="0 0 20 20">
+                                                        <path fill-rule="evenodd"
+                                                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                                                            clip-rule="evenodd" />
+                                                    </svg>
+                                                </div>
                                             </div>
-                                            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 transition-opacity duration-300" :class="(playing && !showControls) ? 'opacity-0' : 'opacity-100'">
-                                                <div class="relative w-full h-1 bg-white/30 rounded-full cursor-pointer mb-3 hover:h-2 transition-all" @click="seek($event)"><div class="absolute top-0 left-0 h-full bg-indigo-500 rounded-full" :style="`width: ${(currentTime/duration)*100}%`"></div></div>
+                                            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 transition-opacity duration-300"
+                                                :class="(playing && !showControls) ? 'opacity-0' : 'opacity-100'">
+                                                <div class="relative w-full h-1 bg-white/30 rounded-full cursor-pointer mb-3 hover:h-2 transition-all"
+                                                    @click="seek($event)">
+                                                    <div class="absolute top-0 left-0 h-full bg-indigo-500 rounded-full"
+                                                        :style="`width: ${(currentTime/duration)*100}%`"></div>
+                                                </div>
                                                 <div class="flex items-center justify-between text-white">
-                                                    <div class="flex items-center gap-3"><button @click="togglePlay"><svg x-show="!playing" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg><svg x-show="playing" class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg></button><span class="text-xs font-mono"><span x-text="formatTime(currentTime)"></span> / <span x-text="formatTime(duration)"></span></span></div>
-                                                    <button @click="toggleFullscreen"><svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg></button>
+                                                    <div class="flex items-center gap-3"><button
+                                                            @click="togglePlay"><svg x-show="!playing" class="w-6 h-6"
+                                                                fill="currentColor" viewBox="0 0 20 20">
+                                                                <path fill-rule="evenodd"
+                                                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                                                                    clip-rule="evenodd" />
+                                                            </svg><svg x-show="playing" class="w-6 h-6"
+                                                                fill="currentColor" viewBox="0 0 20 20">
+                                                                <path fill-rule="evenodd"
+                                                                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                                                                    clip-rule="evenodd" />
+                                                            </svg></button><span class="text-xs font-mono"><span
+                                                                x-text="formatTime(currentTime)"></span> / <span
+                                                                x-text="formatTime(duration)"></span></span></div>
+                                                    <button @click="toggleFullscreen"><svg class="w-5 h-5" fill="none"
+                                                            viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2"
+                                                                d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                                        </svg></button>
                                                 </div>
                                             </div>
                                         </div>
                                     </template>
-                                    
+
                                     <!-- FALLBACK -->
                                     <template x-if="type === 'other'">
                                         <div class="px-4 sm:px-0">
-                                            <a :href="file.link" target="_blank" class="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                                <div class="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center"><svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg></div>
-                                                <div class="flex-1"><p class="font-bold text-sm text-gray-900 dark:text-white">{{ translate('download_file') }}</p><p class="text-xs text-gray-500" x-text="file.link.split('/').pop()"></p></div>
+                                            <a :href="file.link" target="_blank"
+                                                class="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                                <div
+                                                    class="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                                                    <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24"
+                                                        stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            stroke-width="2"
+                                                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                    </svg>
+                                                </div>
+                                                <div class="flex-1">
+                                                    <p class="font-bold text-sm text-gray-900 dark:text-white">{{
+                                                        translate('download_file') }}</p>
+                                                    <p class="text-xs text-gray-500"
+                                                        x-text="file.link.split('/').pop()"></p>
+                                                </div>
                                             </a>
                                         </div>
                                     </template>
@@ -220,16 +445,24 @@
                         </div>
                     </section>
                     <section x-show="asset.files && asset.files.length > 0" x-cloak class="fade-in">
-                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ translate('what_you_get')}}</h2>
+                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">{{ translate('what_you_get')}}
+                        </h2>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <template x-for="file in asset.files" :key="file.id">
-                                <div class="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl">
-                                    <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm border border-gray-100 dark:border-gray-700">
-                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <div
+                                    class="flex items-start gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl">
+                                    <div
+                                        class="flex-shrink-0 w-10 h-10 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm border border-gray-100 dark:border-gray-700">
+                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
                                     </div>
                                     <div class="flex-1 min-w-0 pt-1">
-                                        <p class="font-medium text-gray-900 dark:text-white text-sm" x-text="file.title"></p>
-                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1" x-text="file.description || '{{ translate('included_resource') }}'"></p>
+                                        <p class="font-medium text-gray-900 dark:text-white text-sm"
+                                            x-text="file.title"></p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1"
+                                            x-text="file.description || '{{ translate('included_resource') }}'"></p>
                                     </div>
                                 </div>
                             </template>
@@ -243,29 +476,63 @@
             <!-- RIGHT COLUMN: Desktop Purchase -->
             <div class="hidden lg:block lg:col-span-5 relative">
                 <div class="sticky top-24 space-y-6 fade-in">
-                    <div class="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-xl p-8">
+                    <div
+                        class="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-xl p-8">
                         {% if status == 'COMPLETED' %}
                         <div class="text-center py-6">
-                            <div class="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
-                                <svg class="w-8 h-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                            <div
+                                class="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+                                <svg class="w-8 h-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 13l4 4L19 7" />
+                                </svg>
                             </div>
-                            <h2 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">{{ translate('you_own_this') }}</h2>
+                            <h2 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">{{
+                                translate('you_own_this') }}</h2>
                             <p class="text-gray-500 dark:text-gray-400 mb-4">{{ translate('access_message') }}</p>
-                            <a href="{{ url_for('main.library') }}" class="block w-full text-center font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-xl">{{ translate('go_to_library') }}</a>
+                            <a href="{{ url_for('main.library') }}"
+                                class="block w-full text-center font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-xl">{{
+                                translate('go_to_library') }}</a>
                         </div>
                         {% else %}
-                        <div class="flex items-baseline gap-2 mb-6">
-                            <span class="text-4xl font-extrabold text-gray-900 dark:text-white" x-text="currency + formatCurrency(asset.price)"></span>
+                        <div class="mb-6">
+                            {% if asset_obj.is_subscription and asset_obj.details and
+                            asset_obj.details.subscription_tiers %}
+                            {% set min_price = asset_obj.details.subscription_tiers | map(attribute='price') |
+                            map('float') | min %}
+                            <p class="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">{{
+                                translate('starts_at') }}</p>
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-4xl font-extrabold text-gray-900 dark:text-white break-words"
+                                    x-text="currency + formatCurrency({{ min_price }})"></span>
+                            </div>
+                            {% else %}
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-4xl font-extrabold text-gray-900 dark:text-white break-words"
+                                    x-text="currency + formatCurrency(asset.price)"></span>
+                            </div>
+                            {% endif %}
                         </div>
                         {% if status == 'PENDING' %}
-                        <div class="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-100 text-sm">
-                            <div class="font-bold text-yellow-800 dark:text-yellow-300 mb-1">{{ translate('awaiting_payment') }}</div>
-                            <p class="text-gray-600 dark:text-gray-400 mb-2">Check phone: <span class="font-mono font-bold">{{ latest_purchase.phone_number }}</span></p>
-                            <div class="flex gap-3 text-xs"><button @click="$dispatch('open-checkout-modal')" class="text-indigo-600 underline">{{ translate('change_number') }}</button><button @click="cancelPayment()" class="text-red-600 underline">{{ translate('cancel_payment') }}</button></div>
+                        <div
+                            class="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-100 text-sm">
+                            <div class="font-bold text-yellow-800 dark:text-yellow-300 mb-1">{{
+                                translate('awaiting_payment') }}</div>
+                            <p class="text-gray-600 dark:text-gray-400 mb-2">Check phone: <span
+                                    class="font-mono font-bold">{{ latest_purchase.phone_number }}</span></p>
+                            <div class="flex gap-3 text-xs"><button @click="$dispatch('open-checkout-modal')"
+                                    class="text-indigo-600 underline">{{ translate('change_number') }}</button><button
+                                    @click="cancelPayment()" class="text-red-600 underline">{{
+                                    translate('cancel_payment') }}</button></div>
                         </div>
                         {% endif %}
-                        <button @click="handlePurchaseAction()" :disabled="isProcessing" class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:scale-[1.02] transition-transform disabled:opacity-70">
-                            <span x-show="!isProcessing">{% if status == 'FAILED' %}{{ translate('retry_payment') }}{% else %}<span x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{% endif %}</span>
+                        <button @click="handlePurchaseAction()" :disabled="isProcessing"
+                            class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:scale-[1.02] transition-transform disabled:opacity-70">
+                            <span x-show="!isProcessing">{% if status == 'FAILED' %}{{ translate('retry_payment') }}{%
+                                else %}<span
+                                    x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{%
+                                endif %}</span>
                             <span x-show="isProcessing" class="animate-pulse">Processing...</span>
                         </button>
                         {% endif %}
@@ -275,13 +542,30 @@
         </main>
 
         <!-- Mobile Sticky Footer -->
-        <div class="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-t border-gray-200 dark:border-gray-800 pb-safe" x-show="purchaseStatus !== 'COMPLETED'">
+        <div class="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur border-t border-gray-200 dark:border-gray-800 pb-safe"
+            x-show="purchaseStatus !== 'COMPLETED'">
             <div class="p-4 flex items-center gap-4">
-                 <div class="flex-1">
-                    <p class="font-bold text-lg text-gray-900 dark:text-white"><span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span></p>
+                <div class="flex-1 min-w-0">
+                    {% if asset_obj.is_subscription and asset_obj.details and asset_obj.details.subscription_tiers %}
+                    {% set min_price = asset_obj.details.subscription_tiers | map(attribute='price') | map('float') |
+                    min %}
+                    <p class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{{
+                        translate('starts_at') }}</p>
+                    <p class="font-bold text-lg text-gray-900 dark:text-white truncate">
+                        <span x-text="currency"></span><span x-text="formatCurrency({{ min_price }})"></span>
+                    </p>
+                    {% else %}
+                    <p class="font-bold text-lg text-gray-900 dark:text-white truncate">
+                        <span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span>
+                    </p>
+                    {% endif %}
                 </div>
-                <button @click="handlePurchaseAction()" :disabled="isProcessing" class="px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl shadow-lg disabled:opacity-70">
-                    <span x-show="!isProcessing">{% if status == 'FAILED' %}{{ translate('retry_payment') }}{% else %}<span x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{% endif %}</span>
+                <button @click="handlePurchaseAction()" :disabled="isProcessing"
+                    class="px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl shadow-lg disabled:opacity-70">
+                    <span x-show="!isProcessing">{% if status == 'FAILED' %}{{ translate('retry_payment') }}{% else
+                        %}<span
+                            x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{%
+                        endif %}</span>
                     <span x-show="isProcessing">...</span>
                 </button>
             </div>
@@ -289,40 +573,86 @@
 
         <!-- Checkout Modal -->
         <div x-data="checkout(asset, '{{ currency_symbol }}', '{{ url_for('main.initiate_payment') }}')">
-             <div x-show="isOpen" class="fixed inset-0 z-[110] bg-gray-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4" x-cloak>
-                 <div @click.outside="closeModal()" class="relative bg-white dark:bg-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md mx-auto p-6 sm:p-8 transform-gpu transition-all"
-                    x-show="isOpen" x-transition:enter="ease-out duration-300" x-transition:enter-start="translate-y-full opacity-0" x-transition:enter-end="translate-y-0 opacity-100" x-transition:leave="ease-in duration-200" x-transition:leave-start="translate-y-0 opacity-100" x-transition:leave-end="translate-y-full opacity-0">
+            <div x-show="isOpen"
+                class="fixed inset-0 z-[110] bg-gray-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
+                x-cloak>
+                <div @click.outside="closeModal()"
+                    class="relative bg-white dark:bg-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-md mx-auto p-6 sm:p-8 transform-gpu transition-all"
+                    x-show="isOpen" x-transition:enter="ease-out duration-300"
+                    x-transition:enter-start="translate-y-full opacity-0"
+                    x-transition:enter-end="translate-y-0 opacity-100" x-transition:leave="ease-in duration-200"
+                    x-transition:leave-start="translate-y-0 opacity-100"
+                    x-transition:leave-end="translate-y-full opacity-0">
                     <div class="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-6 sm:hidden"></div>
                     <div x-show="status === 'ready' || status === 'failed'">
-                        <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{ translate('complete_purchase') }}</h3>
+                        <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{
+                            translate('complete_purchase') }}</h3>
+
+                        <!-- Tier Selection -->
+                        <div x-show="tiers.length > 0" class="mb-6 space-y-3">
+                            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Select a Plan:</p>
+                            <template x-for="tier in tiers" :key="tier.name">
+                                <div @click="selectedTier = tier"
+                                    class="cursor-pointer p-4 rounded-xl border-2 transition-all"
+                                    :class="selectedTier === tier ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-400' : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300'">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="font-bold text-gray-900 dark:text-white" x-text="tier.name"></span>
+                                        <span class="font-bold text-indigo-600 dark:text-indigo-400"
+                                            x-text="currency + formatCurrency(tier.price)"></span>
+                                    </div>
+                                    <div class="text-xs text-gray-500 dark:text-gray-400 flex justify-between">
+                                        <span x-text="tier.description || 'Standard access'"></span>
+                                        <span class="uppercase tracking-wide" x-text="tier.interval"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
                         <p class="text-gray-600 dark:text-gray-400 mb-6">{{ translate('enter_mobile_instruction') }}</p>
                         <form @submit.prevent="initiatePayment()">
-                             <div class="mb-6"><input type="tel" x-ref="phoneInput" x-model="phoneNumber" @input="formatPhoneNumber()" placeholder="07XX XXX XXX" class="input-field pl-4 text-lg font-mono" required></div>
-                            <p x-show="errorMessage" x-text="errorMessage" class="p-3 mb-6 bg-red-50 text-red-600 rounded-lg text-sm text-center"></p>
-                            <button type="submit" class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl text-lg">Pay <span x-text="currency + formatCurrency(asset.price)"></span></button>
+                            <div class="mb-6"><input type="tel" x-ref="phoneInput" x-model="phoneNumber"
+                                    @input="formatPhoneNumber()" placeholder="07XX XXX XXX"
+                                    class="input-field pl-4 text-lg font-mono" required></div>
+                            <p x-show="errorMessage" x-text="errorMessage"
+                                class="p-3 mb-6 bg-red-50 text-red-600 rounded-lg text-sm text-center"></p>
+                            <button type="submit"
+                                class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl text-lg">
+                                <span
+                                    x-text="selectedTier ? 'Pay ' + currency + formatCurrency(selectedTier.price) : 'Pay ' + currency + formatCurrency(asset.price)"></span>
+                            </button>
                         </form>
                     </div>
                     <!-- Loading/Success States -->
                     <div x-show="status === 'initiating' || status === 'waiting'" class="text-center py-8">
-                        <div class="relative w-16 h-16 mx-auto mb-4"><div class="absolute inset-0 border-4 border-gray-200 rounded-full"></div><div class="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div></div>
+                        <div class="relative w-16 h-16 mx-auto mb-4">
+                            <div class="absolute inset-0 border-4 border-gray-200 rounded-full"></div>
+                            <div
+                                class="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin">
+                            </div>
+                        </div>
                         <h3 class="text-xl font-bold" x-text="statusMessage"></h3>
                     </div>
                     <div x-show="status === 'success'" class="text-center py-8">
-                        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4"><svg class="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg></div>
+                        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                    d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
                         <h3 class="text-xl font-bold">{{ translate('payment_successful') }}</h3>
                     </div>
-                 </div>
-             </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
     document.addEventListener('alpine:init', () => {
-        
+
         // PDF VIEWER COMPONENT
         Alpine.data('pdfViewer', (url) => {
-            let _pdfDoc = null; 
+            let _pdfDoc = null;
             let _touchStartX = 0;
             let _touchEndX = 0;
 
@@ -363,11 +693,11 @@
                         // Responsive CSS width to prevent overlapping
                         const containerWidth = this.$refs.container.clientWidth;
                         if (Math.abs(viewport.width - containerWidth) < 20) {
-                             canvas.style.width = '100%';
-                             canvas.style.height = 'auto';
+                            canvas.style.width = '100%';
+                            canvas.style.height = 'auto';
                         } else {
-                             canvas.style.width = Math.floor(viewport.width) + "px";
-                             canvas.style.height = Math.floor(viewport.height) + "px";
+                            canvas.style.width = Math.floor(viewport.width) + "px";
+                            canvas.style.height = Math.floor(viewport.height) + "px";
                         }
 
                         const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
@@ -387,12 +717,12 @@
                     const page = await _pdfDoc.getPage(this.page);
                     const viewport = page.getViewport({ scale: 1 });
                     const containerWidth = this.$refs.container.clientWidth;
-                    this.scale = (containerWidth - 4) / viewport.width; 
+                    this.scale = (containerWidth - 4) / viewport.width;
                     this.renderPage(this.page);
                 },
 
                 zoomIn() { this.scale *= 1.25; this.renderPage(this.page); },
-                zoomOut() { if(this.scale > 0.4) { this.scale *= 0.8; this.renderPage(this.page); } },
+                zoomOut() { if (this.scale > 0.4) { this.scale *= 0.8; this.renderPage(this.page); } },
 
                 toggleFullscreen() {
                     this.isFullscreen = !this.isFullscreen;
@@ -422,16 +752,16 @@
         }));
 
         // ASSET LOGIC
-        Alpine.data('assetDetail', (symbol) => ({ 
+        Alpine.data('assetDetail', (symbol) => ({
             asset: {}, purchase: null, currency: symbol, purchaseStatus: 'NONE',
-            init() { 
-                const ad = document.getElementById('asset-data'); if(ad) try{this.asset=JSON.parse(ad.textContent)}catch(e){} 
-                const pd = document.getElementById('purchase-data'); if(pd) try{this.purchase=JSON.parse(pd.textContent); if(this.purchase) this.purchaseStatus=this.purchase.status.name}catch(e){}
+            init() {
+                const ad = document.getElementById('asset-data'); if (ad) try { this.asset = JSON.parse(ad.textContent) } catch (e) { }
+                const pd = document.getElementById('purchase-data'); if (pd) try { this.purchase = JSON.parse(pd.textContent); if (this.purchase) this.purchaseStatus = this.purchase.status.name } catch (e) { }
             },
-            formatCurrency(val) { return parseFloat(val||0).toFixed(2); }
+            formatCurrency(val) { return parseFloat(val || 0).toFixed(2); }
         }));
 
-        Alpine.data('assetPageController', () => ({ 
+        Alpine.data('assetPageController', () => ({
             isProcessing: false,
             handlePurchaseAction() { this.$dispatch('open-checkout-modal'); },
             cancelPayment() { /* logic */ }
@@ -440,9 +770,29 @@
 </script>
 
 <style>
-    .input-field { @apply w-full px-4 py-3.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none; }
-    .fade-in { opacity: 0; animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+    .input-field {
+        @apply w-full px-4 py-3.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white outline-none;
+    }
+
+    .fade-in {
+        opacity: 0;
+        animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
 </style>
 {% endblock %}

@@ -89,7 +89,18 @@
                             <div
                                 class="flex items-center justify-between mt-auto pt-4 border-t border-gray-100 dark:border-gray-700/50">
                                 <div class="text-lg font-bold text-gray-900 dark:text-white">
-                                    {{ currency_symbol }} {{ "%.2f"|format(asset.price) }}
+                                    {% if asset.is_subscription and asset.details and asset.details.subscription_tiers
+                                    %}
+                                    {% set min_price = asset.details.subscription_tiers | map(attribute='price') |
+                                    map('float') | min %}
+                                    <div class="flex flex-col">
+                                        <span class="text-xs text-gray-500 uppercase tracking-wide">{{
+                                            translate('starts_at') }}</span>
+                                        <span>{{ currency_symbol }} {{ "{:,.0f}".format(min_price) }}</span>
+                                    </div>
+                                    {% else %}
+                                    {{ currency_symbol }} {{ "{:,.0f}".format(asset.price|float) }}
+                                    {% endif %}
                                 </div>
                                 <span
                                     class="text-sm font-medium text-indigo-600 dark:text-indigo-400 group-hover:translate-x-1 transition-transform flex items-center gap-1">

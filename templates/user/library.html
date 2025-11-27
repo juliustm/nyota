@@ -113,8 +113,16 @@
                                     'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400': purchase.status === 'FAILED'
                                 }" x-text="purchase.status">
                         </span>
-                        <span class="text-xs text-gray-500 dark:text-gray-400"
-                            x-text="new Date(purchase.purchase_date).toLocaleDateString()"></span>
+                        <div class="flex flex-col items-end">
+                            <span class="text-xs text-gray-500 dark:text-gray-400"
+                                x-text="new Date(purchase.purchase_date).toLocaleDateString()"></span>
+                            <template x-if="purchase.subscription">
+                                <span class="text-xs font-medium"
+                                    :class="purchase.subscription.is_active ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                                    x-text="purchase.subscription.is_active ? 'Expires: ' + new Date(purchase.subscription.expiry_date).toLocaleDateString() : 'Expired: ' + new Date(purchase.subscription.expiry_date).toLocaleDateString()">
+                                </span>
+                            </template>
+                        </div>
                     </div>
 
                     <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2 line-clamp-1">
@@ -129,16 +137,30 @@
                     <!-- Actions -->
                     <div class="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700/50">
                         <template x-if="purchase.status === 'COMPLETED'">
-                            <a :href="'/asset/' + purchase.asset.slug"
-                                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-colors">
-                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                {{ translate('access_content') }}
-                            </a>
+                            <div>
+                                <template x-if="purchase.subscription && !purchase.subscription.is_active">
+                                    <a :href="'/asset/' + purchase.asset.slug"
+                                        class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors">
+                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                        {{ translate('renew_subscription') }}
+                                    </a>
+                                </template>
+                                <template x-if="!purchase.subscription || purchase.subscription.is_active">
+                                    <a :href="'/asset/' + purchase.asset.slug"
+                                        class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-colors">
+                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        {{ translate('access_content') }}
+                                    </a>
+                                </template>
+                            </div>
                         </template>
                         <template x-if="purchase.status === 'PENDING'">
                             <a :href="'/asset/' + purchase.asset.slug"

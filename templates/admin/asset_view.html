@@ -18,252 +18,503 @@
             </a>
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white"
                 x-text="editableAsset.title || 'Loading Asset...'"></h1>
+            <div class="flex items-center gap-2 mt-2">
+                <span
+                    class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
+                    x-text="asset.asset_type"></span>
+                <span class="text-sm text-gray-500 dark:text-gray-400"
+                    x-text="'Created ' + new Date(asset.created_at).toLocaleDateString()"></span>
+            </div>
         </div>
-        <a :href="publicUrl" target="_blank"
-            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-100 dark:text-indigo-300 dark:bg-indigo-900/30 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-900 transition-colors">
-            View Live Page
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-        </a>
+        <div class="flex gap-3">
+            <button @click="saveChanges()"
+                class="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                :class="{'opacity-75 cursor-wait': isSaving}" :disabled="isSaving">
+                <svg x-show="!isSaving" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                </svg>
+                <svg x-show="isSaving" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                    xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                    </path>
+                </svg>
+                <span x-text="isSaving ? 'Saving...' : 'Save Changes'"></span>
+            </button>
+            <a :href="publicUrl" target="_blank"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-100 dark:text-indigo-300 dark:bg-indigo-900/30 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-900 transition-colors">
+                View Live
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+            </a>
+        </div>
     </div>
 
     <!-- Dynamic Notification Banner -->
-    <div x-show="notification.show" x-transition x-cloak class="px-4 py-3 rounded-lg text-sm" :class="{
-            'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300': notification.type === 'success',
-            'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300': notification.type === 'error'
-         }" role="alert" x-text="notification.message">
+    <div x-show="notification.show" x-transition x-cloak class="px-4 py-3 rounded-lg text-sm border" :class="{
+            'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-800 dark:text-green-300': notification.type === 'success',
+            'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300': notification.type === 'error'
+         }" role="alert">
+        <div class="flex items-center gap-2">
+            <svg x-show="notification.type === 'success'" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <svg x-show="notification.type === 'error'" class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span x-text="notification.message"></span>
+        </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <!-- Left Column: Main Tabs for Editing -->
-        <div class="lg:col-span-2 space-y-6">
+        <div class="lg:col-span-8 space-y-6">
             <!-- Tab Navigation -->
             <div class="border-b border-gray-200 dark:border-gray-700">
-                <nav class="-mb-px flex space-x-6" aria-label="Tabs">
-                    <button type="button" @click="activeTab = 'details'"
-                        :class="{ 'border-indigo-500 text-indigo-600 dark:text-indigo-400': activeTab === 'details', 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:border-gray-300': activeTab !== 'details' }"
-                        class="py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors">Details &
-                        Story</button>
+                <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                    <button type="button" @click="activeTab = 'general'"
+                        :class="{ 'border-indigo-500 text-indigo-600 dark:text-indigo-400': activeTab === 'general', 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:border-gray-300': activeTab !== 'general' }"
+                        class="py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        General
+                    </button>
+
+                    <template x-if="['TICKET', 'SUBSCRIPTION', 'NEWSLETTER'].includes(asset.asset_type)">
+                        <button type="button" @click="activeTab = 'configuration'"
+                            :class="{ 'border-indigo-500 text-indigo-600 dark:text-indigo-400': activeTab === 'configuration', 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:border-gray-300': activeTab !== 'configuration' }"
+                            class="py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            Configuration
+                        </button>
+                    </template>
+
                     <button type="button" @click="activeTab = 'content'"
                         :class="{ 'border-indigo-500 text-indigo-600 dark:text-indigo-400': activeTab === 'content', 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:border-gray-300': activeTab !== 'content' }"
-                        class="py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors">Content</button>
+                        class="py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                        Content
+                    </button>
+
                     <button type="button" @click="activeTab = 'activity'"
                         :class="{ 'border-indigo-500 text-indigo-600 dark:text-indigo-400': activeTab === 'activity', 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:border-gray-300': activeTab !== 'activity' }"
-                        class="py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors">Recent
-                        Activity</button>
+                        class="py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Activity
+                    </button>
                 </nav>
             </div>
 
             <!-- Tab Panels -->
             <div
-                class="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 min-h-[300px]">
-                <!-- Details & Story Tab -->
-                <div x-show="activeTab === 'details'" class="space-y-6">
-                    <div><label for="description" class="input-label">Short Description (for previews)</label><textarea
-                            id="description" rows="3" x-model="editableAsset.description"
-                            class="input-field"></textarea></div>
-                    <div><label for="story" class="input-label">Full Story / Page Content (Markdown
-                            supported)</label><textarea id="story" rows="12" x-model="editableAsset.story"
-                            class="input-field"></textarea></div>
+                class="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 min-h-[500px] shadow-sm">
+
+                <!-- 1. GENERAL TAB -->
+                <div x-show="activeTab === 'general'" class="space-y-8">
+                    <div class="grid grid-cols-1 gap-6">
+                        <div>
+                            <label for="title" class="input-label">Asset Title</label>
+                            <input type="text" id="title" x-model="editableAsset.title"
+                                class="input-field text-lg font-medium" placeholder="Enter a catchy title...">
+                        </div>
+
+                        <div>
+                            <label for="description" class="input-label">Short Description</label>
+                            <p class="text-xs text-gray-500 mb-2">Shown on listing cards and social previews.</p>
+                            <textarea id="description" rows="3" x-model="editableAsset.description" class="input-field"
+                                placeholder="Briefly describe what this is..."></textarea>
+                        </div>
+
+                        <div>
+                            <label for="story" class="input-label">Full Story / Landing Page</label>
+                            <p class="text-xs text-gray-500 mb-2">The main content shown to users before they purchase.
+                                Supports Markdown.</p>
+                            <textarea id="story" rows="12" x-model="editableAsset.story"
+                                class="input-field font-mono text-sm" placeholder="# About this asset..."></textarea>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Content Tab -->
-                <div x-show="activeTab === 'content'" class="space-y-6">
-                    <!-- Files / Video Series Content -->
-                    <template x-if="asset.asset_type === 'DIGITAL_PRODUCT' || asset.asset_type === 'VIDEO_SERIES'">
-                        <div>
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white"
-                                    x-text="asset.asset_type === 'VIDEO_SERIES' ? 'Course Content' : 'Digital Files'">
-                                </h3>
-                                <button type="button" @click="addContentItem()"
-                                    class="text-sm font-medium text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <!-- 2. CONFIGURATION TAB -->
+                <div x-show="activeTab === 'configuration'" class="space-y-8">
+
+                    <!-- TICKET CONFIGURATION -->
+                    <template x-if="asset.asset_type === 'TICKET'">
+                        <div class="space-y-8">
+                            <!-- Event Details Card -->
+                            <div
+                                class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
+                                <h3
+                                    class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24"
+                                        stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M12 4v16m8-8H4" />
+                                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                     </svg>
-                                    Add Item
-                                </button>
+                                    Event Logistics
+                                </h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div class="md:col-span-2">
+                                        <label for="event_location" class="input-label">Location / Link</label>
+                                        <input type="text" id="event_location" x-model="editableAsset.eventDetails.link"
+                                            class="input-field" placeholder="e.g., Zoom Link or Physical Address">
+                                    </div>
+                                    <div>
+                                        <label for="event_date" class="input-label">Date</label>
+                                        <input type="date" id="event_date" x-model="editableAsset.eventDetails.date"
+                                            class="input-field">
+                                    </div>
+                                    <div>
+                                        <label for="event_time" class="input-label">Time</label>
+                                        <input type="time" id="event_time" x-model="editableAsset.eventDetails.time"
+                                            class="input-field">
+                                    </div>
+                                    <div>
+                                        <label for="max_attendees" class="input-label">Max Attendees</label>
+                                        <input type="number" id="max_attendees"
+                                            x-model="editableAsset.eventDetails.maxAttendees" class="input-field"
+                                            placeholder="Unlimited">
+                                    </div>
+                                </div>
                             </div>
-                            <div class="space-y-4">
-                                <template x-if="editableAsset.files">
-                                    <template x-for="(file, index) in editableAsset.files" :key="index">
+
+                            <!-- Post-Purchase Instructions -->
+                            <div
+                                class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
+                                <h3
+                                    class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24"
+                                        stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    After Purchase
+                                </h3>
+                                <div>
+                                    <label class="input-label">Instructions for Attendees</label>
+                                    <p class="text-xs text-gray-500 mb-2">Shown only to people who have purchased a
+                                        ticket.</p>
+                                    <textarea x-model="editableAsset.eventDetails.postPurchaseInstructions" rows="4"
+                                        class="input-field"
+                                        placeholder="e.g., Join this WhatsApp group for updates..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- SUBSCRIPTION CONFIGURATION -->
+                    <template
+                        x-if="['SUBSCRIPTION', 'NEWSLETTER'].includes(asset.asset_type) || editableAsset.is_subscription">
+                        <div class="space-y-8">
+                            <!-- Pricing Tiers -->
+                            <div
+                                class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
+                                <div class="flex justify-between items-center mb-6">
+                                    <h3
+                                        class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                        <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24"
+                                            stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        Pricing Tiers
+                                    </h3>
+                                    <button type="button" @click="addPricingTier()"
+                                        class="text-sm font-medium text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add Tier
+                                    </button>
+                                </div>
+
+                                <div class="space-y-4">
+                                    <template x-for="(tier, index) in editableAsset.details.subscription_tiers"
+                                        :key="index">
                                         <div
-                                            class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
-                                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                                            class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 relative shadow-sm">
+                                            <button @click="removePricingTier(index)"
+                                                class="absolute top-2 right-2 text-gray-400 hover:text-red-500">
+                                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                 <div>
-                                                    <label class="input-label">Title</label>
-                                                    <input type="text" x-model="file.title" class="input-field"
-                                                        placeholder="File Title">
+                                                    <label
+                                                        class="input-label text-xs uppercase tracking-wide text-gray-500">Tier
+                                                        Name</label>
+                                                    <input type="text" x-model="tier.name" class="input-field"
+                                                        placeholder="e.g., Monthly">
                                                 </div>
                                                 <div>
-                                                    <label class="input-label">File / Link</label>
+                                                    <label
+                                                        class="input-label text-xs uppercase tracking-wide text-gray-500">Price</label>
+                                                    <input type="number" x-model="tier.price" class="input-field"
+                                                        placeholder="0.00">
+                                                </div>
+                                                <div>
+                                                    <label
+                                                        class="input-label text-xs uppercase tracking-wide text-gray-500">Interval</label>
+                                                    <select x-model="tier.interval" class="input-field">
+                                                        <option value="weekly">Weekly</option>
+                                                        <option value="monthly">Monthly</option>
+                                                        <option value="quarterly">Quarterly</option>
+                                                        <option value="yearly">Yearly</option>
+                                                    </select>
+                                                </div>
+                                                <div class="md:col-span-3">
+                                                    <label
+                                                        class="input-label text-xs uppercase tracking-wide text-gray-500">Benefits
+                                                        / Description</label>
+                                                    <input type="text" x-model="tier.description" class="input-field"
+                                                        placeholder="What do they get?">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <div x-show="!editableAsset.details.subscription_tiers || editableAsset.details.subscription_tiers.length === 0"
+                                        class="text-center py-8 text-gray-500 text-sm bg-white dark:bg-gray-800 rounded-lg border border-dashed border-gray-300">
+                                        No tiers defined. The base price will be used.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- 3. CONTENT TAB -->
+                <div x-show="activeTab === 'content'" class="space-y-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white"
+                                x-text="asset.asset_type === 'SUBSCRIPTION' ? 'Posts & Updates' : (asset.asset_type === 'VIDEO_SERIES' ? 'Course Curriculum' : 'Digital Files')">
+                            </h3>
+                            <p class="text-sm text-gray-500 mt-1">Manage the actual content your customers will access.
+                            </p>
+                        </div>
+                        <button type="button" @click="addContentItem()"
+                            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 4v16m8-8H4" />
+                            </svg>
+                            <span x-text="asset.asset_type === 'SUBSCRIPTION' ? 'New Post' : 'Add Item'"></span>
+                        </button>
+                    </div>
+
+                    <div class="space-y-4">
+                        <template x-if="editableAsset.files">
+                            <template x-for="(file, index) in editableAsset.files" :key="index">
+                                <div
+                                    class="p-5 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+                                    <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+                                        <!-- Drag Handle (Visual only for now) -->
+                                        <div
+                                            class="hidden md:flex md:col-span-1 items-center justify-center text-gray-400 cursor-move">
+                                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M4 8h16M4 16h16" />
+                                            </svg>
+                                        </div>
+
+                                        <!-- Main Content Fields -->
+                                        <div class="md:col-span-10 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div class="md:col-span-2">
+                                                <input type="text" x-model="file.title" class="input-field font-medium"
+                                                    :placeholder="asset.asset_type === 'SUBSCRIPTION' ? 'Post Title' : 'File Title'">
+                                            </div>
+
+                                            <!-- Date for Subscriptions -->
+                                            <template x-if="asset.asset_type === 'SUBSCRIPTION'">
+                                                <div>
+                                                    <label class="input-label text-xs">Publish Date</label>
+                                                    <input type="date" x-model="file.date" class="input-field">
+                                                </div>
+                                            </template>
+
+                                            <!-- Type Selector -->
+                                            <div>
+                                                <label class="input-label text-xs">Content Type</label>
+                                                <select x-model="file.type" class="input-field">
+                                                    <option value="upload">File Upload</option>
+                                                    <option value="link">External Link</option>
+                                                </select>
+                                            </div>
+
+                                            <!-- File/Link Input -->
+                                            <div class="md:col-span-2">
+                                                <div x-show="file.type === 'upload'">
                                                     <div class="flex gap-2">
-                                                        <input type="text" x-model="file.link" class="input-field"
-                                                            placeholder="External Link or Upload ->"
-                                                            :disabled="file.newFile">
+                                                        <input type="text" x-model="file.link"
+                                                            class="input-field bg-gray-100"
+                                                            placeholder="No file selected" disabled>
                                                         <input type="file" @change="handleFileSelect($event, index)"
                                                             class="hidden" :id="'file-upload-'+index">
                                                         <label :for="'file-upload-'+index"
-                                                            class="flex-shrink-0 px-3 py-2 bg-gray-200 dark:bg-gray-600 rounded-lg cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-500 flex items-center justify-center transition-colors"
-                                                            title="Upload File">
-                                                            <svg class="w-5 h-5 text-gray-600 dark:text-gray-300"
-                                                                fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            class="px-4 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 text-sm font-medium text-gray-700 flex items-center gap-2">
+                                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                                                                stroke="currentColor">
                                                                 <path stroke-linecap="round" stroke-linejoin="round"
                                                                     stroke-width="2"
                                                                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                                                             </svg>
+                                                            Upload
                                                         </label>
                                                     </div>
                                                     <p x-show="file.newFile"
-                                                        class="text-xs text-green-600 dark:text-green-400 mt-1 font-medium"
-                                                        x-text="'New file selected: ' + file.newFile.name"></p>
+                                                        class="text-xs text-green-600 mt-1 font-medium flex items-center gap-1">
+                                                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24"
+                                                            stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                        Selected: <span x-text="file.newFile.name"></span>
+                                                    </p>
+                                                </div>
+                                                <div x-show="file.type === 'link'">
+                                                    <input type="url" x-model="file.link" class="input-field"
+                                                        placeholder="https://example.com/resource">
                                                 </div>
                                             </div>
-                                            <div class="flex justify-between items-start gap-4">
-                                                <div class="flex-grow">
-                                                    <label class="input-label">Description (Optional)</label>
-                                                    <textarea x-model="file.description" rows="1"
-                                                        class="input-field text-sm"
-                                                        placeholder="Description"></textarea>
-                                                </div>
-                                                <button type="button" @click="removeContentItem(index)"
-                                                    class="text-red-600 hover:text-red-500 mt-8 p-1 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
-                                                    title="Remove Item">
-                                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
-                                                        stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                                            stroke-width="2"
-                                                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                    </svg>
-                                                </button>
+
+                                            <!-- Description -->
+                                            <div class="md:col-span-2">
+                                                <textarea x-model="file.description" rows="2"
+                                                    class="input-field text-sm"
+                                                    placeholder="Add a description or notes..."></textarea>
                                             </div>
                                         </div>
-                                    </template>
-                                </template>
-                                <div x-show="!editableAsset.files || editableAsset.files.length === 0"
-                                    class="text-center py-8 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                                    <p class="text-sm text-gray-500 dark:text-gray-400">No content files yet.</p>
-                                    <button type="button" @click="addContentItem()"
-                                        class="text-indigo-600 hover:text-indigo-500 font-medium mt-1">Add your first
-                                        item</button>
+
+                                        <!-- Actions -->
+                                        <div class="md:col-span-1 flex items-start justify-end">
+                                            <button type="button" @click="removeContentItem(index)"
+                                                class="text-gray-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition-colors">
+                                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2"
+                                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            </template>
+                        </template>
+
+                        <div x-show="!editableAsset.files || editableAsset.files.length === 0"
+                            class="text-center py-12 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800/50">
+                            <svg class="w-12 h-12 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <h3 class="text-lg font-medium text-gray-900 dark:text-white">No content yet</h3>
+                            <p class="text-gray-500 dark:text-gray-400 mb-6">Start adding files, links, or posts to your
+                                asset.</p>
+                            <button type="button" @click="addContentItem()"
+                                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-100 rounded-lg hover:bg-indigo-200 transition-colors">
+                                Add First Item
+                            </button>
                         </div>
-                    </template>
-                    <!-- Event / Ticket Content -->
-                    <template x-if="asset.asset_type === 'TICKET'">
-                        <div class="space-y-6">
-                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Event Details</h3>
-                            <div><label for="event_location" class="input-label">Event Link or Location</label><input
-                                    type="text" id="event_location" x-model="editableAsset.eventDetails.link"
-                                    class="input-field" placeholder="e.g., https://zoom.us/j/..."></div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div><label for="event_date" class="input-label">Event Date</label><input type="date"
-                                        id="event_date" x-model="editableAsset.eventDetails.date" class="input-field">
-                                </div>
-                                <div><label for="event_time" class="input-label">Event Time</label><input type="time"
-                                        id="event_time" x-model="editableAsset.eventDetails.time" class="input-field">
-                                </div>
-                            </div>
-                            <div><label for="max_attendees" class="input-label">Max Attendees (optional)</label><input
-                                    type="number" id="max_attendees"
-                                    x-model.number="editableAsset.eventDetails.maxAttendees" class="input-field"
-                                    placeholder="Leave blank for unlimited"></div>
-                        </div>
-                    </template>
-                    <!-- Subscription / Newsletter Content -->
-                    <template x-if="asset.asset_type === 'SUBSCRIPTION' || asset.asset_type === 'NEWSLETTER'">
-                        <div class="space-y-6">
-                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white"
-                                x-text="asset.asset_type === 'SUBSCRIPTION' ? 'Subscription Content' : 'Newsletter Content'">
-                            </h3>
-                            <div><label for="welcome_content" class="input-label">Welcome Content</label><textarea
-                                    id="welcome_content" rows="6" x-model="editableAsset.details.welcomeContent"
-                                    class="input-field"
-                                    placeholder="This content is shown to new subscribers immediately after purchase."></textarea>
-                            </div>
-                            <div x-show="asset.asset_type === 'SUBSCRIPTION'"><label for="benefits"
-                                    class="input-label">Ongoing Benefits</label><textarea id="benefits" rows="6"
-                                    x-model="editableAsset.details.benefits" class="input-field"
-                                    placeholder="Describe the ongoing value subscribers receive (e.g., access to a community, monthly content drops)."></textarea>
-                            </div>
-                        </div>
-                    </template>
+                    </div>
                 </div>
 
-                <!-- Activity Tab -->
+                <!-- 4. ACTIVITY TAB -->
                 <div x-show="activeTab === 'activity'">
                     {% include 'admin/partials/activity_feed.html' %}
                 </div>
+
             </div>
         </div>
 
-        <!-- Right Column: Actions & Insights -->
-        <div class="space-y-6 lg:sticky lg:top-24">
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Actions</h2>
-                <!-- Cover Image Preview -->
-                <div class="mb-4">
-                    <label class="input-label">Cover Image</label>
-                    <img :src="asset.cover_image_url || '/static/images/placeholder-cover.jpg'" alt="Asset cover image"
-                        class="w-full h-40 object-cover rounded-lg bg-gray-100 dark:bg-gray-700">
-                </div>
+        <!-- Right Column: Status & Quick Settings -->
+        <div class="lg:col-span-4 space-y-6">
+
+            <!-- Status Card -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Publishing</h3>
                 <div class="space-y-4">
-                    <div><label class="input-label">Asset Type</label>
-                        <p class="px-4 py-2.5 bg-gray-100 dark:bg-gray-700/50 rounded-lg text-sm"
-                            x-text="asset.asset_type ? asset.asset_type.replace(/_/g, ' ') : 'N/A'"></p>
+                    <div>
+                        <label class="input-label">Status</label>
+                        <select x-model="editableAsset.status" class="input-field">
+                            <template x-for="status in statuses" :key="status">
+                                <option :value="status" x-text="status" :selected="status === editableAsset.status">
+                                </option>
+                            </template>
+                        </select>
                     </div>
-                    <div><label for="title-quick" class="input-label">Title</label><input type="text" id="title-quick"
-                            x-model="editableAsset.title" class="input-field"></div>
-                    <div><label for="price-quick" class="input-label">Price ({{ currency_symbol }})</label><input
-                            type="number" step="0.01" id="price-quick" x-model.number="editableAsset.price"
-                            class="input-field"></div>
-                    <div><label for="status" class="input-label">Status</label><select id="status"
-                            x-model="editableAsset.status" class="input-field"><template x-for="s in statuses" :key="s">
-                                <option :value="s" x-text="s"></option>
-                            </template></select></div>
-                    <button type="button" @click="saveChanges()" :disabled="isSaving"
-                        class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
-                        <svg x-show="isSaving" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none"
-                            viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
-                            </circle>
-                            <path class="opacity-75" fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                            </path>
-                        </svg>
-                        <span x-text="isSaving ? 'Saving...' : 'Save Changes'"></span>
-                    </button>
+
+                    <!-- Recurring Toggle -->
+                    <div class="flex items-center justify-between py-2">
+                        <span class="flex-grow flex flex-col">
+                            <span class="text-sm font-medium text-gray-900 dark:text-white">Recurring /
+                                Subscription</span>
+                            <span class="text-xs text-gray-500">Enable recurring billing & tiers</span>
+                        </span>
+                        <button type="button" @click="editableAsset.is_subscription = !editableAsset.is_subscription"
+                            :class="editableAsset.is_subscription ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'"
+                            class="relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            <span aria-hidden="true"
+                                :class="editableAsset.is_subscription ? 'translate-x-5' : 'translate-x-0'"
+                                class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"></span>
+                        </button>
+                    </div>
+
+                    <!-- Base Price (Shown if NOT subscription/tiers) -->
+                    <div x-show="!editableAsset.is_subscription">
+                        <label class="input-label">Price ({{ currency_symbol }})</label>
+
+                        <div
+                            class="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Performance</h2>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600 dark:text-gray-400">Total Sales:</span>
+                                    <span class="font-semibold text-lg text-gray-900 dark:text-white"
+                                        x-text="asset.total_sales"></span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600 dark:text-gray-400">Total Revenue:</span>
+                                    <span class="font-semibold text-lg text-gray-900 dark:text-white">{{ currency_symbol
+                                        }}<span x-text="parseFloat(asset.total_revenue || 0).toFixed(2)"></span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
+            {% endblock %}
 
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Performance</h2>
-                <div class="space-y-3 text-sm">
-                    <div class="flex justify-between items-center">
-                        <span class="text-gray-600 dark:text-gray-400">Total Sales:</span>
-                        <span class="font-semibold text-lg text-gray-900 dark:text-white"
-                            x-text="asset.total_sales"></span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-gray-600 dark:text-gray-400">Total Revenue:</span>
-                        <span class="font-semibold text-lg text-gray-900 dark:text-white">{{ currency_symbol }}<span
-                                x-text="parseFloat(asset.total_revenue || 0).toFixed(2)"></span></span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts_extra %}
-<style>
-    [x-cloak] {
-        display: none !important;
-    }
-</style>
-{% endblock %}
+            {% block scripts_extra %}
+            <style>
+                [x-cloak] {
+                    display: none !important;
+                }
+            </style>
+            {% endblock %}

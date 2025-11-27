@@ -308,6 +308,8 @@ class DigitalAsset(db.Model):
             'price': float(self.price or 0.0),
             'status': self.status.value if self.status else None,
             'asset_type': self.asset_type.name if self.asset_type else None,
+            'is_subscription': self.is_subscription,
+            'subscription_interval': self.subscription_interval.name if self.subscription_interval else None,
             'cover_image_url': self.cover_image_url,
             'total_sales': self.total_sales or 0,
             'total_revenue': float(self.total_revenue or 0.0),

@@ -4,22 +4,31 @@
 
 # ==============================================================================
 # FOR A BRAND NEW PROJECT (Run this ONLY ONCE)
-# This will reset everything, build the containers, and create the first
-# database migration from your current models.
+# This will reset everything, delete local DB files/migrations, and rebuild.
 # ==============================================================================
 init:
 	@echo "--- WARNING: This will PERMANENTLY delete your local database and migration history. ---"
 	@read -p "Press Enter to continue or Ctrl+C to cancel."
+	
 	@echo "--- Tearing down containers and volumes... ---"
 	@docker-compose down -v
-	@echo "--- Deleting old migration history... ---"
+	
+	@echo "--- Deleting old migration history and local database files... ---"
 	@rm -rf migrations
+	@rm -rf instance
+	@rm -f *.db *.sqlite
+	
 	@echo "--- Building and starting new containers... ---"
-	@docker-compose up -d --build
+	@docker-compose up --build
+	
+	@echo "--- Waiting for application to initialize... ---"
+	@sleep 5
+	
 	@echo "--- Initializing new database schema... ---"
 	@docker-compose exec app flask db init
 	@docker-compose exec app flask db migrate -m "Initial complete database schema"
 	@docker-compose exec app flask db upgrade
+	
 	@echo "--- RESET COMPLETE! Your local database is now clean and up-to-date. ---"
 	@echo "--- You can now commit the new 'migrations' folder and deploy. ---"
 
@@ -30,10 +39,11 @@ init:
 
 # Start the application and apply any new migrations.
 start:
-	@echo "--- Starting containers and applying migrations... ---"
-	@docker-compose up --build
+	@echo "--- Starting containers... ---"
+	@docker-compose up
+	@echo "--- Applying pending migrations... ---"
 	@docker-compose exec app flask db upgrade
-	@echo "--- Application is running at http://localhost:5000 ---"
+	@echo "--- Application is running at http://localhost:80 ---"
 
 # Stop the application containers.
 stop:

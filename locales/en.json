@@ -88,5 +88,7 @@
     "browse_store": "Browse Store",
     "download_file": "Download File",
     "external_content": "External Content",
-    "open_in_new_tab": "Open in New Tab"
+    "open_in_new_tab": "Open in New Tab",
+    "starts_at": "Starts at",
+    "renew_subscription": "Renew Subscription"
 }

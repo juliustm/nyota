@@ -11,9 +11,11 @@ import uuid
 import queue
 import threading
 import requests
-from datetime import datetime, date
+import re
+from datetime import datetime, date, timedelta # Added timedelta
 from werkzeug.utils import secure_filename
-from sqlalchemy import func
+from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy import func # Added func import
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash, session, g,
@@ -351,7 +353,7 @@ def serve_content(file_id):
         customer_id=customer.id,
         asset_id=asset_file.asset_id,
         status=PurchaseStatus.COMPLETED
-    ).first()
+    ).order_by(Purchase.purchase_date.desc()).first()
     
     # Allow creator to view their own assets
     creator_id = session.get('creator_id')
@@ -359,6 +361,13 @@ def serve_content(file_id):
     
     if not purchase and not is_creator:
         abort(403)
+        
+    # Check subscription status
+    if purchase and purchase.asset.is_subscription:
+        is_active, expiry_date = check_subscription_status(purchase)
+        if not is_active:
+            flash(f"Your subscription expired on {expiry_date.strftime('%Y-%m-%d')}. Please renew to access this content.", "warning")
+            return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
         
     # Serve the file
     # storage_path is stored as "secure_uploads/filename"
@@ -369,6 +378,34 @@ def serve_content(file_id):
     else:
         # It's an external link, redirect to it
         return redirect(asset_file.storage_path)
+
+def check_subscription_status(purchase):
+    """
+    Checks if a subscription purchase is still active.
+    Returns (is_active, expiry_date).
+    """
+    if not purchase.asset.is_subscription:
+        return True, None
+        
+    start_date = purchase.purchase_date
+    interval = purchase.asset.subscription_interval.name.lower() if purchase.asset.subscription_interval else 'monthly'
+    
+    # Override interval if tier is selected
+    if purchase.ticket_data and 'tier' in purchase.ticket_data:
+        interval = purchase.ticket_data['tier'].get('interval', interval).lower()
+        
+    if interval == 'weekly':
+        delta = timedelta(days=7)
+    elif interval == 'quarterly':
+        delta = timedelta(days=90)
+    elif interval == 'yearly':
+        delta = timedelta(days=365)
+    else: # monthly
+        delta = timedelta(days=30)
+        
+    expiry_date = start_date + delta
+    is_active = datetime.utcnow() < expiry_date
+    return is_active, expiry_date
 
 def save_asset_from_form(asset, req):
     if 'asset_data' not in req.form: raise ValueError("Form submission incomplete. Please try again.")
@@ -396,7 +433,13 @@ def save_asset_from_form(asset, req):
     asset.is_subscription = pricing_data.get('type') == 'recurring'
     asset.subscription_interval = SubscriptionInterval[pricing_data.get('billingCycle', 'monthly').upper()] if asset.is_subscription else None
     
-    asset.details = asset.details or {}
+    # Ensure details is a dictionary and create a copy to modify
+    asset.details = dict(asset.details or {})
+    
+    # Handle Subscription Tiers
+    if asset.is_subscription:
+        asset.details['subscription_tiers'] = pricing_data.get('tiers', [])
+
     if asset.asset_type == AssetType.TICKET:
         event_details = form_data.get('eventDetails', {})
         asset.event_location, asset.custom_fields = event_details.get('link'), form_data.get('customFields', [])
@@ -404,8 +447,19 @@ def save_asset_from_form(asset, req):
             try: asset.event_date = datetime.strptime(f"{event_details['date']} {event_details['time']}", '%Y-%m-%d %H:%M')
             except (ValueError, TypeError): asset.event_date = None
         asset.max_attendees = int(event_details.get('maxAttendees')) if event_details.get('maxAttendees') else None
-    elif asset.asset_type == AssetType.SUBSCRIPTION: asset.details = form_data.get('subscriptionDetails', {})
-    elif asset.asset_type == AssetType.NEWSLETTER: asset.details = form_data.get('newsletterDetails', {})
+        
+        # Store post-purchase instructions
+        asset.details['postPurchaseInstructions'] = event_details.get('postPurchaseInstructions', '')
+        
+    elif asset.asset_type == AssetType.SUBSCRIPTION: 
+        # Merge existing details with subscription details
+        asset.details.update(form_data.get('subscriptionDetails', {}))
+    elif asset.asset_type == AssetType.NEWSLETTER: 
+        # Merge existing details with newsletter details
+        asset.details.update(form_data.get('newsletterDetails', {}))
+    
+    # Explicitly flag details as modified to ensure SQLAlchemy saves the JSON changes
+    flag_modified(asset, 'details')
     
     # Preserve existing file paths if not re-uploaded
     existing_files_map = {}
@@ -819,44 +873,64 @@ def initiate_payment():
     if not all([phone_number, asset_id, channel_id]):
         return jsonify({'success': False, 'message': 'Missing required data.'}), 400
     
-    asset = DigitalAsset.query.get(asset_id)
-    if not asset: 
-        return jsonify({'success': False, 'message': 'The requested product could not be found.'}), 404
+    tier = data.get('tier')  # Extract selected tier
+
+    asset = DigitalAsset.query.get_or_404(asset_id)
+    
+    # Determine price based on tier
+    amount = asset.price
+    ticket_data = {}
+    
+    if tier:
+        # Get tier price and validate it
+        tier_price = tier.get('price')
+        if tier_price is None or tier_price == '' or (isinstance(tier_price, str) and not str(tier_price).strip()):
+            # Fallback to asset price if tier price is invalid
+            amount = asset.price
+        else:
+            try:
+                # Convert to Decimal, handling both string and numeric inputs
+                amount = decimal.Decimal(str(tier_price).strip())
+                ticket_data['tier'] = tier # Only set tier data if price is valid
+            except (decimal.InvalidOperation, ValueError):
+                # If conversion fails, use asset price as fallback
+                amount = asset.price
+    
+            
+    # Create a pending purchase
+    customer = Customer.query.filter_by(whatsapp_number=phone_number).first()
+    if not customer:
+        customer = Customer(whatsapp_number=phone_number)
+        db.session.add(customer)
+        db.session.flush() # Flush to get customer.id if it's a new customer
+
+    purchase = Purchase(
+        customer_id=customer.id,
+        asset_id=asset.id,
+        amount_paid=amount,
+        status=PurchaseStatus.PENDING,
+        sse_channel_id=channel_id,
+        ticket_data=ticket_data if ticket_data else None
+    )
+    db.session.add(purchase)
+    db.session.commit()
 
     creator = asset.creator
     uza_pk = creator.get_setting('payment_uza_pk')
     if not uza_pk:
         current_app.logger.error(f"UZA Payment for creator {creator.id} failed: Public Key (PK) not configured.")
         return jsonify({'success': False, 'message': 'This store is not configured to accept payments.'}), 500
-
-    # 2. Find or create the customer record
-    customer = Customer.query.filter_by(whatsapp_number=phone_number).first()
-    if not customer:
-        customer = Customer(whatsapp_number=phone_number)
-        db.session.add(customer)
-        db.session.commit()
     
     # Store the customer's phone in the session for library access later
     session['customer_phone'] = phone_number
-
-    # 3. Create a pending Purchase record in our database
-    new_purchase = Purchase(
-        customer_id=customer.id, 
-        asset_id=asset.id, 
-        amount_paid=asset.price, 
-        status=PurchaseStatus.PENDING, 
-        sse_channel_id=channel_id  # Link this purchase to the user's browser tab
-    )
-    db.session.add(new_purchase)
-    db.session.commit() # Commit to generate the transaction_token
     
     # 4. Construct the payload for the UZA API
     uza_payload = {
-        "products": [{"id": 8069, "name": asset.title, "quantity": 1, "price": float(asset.price)}],
+        "products": [{"id": 8069, "name": asset.title, "quantity": 1, "price": float(amount)}],
         "payment": {"type": "payby.selcom", "walletid": phone_number},
-        "reference": new_purchase.transaction_token, # Our internal unique ID
+        "reference": purchase.transaction_token, # Our internal unique ID
         "pk": uza_pk,
-        "totalAmount": str(asset.price),
+        "totalAmount": str(amount),
         "currency": creator.get_setting('payment_uza_currency', 'TZS'),
         "meta": {
             "refcode": creator.get_setting('payment_uza_refcode', '#web'), 
@@ -877,14 +951,14 @@ def initiate_payment():
                 raise Exception("UZA API response did not contain a 'deal_id'.")
 
             # Link our purchase record to UZA's deal_id
-            new_purchase.payment_gateway_ref = uza_deal_id
+            purchase.payment_gateway_ref = uza_deal_id
             db.session.commit()
 
             # Respond to the user's browser
             return jsonify({
                 'success': True,
                 'message': response_data['data']['order'].get('payment_message', 'Check your phone to complete payment.'),
-                'purchase_id': new_purchase.id,
+                'purchase_id': purchase.id,
                 'deal_id': uza_deal_id
             })
         else: 
@@ -893,9 +967,9 @@ def initiate_payment():
 
     except Exception as e:
         # If the API call fails, mark our purchase record as FAILED
-        new_purchase.status = PurchaseStatus.FAILED
+        purchase.status = PurchaseStatus.FAILED
         db.session.commit()
-        current_app.logger.error(f"UZA API call failed for transaction {new_purchase.transaction_token}: {e}")
+        current_app.logger.error(f"UZA API call failed for transaction {purchase.transaction_token}: {e}")
         return jsonify({'success': False, 'message': 'Could not connect to the payment provider. Please try again.'}), 500
 
 @main_bp.route('/api/retry-payment', methods=['POST'])
@@ -1047,6 +1121,15 @@ def library():
             purchases = Purchase.query.filter_by(customer_id=customer.id).order_by(Purchase.purchase_date.desc()).all()
             # Serialize purchases with asset data
             for purchase in purchases:
+                # Skip purchases with deleted/orphaned assets
+                if not purchase.asset:
+                    continue
+                    
+                is_active = True
+                expiry_date = None
+                if purchase.asset.is_subscription:
+                    is_active, expiry_date = check_subscription_status(purchase)
+                
                 purchases_data.append({
                     'id': purchase.id,
                     'status': purchase.status.name,
@@ -1055,17 +1138,22 @@ def library():
                         'title': purchase.asset.title,
                         'slug': purchase.asset.slug,
                         'cover_image_url': purchase.asset.cover_image_url,
-                        'description': purchase.asset.description
-                    }
+                        'description': purchase.asset.description,
+                        'asset_type': purchase.asset.asset_type.name
+                    },
+                    'subscription': {
+                        'is_active': is_active,
+                        'expiry_date': expiry_date.isoformat() if expiry_date else None
+                    } if purchase.asset.is_subscription else None
                 })
     
     creator = Creator.query.first()
-
     return render_template(
         'user/library.html',
         customer_phone=customer_phone,
         purchases=purchases_data,
-        store_name=creator.store_name if creator else "Creator Store"
+        store_name=creator.store_name if creator else "Nyota Store",
+        currency_symbol=creator.get_setting('currency_symbol', 'TZS') if creator else "TZS"
     )
 
 @main_bp.route('/logout')

@@ -27,24 +27,65 @@
             </svg>
         </div>
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-3">{{ translate('access_your_content') }}</h2>
-        <p class="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">{{ translate('enter_phone_to_access') }}</p>
+        <p class="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">{{ translate('enter_phone_and_date') or 'Enter
+            your phone number and purchase date to access your library' }}</p>
 
-        <form action="{{ url_for('main.library') }}" method="POST" class="max-w-sm mx-auto">
-            <div class="mb-4">
+        <form action="{{ url_for('main.library') }}" method="POST" class="max-w-sm mx-auto space-y-4">
+            <div>
                 <label for="phone_number" class="sr-only">{{ translate('mobile_phone_number') }}</label>
                 <input type="tel" name="phone_number" id="phone_number" required
                     class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 text-center text-lg"
                     placeholder="e.g., 0712345678">
             </div>
-            <button type="submit"
-                class="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors shadow-lg hover:shadow-indigo-500/30">
+            <div>
+                <label for="purchase_date" class="sr-only">{{ translate('purchase_date') or 'Purchase Date' }}</label>
+                <input type="date" name="purchase_date" id="purchase_date" required {% if today_date
+                    %}max="{{ today_date }}" {% endif %}
+                    class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 text-center text-lg"
+                    placeholder="Purchase date">
+            </div>
+            <button type="submit" {% if throttled %}disabled{% endif %}
+                class="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors shadow-lg hover:shadow-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed">
                 {{ translate('access_library') }}
             </button>
         </form>
+
+        <p class="mt-6 text-xs text-gray-500 dark:text-gray-400 text-center">
+            {{ translate('library_help_text') or 'Enter the phone number you used to purchase and the date of your last
+            purchase' }}
+        </p>
     </div>
     {% else %}
     <!-- Logged In - Show Library -->
+
+    <!-- Profile Header -->
+    <div
+        class="mb-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between fade-in">
+        <div class="flex items-center gap-3">
+            <div
+                class="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center">
+                <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ translate('logged_in_as') }}</p>
+                <p class="font-semibold text-gray-900 dark:text-white">{{ customer_phone }}</p>
+            </div>
+        </div>
+        <a href="{{ url_for('main.logout') }}"
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            {{ translate('switch_account') }}
+        </a>
+    </div>
+
     {% if purchases %}
+
 
     <!-- Tabs & Search Header -->
     <div class="flex flex-col md:flex-row gap-6 mb-8 fade-in" style="animation-delay: 100ms;">

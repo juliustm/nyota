@@ -461,3 +461,18 @@ class Ambassador(db.Model):
     commission_rate = db.Column(db.Float, default=0.10)
     is_active = db.Column(db.Boolean, default=True)
     customer = db.relationship('Customer', back_populates='ambassador_profile')
+
+class AccessAttempt(db.Model):
+    """
+    Tracks session recovery attempts for rate limiting and security monitoring.
+    Prevents brute force attacks on the session recovery mechanism.
+    """
+    __tablename__ = 'access_attempt'
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(45), nullable=False, index=True)
+    phone_suffix = db.Column(db.String(4), nullable=False)
+    attempt_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    success = db.Column(db.Boolean, default=False, nullable=False)
+    
+    def __repr__(self):
+        return f'<AccessAttempt {self.ip_address} at {self.attempt_time}>'

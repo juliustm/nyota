@@ -6,8 +6,14 @@ class Config:
     # Standard Flask secret key
     SECRET_KEY = os.environ.get('SECRET_KEY', 'a-very-secret-key-for-local-development')
 
-    # Session timeout configuration
-    PERMANENT_SESSION_LIFETIME = timedelta(days=365)
+    # Session timeout configuration (90 days for buyer convenience)
+    PERMANENT_SESSION_LIFETIME = timedelta(days=90)
+    
+    # Security flags for session cookies
+    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False') == 'True'  # True in production (HTTPS)
+    SESSION_COOKIE_HTTPONLY = True  # Prevent XSS attacks
+    SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection while allowing normal navigation
+
 
     # --- THE PROVEN DATABASE CONFIGURATION ---
     # 1. Define the absolute path for our data directory.

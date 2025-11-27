@@ -93,5 +93,11 @@
     "renew_subscription": "Renew Subscription",
     "search_placeholder": "Search for content...",
     "my_content": "My Content",
-    "order_history": "Order History"
+    "order_history": "Order History",
+    "enter_phone_and_date": "Enter your phone number and purchase date to access your library",
+    "purchase_date": "Purchase Date",
+    "library_help_text": "Enter the phone number you used to purchase and the date of your last purchase",
+    "logged_in_as": "Logged in as",
+    "switch_account": "Switch Account",
+    "sign_out": "Sign Out"
 }

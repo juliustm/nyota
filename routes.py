@@ -24,7 +24,7 @@ from flask import (
 
 from models.nyota import (
     db, Creator, DigitalAsset, AssetStatus, AssetType, AssetFile, 
-    SubscriptionInterval, CreatorSetting, Customer, Purchase, Comment, PurchaseStatus
+    SubscriptionInterval, CreatorSetting, Customer, Purchase, Comment, PurchaseStatus, AccessAttempt
 )
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
@@ -1215,7 +1215,109 @@ def uza_payment_callback():
         current_app.logger.warning(f"Payment for deal_id {uza_deal_id} was successful, but no SSE channel was found to notify the user's browser.")
 
     # 7. Acknowledge receipt to UZA's servers
-    return jsonify({'status': 'ok', 'message': 'Callback processed successfully'}), 200
+    return jsonify({'status': 'ok', 'message': 'Payment processed successfully'}), 200
+
+
+# DEPRECATED: Session recovery is now unified in the /library route
+# Users provide phone + date directly on the library page
+@main_bp.route('/access/verify', methods=['GET', 'POST'])
+def session_recovery():
+    """
+    DEPRECATED: Redirect to library page.
+    Session recovery is now handled directly on /library with phone + date.
+    """
+    return redirect(url_for('main.library'))
+
+    
+    # POST: Process verification attempt
+    phone_suffix = request.form.get('phone_suffix', '').strip()
+    purchase_date_str = request.form.get('purchase_date', '').strip()
+    
+    # Get requester IP
+    ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if ',' in ip_address:
+        ip_address = ip_address.split(',')[0].strip()
+    
+    # Rate limiting check
+    fifteen_min_ago = datetime.utcnow() - timedelta(minutes=15)
+    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    
+    # Count recent failed attempts from this IP
+    recent_failures = AccessAttempt.query.filter(
+        AccessAttempt.ip_address == ip_address,
+        AccessAttempt.success == False,
+        AccessAttempt.attempt_time >= fifteen_min_ago
+    ).count()
+    
+    hourly_failures = AccessAttempt.query.filter(
+        AccessAttempt.ip_address == ip_address,
+        AccessAttempt.success == False,
+        AccessAttempt.attempt_time >= one_hour_ago
+    ).count()
+    
+    # Apply throttling
+    if recent_failures >= 3:
+        return render_template('user/session_recovery.html', 
+                             error='Too many failed attempts. Please wait 15 minutes.',
+                             throttled=True), 429
+    
+    if hourly_failures >= 10:
+        return render_template('user/session_recovery.html',
+                             error='Too many failed attempts. Please wait 1 hour.',
+                             throttled=True), 429
+    
+    # Validate input
+    if not phone_suffix or len(phone_suffix) != 4 or not phone_suffix.isdigit():
+        # Log failed attempt
+        attempt = AccessAttempt(ip_address=ip_address, phone_suffix=phone_suffix[:4] if phone_suffix else '0000', success=False)
+        db.session.add(attempt)
+        db.session.commit()
+        return render_template('user/session_recovery.html',
+                             error='Please enter the last 4 digits of your phone number.')
+    
+    # Validate date format (YYYY-MM-DD)
+    try:
+        purchase_date = datetime.strptime(purchase_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        attempt = AccessAttempt(ip_address=ip_address, phone_suffix=phone_suffix, success=False)
+        db.session.add(attempt)
+        db.session.commit()
+        return render_template('user/session_recovery.html',
+                             error='Please enter a valid date (YYYY-MM-DD).')
+    
+    # Search for matching purchase
+    # Match: phone ends with suffix AND purchase was made on the specified date
+    matching_purchases = Purchase.query.join(Customer).filter(
+        Customer.whatsapp_number.like(f'%{phone_suffix}'),
+        func.date(Purchase.purchase_date) == purchase_date,
+        Purchase.status == PurchaseStatus.COMPLETED
+    ).all()
+    
+    if not matching_purchases:
+        # Log failed attempt
+        attempt = AccessAttempt(ip_address=ip_address, phone_suffix=phone_suffix, success=False)
+        db.session.add(attempt)
+        db.session.commit()
+        
+        return render_template('user/session_recovery.html',
+                             error='No matching purchase found. Please check your phone number and date.')
+    
+    # Success! Create session
+    customer = matching_purchases[0].customer
+    session.permanent = True
+    session['customer_phone'] = customer.whatsapp_number
+    session['customer_id'] = customer.id
+    
+    # Log successful attempt
+    attempt = AccessAttempt(ip_address=ip_address, phone_suffix=phone_suffix, success=True)
+    db.session.add(attempt)
+    db.session.commit()
+    
+    flash('Access restored! Welcome back.', 'success')
+    return redirect(url_for('main.library'))
+
+
+
 
 @main_bp.route('/api/payment-stream/<channel_id>')
 def payment_stream(channel_id):
@@ -1238,10 +1340,89 @@ def library():
     customer_phone = session.get('customer_phone')
     
     if request.method == 'POST':
-        form_phone = request.form.get('phone_number')
-        if form_phone:
-            session['customer_phone'] = form_phone.strip()
+        # Get form data
+        form_phone = request.form.get('phone_number', '').strip()
+        purchase_date_str = request.form.get('purchase_date', '').strip()
+        
+        # Get requester IP for rate limiting
+        ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if ',' in ip_address:
+            ip_address = ip_address.split(',')[0].strip()
+        
+        # Rate limiting check
+        fifteen_min_ago = datetime.utcnow() - timedelta(minutes=15)
+        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+        
+        recent_failures = AccessAttempt.query.filter(
+            AccessAttempt.ip_address == ip_address,
+            AccessAttempt.success == False,
+            AccessAttempt.attempt_time >= fifteen_min_ago
+        ).count()
+        
+        hourly_failures = AccessAttempt.query.filter(
+            AccessAttempt.ip_address == ip_address,
+            AccessAttempt.success == False,
+            AccessAttempt.attempt_time >= one_hour_ago
+        ).count()
+        
+        # Apply throttling
+        if recent_failures >= 3:
+            flash('Too many failed attempts. Please wait 15 minutes.', 'error')
+            return render_template('user/library.html', customer_phone=None, purchases=[], 
+                                 store_name=Creator.query.first().store_name if Creator.query.first() else "Nyota",
+                                 currency_symbol='TZS', throttled=True), 429
+        
+        if hourly_failures >= 10:
+            flash('Too many failed attempts. Please wait 1 hour.', 'error')
+            return render_template('user/library.html', customer_phone=None, purchases=[],
+                                 store_name=Creator.query.first().store_name if Creator.query.first() else "Nyota",
+                                 currency_symbol='TZS', throttled=True), 429
+        
+        # Validate both fields are provided
+        if not form_phone or not purchase_date_str:
+            flash('Please enter both your phone number and purchase date.', 'error')
             return redirect(url_for('main.library'))
+        
+        # Validate date format
+        try:
+            purchase_date = datetime.strptime(purchase_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            # Log failed attempt
+            phone_suffix = form_phone[-4:] if len(form_phone) >= 4 else '0000'
+            attempt = AccessAttempt(ip_address=ip_address, phone_suffix=phone_suffix, success=False)
+            db.session.add(attempt)
+            db.session.commit()
+            flash('Please enter a valid purchase date.', 'error')
+            return redirect(url_for('main.library'))
+        
+        # Search for matching customer and purchase
+        matching_purchases = Purchase.query.join(Customer).filter(
+            Customer.whatsapp_number == form_phone,
+            func.date(Purchase.purchase_date) == purchase_date,
+            Purchase.status == PurchaseStatus.COMPLETED
+        ).all()
+        
+        if not matching_purchases:
+            # Log failed attempt
+            phone_suffix = form_phone[-4:] if len(form_phone) >= 4 else '0000'
+            attempt = AccessAttempt(ip_address=ip_address, phone_suffix=phone_suffix, success=False)
+            db.session.add(attempt)
+            db.session.commit()
+            flash('No purchase found with this phone number and date. Please check your details.', 'error')
+            return redirect(url_for('main.library'))
+        
+        # Success! Create session
+        phone_suffix = form_phone[-4:] if len(form_phone) >= 4 else '0000'
+        attempt = AccessAttempt(ip_address=ip_address, phone_suffix=phone_suffix, success=True)
+        db.session.add(attempt)
+        
+        session.permanent = True
+        session['customer_phone'] = form_phone
+        session['customer_id'] = matching_purchases[0].customer_id
+        db.session.commit()
+        
+        flash('Access granted! Welcome to your library.', 'success')
+        return redirect(url_for('main.library'))
 
     purchases = []
     purchases_data = []
@@ -1283,7 +1464,8 @@ def library():
         customer_phone=customer_phone,
         purchases=purchases_data,
         store_name=creator.store_name if creator else "Nyota Store",
-        currency_symbol=creator.get_setting('currency_symbol', 'TZS') if creator else "TZS"
+        currency_symbol=creator.get_setting('currency_symbol', 'TZS') if creator else "TZS",
+        today_date=datetime.utcnow().strftime('%Y-%m-%d')
     )
 
 @main_bp.route('/logout')

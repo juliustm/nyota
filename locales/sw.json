@@ -97,5 +97,11 @@
     "renew_subscription": "Huisha Usajili",
     "search_placeholder": "Tafuta maudhui...",
     "my_content": "Maudhui Yangu",
-    "order_history": "Historia ya Manunuzi"
+    "order_history": "Historia ya Manunuzi",
+    "enter_phone_and_date": "Weka namba yako ya simu na tarehe ya ununuzi wako",
+    "purchase_date": "Tarehe ya Ununuzi",
+    "library_help_text": "Weka namba ya simu uliyotumia kununua na tarehe ya ununuzi wako wa mwisho",
+    "logged_in_as": "Umeingia kama",
+    "switch_account": "Badilisha Akaunti",
+    "sign_out": "Toka"
 }

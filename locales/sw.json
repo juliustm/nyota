@@ -79,10 +79,6 @@
     "all": "Yote",
     "completed": "Imekamilika",
     "failed": "Imeshindwa",
-    "processing": "Inachakata",
-    "no_results_found": "Hakuna Matokeo",
-    "try_different_filter": "Jaribu kubadilisha utafutaji au kichuja kupata unachotafuta.",
-    "clear_filters": "Futa Vichuja",
     "processing": "Inachakata...",
     "no_results_found": "Hakuna maudhui yaliyopatikana",
     "try_different_filter": "Jaribu kubadilisha utafutaji au vichungi.",
@@ -103,5 +99,6 @@
     "library_help_text": "Weka namba ya simu uliyotumia kununua na tarehe ya ununuzi wako wa mwisho",
     "logged_in_as": "Umeingia kama",
     "switch_account": "Badilisha Akaunti",
-    "sign_out": "Toka"
+    "sign_out": "Toka",
+    "confirm_cancel_payment": "Je, unataka kughairi malipo haya na kuanza upya?"
 }

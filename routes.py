@@ -338,7 +338,8 @@ def save_asset():
 def serve_content(file_id):
     # Check if user is logged in
     customer_phone = session.get('customer_phone')
-    if not customer_phone:
+    # STRICT SESSION CHECK: Ensure the session is fully verified
+    if not customer_phone or not session.get('is_verified'):
         abort(403)
         
     # Get the file
@@ -1004,7 +1005,9 @@ def initiate_payment():
         return jsonify({'success': False, 'message': 'This store is not configured to accept payments.'}), 500
     
     # Store the customer's phone in the session for library access later
+    # BUT mark as unverified until payment is successful
     session['customer_phone'] = phone_number
+    session['is_verified'] = False
     
     # Determine which UZA Product ID to use
     # Priority: 1. Tier's UZA Product ID, 2. Asset's UZA Product ID, 3. Default fallback ID
@@ -1207,7 +1210,7 @@ def uza_payment_callback():
         sse_manager.publish(purchase.sse_channel_id, {
             'status': 'SUCCESS', 
             'message': 'Payment confirmed! Accessing your content...',
-            'redirect_url': url_for('main.library') 
+            'redirect_url': url_for('main.finalize_session', purchase_id=purchase.id) 
         })
         current_app.logger.info(f"Successfully processed payment for deal_id {uza_deal_id} and notified SSE channel {purchase.sse_channel_id}")
     else:
@@ -1338,6 +1341,11 @@ def payment_stream(channel_id):
 @main_bp.route('/library', methods=['GET', 'POST'])
 def library():
     customer_phone = session.get('customer_phone')
+    # Enforce strict session verification:
+    # If the user has a phone in session but is NOT verified (e.g. just started a purchase),
+    # treat them as logged out so they see the verification form.
+    if not session.get('is_verified'):
+        customer_phone = None
     
     if request.method == 'POST':
         # Get form data
@@ -1419,6 +1427,7 @@ def library():
         session.permanent = True
         session['customer_phone'] = form_phone
         session['customer_id'] = matching_purchases[0].customer_id
+        session['is_verified'] = True # Grant full access
         db.session.commit()
         
         flash('Access granted! Welcome to your library.', 'success')
@@ -1472,5 +1481,42 @@ def library():
 def logout():
     """Logs out the customer by clearing their phone from the session."""
     session.pop('customer_phone', None)
+    session.pop('is_verified', None)
     flash("You have been logged out.", "info")
     return redirect(url_for('main.library'))
+
+@main_bp.route('/auth/finalize-session/<int:purchase_id>')
+def finalize_session(purchase_id):
+    """
+    Route hit after successful payment to upgrade the session to 'verified'.
+    """
+    purchase = Purchase.query.get_or_404(purchase_id)
+    
+    # Security check: Ensure the session phone matches the purchase phone
+    # This prevents someone from just guessing purchase IDs to verify a random session
+    session_phone = session.get('customer_phone')
+    if not session_phone or not purchase.customer or purchase.customer.whatsapp_number != session_phone:
+        flash("Session mismatch. Please log in again.", "error")
+        return redirect(url_for('main.library'))
+
+    if purchase.status == PurchaseStatus.COMPLETED:
+        session['is_verified'] = True
+        session.permanent = True
+        flash("Payment successful! Welcome to your library.", "success")
+        return redirect(url_for('main.library'))
+    else:
+        flash("Payment not yet confirmed. Please wait or check your phone.", "warning")
+        return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
+
+@main_bp.route('/api/cancel-payment', methods=['POST'])
+def cancel_payment():
+    """
+    Clears the unverified session data when a user cancels a pending payment.
+    """
+    # Only clear if not verified (to avoid logging out a valid user who just clicked cancel on a new purchase)
+    if not session.get('is_verified'):
+        session.pop('customer_phone', None)
+        session.pop('customer_id', None)
+        return jsonify({'success': True, 'message': 'Payment cancelled and session cleared.'})
+    
+    return jsonify({'success': True, 'message': 'Payment cancelled.'})

@@ -619,11 +619,22 @@ document.addEventListener('alpine:init', () => {
         eventSource: null,
         selectedTier: null,
         tiers: [],
+        purchaseId: null,
+        dealId: null,
+        pollingInterval: null,
 
         init() {
             window.addEventListener('open-checkout-modal', (event) => {
                 const prefillNumber = event.detail ? event.detail.phoneNumber : localStorage.getItem('nyota_phone');
                 this.openModal(prefillNumber);
+            });
+
+            // Listen for payment resumption (e.g., after page refresh)
+            window.addEventListener('resume-payment-check', (event) => {
+                const { purchaseId, dealId } = event.detail;
+                if (purchaseId && dealId) {
+                    this.resumePaymentCheck(purchaseId, dealId);
+                }
             });
         },
 
@@ -639,12 +650,28 @@ document.addEventListener('alpine:init', () => {
 
             this.$nextTick(() => { if (this.$refs.phoneInput) this.$refs.phoneInput.focus(); });
         },
-        closeModal() { this.isOpen = false; if (this.eventSource) this.eventSource.close(); },
 
-        formatPhoneNumber() { /* ... unchanged ... */ },
+        closeModal() {
+            this.isOpen = false;
+            // CRITICAL: Do NOT stop polling or close SSE when modal closes
+            // Payment verification must continue in the background
+            // Only stop when payment actually succeeds or user explicitly cancels
+            console.log('Modal closed, but payment verification continues in background');
+        },
+
+        formatPhoneNumber() {
+            let cleaned = this.phoneNumber.replace(/\D/g, '');
+            if (cleaned.startsWith('255')) cleaned = '0' + cleaned.substring(3);
+            else if (cleaned.startsWith('0') && cleaned.length > 10) cleaned = cleaned.substring(0, 10);
+
+            if (cleaned.length > 4) cleaned = cleaned.substring(0, 4) + ' ' + cleaned.substring(4);
+            if (cleaned.length > 8) cleaned = cleaned.substring(0, 8) + ' ' + cleaned.substring(8);
+
+            this.phoneNumber = cleaned;
+        },
 
         async initiatePayment() {
-            if (this.phoneNumber.length < 9) {
+            if (this.phoneNumber.replace(/\D/g, '').length < 10) {
                 this.errorMessage = 'Please enter a valid phone number.';
                 return;
             }
@@ -657,7 +684,7 @@ document.addEventListener('alpine:init', () => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        phone_number: this.phoneNumber,
+                        phone_number: this.phoneNumber.replace(/\D/g, ''),
                         asset_id: this.asset.id,
                         channel_id: this.channelId,
                         tier: this.selectedTier
@@ -669,10 +696,9 @@ document.addEventListener('alpine:init', () => {
                 if (response.ok && result.success) {
                     this.status = 'waiting';
                     this.statusMessage = result.message || 'Check your phone...';
+                    this.purchaseId = result.purchase_id;
+                    this.dealId = result.deal_id;
 
-                    // --- THIS IS THE KEY CHANGE ---
-                    // The backend now gives us the IDs we need to store for a potential retry.
-                    // We'll store this in localStorage, scoped to the asset ID.
                     const pendingPurchase = {
                         id: result.purchase_id,
                         deal_id: result.deal_id,
@@ -691,6 +717,130 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        async retryPayment() {
+            if (!this.dealId || !this.purchaseId) {
+                // Fallback to full initiation if we lost state
+                return this.initiatePayment();
+            }
+
+            this.status = 'initiating';
+            this.errorMessage = '';
+            this.stopPolling(); // Stop any existing polling
+
+            try {
+                const response = await fetch('/api/retry-payment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deal_id: this.dealId,
+                        purchase_id: this.purchaseId,
+                        phone_number: this.phoneNumber.replace(/\D/g, '')
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    this.status = 'waiting';
+                    this.statusMessage = result.message || 'New request sent. Check your phone.';
+                    // Ensure listener is active (it might have been closed if we navigated away, though we kept it open on timeout)
+                    if (!this.eventSource || this.eventSource.readyState === EventSource.CLOSED) {
+                        this.listenForPaymentResult();
+                    }
+                } else {
+                    this.status = 'timeout'; // Go back to timeout state so they can try again
+                    this.errorMessage = result.message || 'Retry failed.';
+                }
+            } catch (e) {
+                this.status = 'timeout';
+                this.errorMessage = 'Network error during retry.';
+            }
+        },
+
+        async checkPaymentStatus() {
+            if (!this.purchaseId) {
+                console.warn('No purchase ID available for status check');
+                return;
+            }
+
+            console.log(`[POLLING] Checking payment status for purchase #${this.purchaseId}...`);
+
+            try {
+                const response = await fetch(`/api/payment-status/${this.purchaseId}`);
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    console.log(`[POLLING] Status received: ${data.status}`);
+
+                    if (data.status === 'COMPLETED') {
+                        console.log('[POLLING] ✅ PAYMENT CONFIRMED! Redirecting...');
+                        this.status = 'success';
+                        this.statusMessage = 'Payment confirmed!';
+                        this.stopPolling();
+                        if (this.eventSource) this.eventSource.close();
+
+                        // Clear localStorage
+                        localStorage.removeItem(`nyota_purchase_${this.asset.id}`);
+
+                        // Redirect regardless of modal state
+                        setTimeout(() => {
+                            window.location.href = data.redirect_url || '/library';
+                        }, 1500);
+                    } else if (data.status === 'FAILED') {
+                        console.log('[POLLING] ❌ Payment failed');
+                        this.status = 'failed';
+                        this.errorMessage = data.message || 'Payment failed.';
+                        this.stopPolling();
+                        if (this.eventSource) this.eventSource.close();
+
+                        // Reopen modal to show error
+                        if (!this.isOpen) {
+                            this.isOpen = true;
+                        }
+                    }
+                    // If PENDING, continue polling (no action needed)
+                } else {
+                    console.error('[POLLING] Status check failed:', data.message);
+                }
+            } catch (e) {
+                console.error('[POLLING] Error checking payment status:', e);
+            }
+        },
+
+        startPolling() {
+            console.log('🔄 [POLLING] Starting background payment verification (every 5 seconds)');
+            this.stopPolling(); // Clear any existing interval
+
+            // Check immediately, then every 5 seconds
+            this.checkPaymentStatus();
+            this.pollingInterval = setInterval(() => this.checkPaymentStatus(), 5000);
+        },
+
+        stopPolling() {
+            if (this.pollingInterval) {
+                console.log('⏸️ [POLLING] Stopping payment verification');
+                clearInterval(this.pollingInterval);
+                this.pollingInterval = null;
+            }
+        },
+
+        resumePaymentCheck(purchaseId, dealId) {
+            console.log('Resuming payment check after refresh:', { purchaseId, dealId });
+
+            // Restore state
+            this.purchaseId = purchaseId;
+            this.dealId = dealId;
+            this.phoneNumber = localStorage.getItem('nyota_phone') || '';
+            this.status = 'waiting';
+            this.statusMessage = 'Checking payment status...';
+            this.isOpen = true; // Open the modal
+
+            // Start checking status immediately
+            this.checkPaymentStatus();
+            // Also start polling in case status is still pending
+            this.startPolling();
+        },
+
         listenForPaymentResult() {
             if (this.eventSource) this.eventSource.close();
 
@@ -702,23 +852,29 @@ document.addEventListener('alpine:init', () => {
                 if (data.status === 'SUCCESS') {
                     this.status = 'success';
                     this.statusMessage = data.message || 'Payment successful!';
+                    this.stopPolling();
                     this.eventSource.close();
                     setTimeout(() => { window.location.href = data.redirect_url || '/library'; }, 1500);
                 } else if (data.status === 'FAILED') {
                     this.status = 'failed';
                     this.errorMessage = data.message || 'Payment failed. Please try again.';
+                    this.stopPolling();
                     this.eventSource.close();
                 } else if (data.status === 'TIMEOUT') {
-                    this.status = 'failed';
-                    this.errorMessage = 'Payment timed out. Please try again.';
-                    this.eventSource.close();
+                    // Do NOT close the event source. Keep it open for potential late arrival or retry.
+                    this.status = 'timeout';
+                    this.errorMessage = 'Payment timed out. We\'re still checking...';
+                    this.startPolling(); // Start polling as fallback
                 }
             };
 
-            this.eventSource.onerror = () => {
-                this.status = 'failed';
-                this.errorMessage = 'Connection lost. Please try again.';
+            this.eventSource.onerror = (error) => {
+                console.warn('SSE connection error, starting polling fallback', error);
                 this.eventSource.close();
+                // Start polling if we haven't already
+                if (!this.pollingInterval && this.status === 'waiting') {
+                    this.startPolling();
+                }
             };
         }
     }));

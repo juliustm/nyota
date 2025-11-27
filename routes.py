@@ -825,7 +825,8 @@ def landing_page():
     available_types.sort(key=lambda x: list(AssetType).index(x))
 
     # Get user's purchase history for "Unpurchased First" logic
-    customer_phone = session.get('customer_phone')
+    # Only consider the user "logged in" for this purpose if they are verified
+    customer_phone = session.get('customer_phone') if session.get('is_verified') else None
     purchased_asset_ids = set()
     user_purchases = {} # Map asset_id -> status
     
@@ -1138,6 +1139,41 @@ def retry_payment():
         current_app.logger.error(f"UZA Retry failed: {e}")
         return jsonify({'success': False, 'message': 'Could not retry payment.'}), 500
 
+@main_bp.route('/api/payment-status/<int:purchase_id>', methods=['GET'])
+def payment_status(purchase_id):
+    """
+    Polling endpoint to check the status of a payment.
+    Used as a fallback when SSE fails or times out.
+    """
+    purchase = Purchase.query.get(purchase_id)
+    if not purchase:
+        return jsonify({'success': False, 'message': 'Purchase not found.'}), 404
+    
+    # Security check: Ensure the session phone matches the purchase phone
+    session_phone = session.get('customer_phone')
+    if not session_phone or not purchase.customer or purchase.customer.whatsapp_number != session_phone:
+        return jsonify({'success': False, 'message': 'Unauthorized.'}), 403
+    
+    # Return the current status
+    if purchase.status == PurchaseStatus.COMPLETED:
+        return jsonify({
+            'success': True,
+            'status': 'COMPLETED',
+            'redirect_url': url_for('main.finalize_session', purchase_id=purchase.id)
+        })
+    elif purchase.status == PurchaseStatus.FAILED:
+        return jsonify({
+            'success': True,
+            'status': 'FAILED',
+            'message': 'Payment was declined.'
+        })
+    else:  # PENDING
+        return jsonify({
+            'success': True,
+            'status': 'PENDING',
+            'message': 'Payment is still pending confirmation.'
+        })
+
 
 @main_bp.route('/api/uza-callback', methods=['POST'])
 def uza_payment_callback():
@@ -1327,8 +1363,8 @@ def payment_stream(channel_id):
     def event_stream():
         q = sse_manager.subscribe(channel_id)
         try:
-            # Wait for a message. Timeout after 60 seconds.
-            message = q.get(timeout=60)
+            # Wait for a message. Timeout after 120 seconds (2 minutes).
+            message = q.get(timeout=120)
             yield message
         except queue.Empty:
             # This is our fallback mechanism for timeouts
@@ -1341,11 +1377,11 @@ def payment_stream(channel_id):
 @main_bp.route('/library', methods=['GET', 'POST'])
 def library():
     customer_phone = session.get('customer_phone')
-    # Enforce strict session verification:
-    # If the user has a phone in session but is NOT verified (e.g. just started a purchase),
-    # treat them as logged out so they see the verification form.
-    if not session.get('is_verified'):
-        customer_phone = None
+    # Library access logic:
+    # - If customer_phone exists in session (even if not verified), allow access
+    # - This supports users who just paid and are awaiting confirmation
+    # - They can see their library (which may contain pending purchases)
+    # - Verification is only required for the POST route (login without payment)
     
     if request.method == 'POST':
         # Get form data

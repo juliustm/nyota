@@ -802,104 +802,103 @@
 
                     <!-- Preview Card -->
                     <div
-                        class="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-                        <!-- Cover Image -->
-                        <div class="aspect-w-16 aspect-h-9 bg-gray-200 dark:bg-gray-800">
+                        class="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow duration-300 group">
+                        <!-- Image -->
+                        <div class="aspect-[16/9] bg-gray-100 dark:bg-gray-700 relative overflow-hidden">
                             <template x-if="asset.cover_image_url">
-                                <img :src="asset.cover_image_url" alt="Preview" class="w-full h-32 object-cover">
+                                <img :src="asset.cover_image_url"
+                                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
                             </template>
                             <template x-if="!asset.cover_image_url">
-                                <div class="w-full h-32 flex items-center justify-center text-gray-400">
-                                    <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                </div>
-                            </template>
-                        </div>
-
-                        <!-- Content -->
-                        <div class="p-4 space-y-3">
-                            <div>
-                                <h4 class="font-semibold text-gray-900 dark:text-white text-sm"
-                                    x-text="asset.title || 'Your Asset Title'"></h4>
-                                <p class="text-gray-600 dark:text-gray-400 text-xs mt-1"
-                                    x-text="asset.description || 'Short description will appear here'"></p>
-                            </div>
-
-                            <div class="flex items-center justify-between text-xs">
-                                <span
-                                    class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded"
-                                    x-text="getAssetTypeDetails().title || 'Content'"></span>
-                                <div class="text-right">
-                                    <div class="font-semibold text-gray-900 dark:text-white"
-                                        x-text="pricing.amount ? '$' + pricing.amount : 'Free'"></div>
-                                    <div class="text-gray-500 dark:text-gray-400"
-                                        x-text="pricing.type === 'recurring' ? '/ ' + pricing.billingCycle : 'one-time'">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Features List -->
-                            <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
-                                <div class="text-xs font-medium text-gray-900 dark:text-white mb-2">Includes:</div>
-                                <ul class="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                                    <template x-if="assetType === 'video-series'">
-                                        <li x-text="contentItems.length + ' video lessons'"></li>
-                                    </template>
-                                    <template x-if="assetType === 'digital-file'">
-                                        <li x-text="contentItems.length + ' downloadable files'"></li>
-                                    </template>
-                                    <template x-if="assetType === 'ticket'">
-                                        <li>Event access</li>
-                                        <template x-if="customFields.length > 0">
-                                            <li x-text="customFields.length + ' custom questions'"></li>
-                                        </template>
-                                    </template>
-                                    <template x-if="assetType === 'subscription'">
-                                        <li>Recurring content</li>
-                                        <li>Member community</li>
-                                    </template>
-                                    <template x-if="assetType === 'newsletter'">
-                                        <li>Regular updates</li>
-                                        <li>Exclusive content</li>
-                                    </template>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Quick Stats -->
-                    <div class="mt-4 grid grid-cols-2 gap-2 text-xs">
-                        <div class="text-center p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
-                            <div class="font-semibold text-blue-900 dark:text-blue-100" x-text="contentItems.length">
-                            </div>
-                            <div class="text-blue-600 dark:text-blue-400">Items</div>
-                        </div>
-                        <div class="text-center p-2 bg-green-50 dark:bg-green-900/20 rounded">
-                            <div class="font-semibold text-green-900 dark:text-green-100"
-                                x-text="pricing.amount ? '$' + pricing.amount : 'Free'"></div>
-                            <div class="text-green-600 dark:text-green-400">Price</div>
-                        </div>
-                    </div>
-
-                    <!-- Help Text -->
-                    <div
-                        class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                        <div class="flex items-start gap-2">
-                            <svg class="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" fill="none"
-                                viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <div class="text-xs text-yellow-700 dark:text-yellow-300">
-                                <strong>Tip:</strong> This is how customers will see your asset
+                                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                        </div>
+                        </template>
+                    </div>
+
+                    <!-- Content -->
+                    <div class="p-4 space-y-3">
+                        <div>
+                            <h4 class="font-semibold text-gray-900 dark:text-white text-sm"
+                                x-text="asset.title || 'Your Asset Title'"></h4>
+                            <p class="text-gray-600 dark:text-gray-400 text-xs mt-1"
+                                x-text="asset.description || 'Short description will appear here'"></p>
+                        </div>
+
+                        <div class="flex items-center justify-between text-xs">
+                            <span
+                                class="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded"
+                                x-text="getAssetTypeDetails().title || 'Content'"></span>
+                            <div class="text-right">
+                                <div class="font-semibold text-gray-900 dark:text-white"
+                                    x-text="pricing.amount ? '$' + pricing.amount : 'Free'"></div>
+                                <div class="text-gray-500 dark:text-gray-400"
+                                    x-text="pricing.type === 'recurring' ? '/ ' + pricing.billingCycle : 'one-time'">
+                                </div>
                             </div>
+                        </div>
+
+                        <!-- Features List -->
+                        <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                            <div class="text-xs font-medium text-gray-900 dark:text-white mb-2">Includes:</div>
+                            <ul class="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                                <template x-if="assetType === 'video-series'">
+                                    <li x-text="contentItems.length + ' video lessons'"></li>
+                                </template>
+                                <template x-if="assetType === 'digital-file'">
+                                    <li x-text="contentItems.length + ' downloadable files'"></li>
+                                </template>
+                                <template x-if="assetType === 'ticket'">
+                                    <li>Event access</li>
+                                    <template x-if="customFields.length > 0">
+                                        <li x-text="customFields.length + ' custom questions'"></li>
+                                    </template>
+                                </template>
+                                <template x-if="assetType === 'subscription'">
+                                    <li>Recurring content</li>
+                                    <li>Member community</li>
+                                </template>
+                                <template x-if="assetType === 'newsletter'">
+                                    <li>Regular updates</li>
+                                    <li>Exclusive content</li>
+                                </template>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="mt-4 grid grid-cols-2 gap-2 text-xs">
+                    <div class="text-center p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
+                        <div class="font-semibold text-blue-900 dark:text-blue-100" x-text="contentItems.length">
+                        </div>
+                        <div class="text-blue-600 dark:text-blue-400">Items</div>
+                    </div>
+                    <div class="text-center p-2 bg-green-50 dark:bg-green-900/20 rounded">
+                        <div class="font-semibold text-green-900 dark:text-green-100"
+                            x-text="pricing.amount ? '$' + pricing.amount : 'Free'"></div>
+                        <div class="text-green-600 dark:text-green-400">Price</div>
+                    </div>
+                </div>
+
+                <!-- Help Text -->
+                <div
+                    class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                    <div class="flex items-start gap-2">
+                        <svg class="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="text-xs text-yellow-700 dark:text-yellow-300">
+                            <strong>Tip:</strong> This is how customers will see your asset
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </form>
+</div>
+</form>
 </div>
 {% endblock %}

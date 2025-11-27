@@ -273,7 +273,8 @@ document.addEventListener('alpine:init', () => {
                     this.subscriptionDetails = existing.details.welcomeContent ? existing.details : this.subscriptionDetails;
                     this.newsletterDetails = existing.details.frequency ? existing.details : this.newsletterDetails;
                 }
-                this.step = 2;
+                // FIX: Only jump to step 2 if we are EDITING an existing asset (has ID)
+                this.step = existing.id ? 2 : 1;
             }
         },
         setAssetType(type) { this.assetType = type; this.assetTypeEnum = this.mapFormTypeToEnumType(type); },
@@ -388,11 +389,11 @@ document.addEventListener('alpine:init', () => {
 
     Alpine.data('assetView', (initialAsset, allStatuses) => ({
         // Original data from the server. Guard against null.
+        // Original data from the server. Guard against null.
         asset: initialAsset || {},
-        // A mutable copy for the form. Initialize as null and build it in init().
-        editableAsset: null,
+        // A mutable copy for the form. Initialize immediately to prevent template errors.
+        editableAsset: JSON.parse(JSON.stringify(initialAsset || {})),
 
-        statuses: allStatuses || [],
         statuses: allStatuses || [],
         activeTab: 'general',
         isSaving: false,
@@ -400,60 +401,53 @@ document.addEventListener('alpine:init', () => {
         previewImage: null,
 
         init() {
-            // Use $nextTick to ensure Alpine's reactivity system is ready
-            // before we populate the data. This will force the view to update.
-            this.$nextTick(() => {
-                // 1. Create the editable copy. If asset is null/empty, start with an empty object.
-                this.editableAsset = JSON.parse(JSON.stringify(this.asset));
+            // Initialize preview image
+            this.previewImage = this.asset.cover_image_url;
 
-                // Initialize preview image
-                this.previewImage = this.asset.cover_image_url;
+            // Safely add the nested properties if they don't exist.
+            if (!this.editableAsset.eventDetails) {
+                this.editableAsset.eventDetails = {
+                    link: this.asset.eventDetails?.link || '',
+                    date: this.asset.eventDetails?.date || '',
+                    time: this.asset.eventDetails?.time || '',
+                    maxAttendees: this.asset.eventDetails?.maxAttendees || null,
+                    postPurchaseInstructions: this.asset.details?.postPurchaseInstructions || ''
+                };
+            } else {
+                // Ensure postPurchaseInstructions is populated if eventDetails exists but field is missing
+                this.editableAsset.eventDetails.postPurchaseInstructions = this.asset.details?.postPurchaseInstructions || '';
+            }
 
-                // 2. Safely add the nested properties if they don't exist.
-                if (!this.editableAsset.eventDetails) {
-                    this.editableAsset.eventDetails = {
-                        link: this.asset.eventDetails?.link || '',
-                        date: this.asset.eventDetails?.date || '',
-                        time: this.asset.eventDetails?.time || '',
-                        maxAttendees: this.asset.eventDetails?.maxAttendees || null,
-                        postPurchaseInstructions: this.asset.details?.postPurchaseInstructions || ''
-                    };
-                } else {
-                    // Ensure postPurchaseInstructions is populated if eventDetails exists but field is missing
-                    this.editableAsset.eventDetails.postPurchaseInstructions = this.asset.details?.postPurchaseInstructions || '';
-                }
+            if (!this.editableAsset.details) {
+                this.editableAsset.details = { welcomeContent: '', benefits: '' };
+            }
 
-                if (!this.editableAsset.details) {
-                    this.editableAsset.details = { welcomeContent: '', benefits: '' };
-                }
+            // Initialize UZA Product ID
+            if (!this.editableAsset.uza_product_id) {
+                this.editableAsset.uza_product_id = this.asset.details?.uza_product_id || '';
+            }
 
-                // Initialize UZA Product ID
-                if (!this.editableAsset.uza_product_id) {
-                    this.editableAsset.uza_product_id = this.asset.details?.uza_product_id || '';
-                }
+            // Initialize pricing tiers
+            if (!this.editableAsset.details.subscription_tiers) {
+                this.editableAsset.details.subscription_tiers = [];
+            }
 
-                // Initialize pricing tiers
-                if (!this.editableAsset.details.subscription_tiers) {
-                    this.editableAsset.details.subscription_tiers = [];
-                }
+            // Initialize content items date from description
+            if (this.editableAsset.files) {
+                this.editableAsset.files.forEach(f => {
+                    f.newFile = null; // Initialize for UI binding
+                    const dateMatch = f.description ? f.description.match(/^\[Date:(\d{4}-\d{2}-\d{2})\]\s*/) : null;
+                    if (dateMatch) {
+                        f.date = dateMatch[1];
+                        f.description = f.description.replace(dateMatch[0], '');
+                    }
+                    // Initialize type if missing
+                    if (!f.type) {
+                        f.type = f.link && !f.link.startsWith('/content/') ? 'link' : 'upload';
+                    }
+                });
+            }
 
-                // Initialize content items date from description
-                if (this.editableAsset.files) {
-                    this.editableAsset.files.forEach(f => {
-                        const dateMatch = f.description ? f.description.match(/^\[Date:(\d{4}-\d{2}-\d{2})\]\s*/) : null;
-                        if (dateMatch) {
-                            f.date = dateMatch[1];
-                            f.description = f.description.replace(dateMatch[0], '');
-                        }
-                        // Initialize type if missing
-                        if (!f.type) {
-                            f.type = f.link && !f.link.startsWith('/content/') ? 'link' : 'upload';
-                        }
-                    });
-                }
-            });
-
-            // Other setup can run immediately.
             this.applyUtilityClasses();
         },
 
@@ -547,6 +541,11 @@ document.addEventListener('alpine:init', () => {
 
             formData.append('asset_data', JSON.stringify(assetData));
 
+            // Append Cover Image if changed
+            if (this.editableAsset.newCoverImage) {
+                formData.append('cover_image', this.editableAsset.newCoverImage);
+            }
+
             // Append files
             (this.editableAsset.files || []).forEach((f, index) => {
                 if (f.newFile) {
@@ -590,10 +589,12 @@ document.addEventListener('alpine:init', () => {
             this.notification.show = false;
         },
 
+
+
         applyUtilityClasses() {
             const map = {
-                '.input-label': 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5',
-                '.input-field': 'w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors',
+                '.input-label': 'block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5',
+                '.input-field': 'w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow shadow-sm placeholder-gray-400 dark:placeholder-gray-500',
             };
             document.querySelectorAll(Object.keys(map).join(',')).forEach(el => {
                 for (const selector in map) {

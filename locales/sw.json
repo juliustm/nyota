@@ -83,12 +83,19 @@
     "no_results_found": "Hakuna Matokeo",
     "try_different_filter": "Jaribu kubadilisha utafutaji au kichuja kupata unachotafuta.",
     "clear_filters": "Futa Vichuja",
-    "no_purchases_yet": "Bado Hauna Manunuzi",
-    "browse_store_message": "Anza kuvinjari duka letu kupata maudhui mazuri.",
-    "browse_store": "Vinjari Duka",
+    "processing": "Inachakata...",
+    "no_results_found": "Hakuna maudhui yaliyopatikana",
+    "try_different_filter": "Jaribu kubadilisha utafutaji au vichungi.",
+    "clear_filters": "Futa Vichungi",
+    "no_purchases_yet": "Hujafanya manunuzi bado",
+    "browse_store_message": "Gundua mkusanyiko wetu na upate kitu cha kushangaza!",
+    "browse_store": "Tembelea Duka",
     "download_file": "Pakua Faili",
     "external_content": "Maudhui ya Nje",
     "open_in_new_tab": "Fungua kwenye Kichupo Kipya",
     "starts_at": "Inaanzia",
-    "renew_subscription": "Sasisha Uanachama"
+    "renew_subscription": "Huisha Usajili",
+    "search_placeholder": "Tafuta maudhui...",
+    "my_content": "Maudhui Yangu",
+    "order_history": "Historia ya Manunuzi"
 }

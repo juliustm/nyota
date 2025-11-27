@@ -31,7 +31,8 @@ from utils.translator import translate
 def get_locale():
     if 'language' in session:
         return session['language']
-    return request.accept_languages.best_match(['en', 'sw'])
+    # Default to Swahili if no preference is set
+    return request.accept_languages.best_match(['sw', 'en']) or 'sw'
 
 
 # --- Application Factory Function ---

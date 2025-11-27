@@ -83,12 +83,15 @@
     "no_results_found": "No Results Found",
     "try_different_filter": "Try adjusting your search or filter to find what you're looking for.",
     "clear_filters": "Clear Filters",
-    "no_purchases_yet": "No Purchases Yet",
-    "browse_store_message": "Start exploring our store to find amazing content.",
+    "no_purchases_yet": "No purchases yet",
+    "browse_store_message": "Explore our collection and find something amazing!",
     "browse_store": "Browse Store",
     "download_file": "Download File",
     "external_content": "External Content",
     "open_in_new_tab": "Open in New Tab",
     "starts_at": "Starts at",
-    "renew_subscription": "Renew Subscription"
+    "renew_subscription": "Renew Subscription",
+    "search_placeholder": "Search for content...",
+    "my_content": "My Content",
+    "order_history": "Order History"
 }

@@ -29,31 +29,64 @@
         </div>
     </header>
 
-    <!-- MAIN CONTENT: Product Showcase -->
-    <main class="space-y-20 fade-in" style="animation-delay: 100ms;">
-        {% for category, asset_list in categorized_assets.items() %}
-        {% if asset_list %}
-        <section>
-            <div class="flex items-center gap-4 mb-8">
-                <h2 class="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">{{ category.value }}s</h2>
-                <div class="h-px bg-gray-200 dark:bg-gray-700 flex-grow"></div>
+    <!-- Sticky Search & Filter Header -->
+    <div class="sticky top-0 z-30 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 py-4 mb-8 transition-all duration-300"
+        :class="{'shadow-md': isScrolled}" x-data="{ isScrolled: false }"
+        @scroll.window="isScrolled = (window.pageYOffset > 20)">
+
+        <form action="{{ url_for('main.landing_page') }}" method="GET"
+            class="max-w-7xl mx-auto flex flex-col md:flex-row gap-4">
+            <!-- Search Input -->
+            <div class="relative flex-grow">
+                <input type="text" name="q" value="{{ search_query }}"
+                    placeholder="{{ translate('search_placeholder') or 'Search for content...' }}"
+                    class="w-full pl-11 pr-4 py-3 bg-gray-100 dark:bg-gray-800 border-none rounded-xl text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 transition-shadow">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-                {% for asset in asset_list %}
-                <div
-                    class="group relative flex flex-col bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                    <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}" class="flex-grow flex flex-col">
-                        <!-- Image Container -->
-                        <div class="relative aspect-[4/3] overflow-hidden bg-gray-100 dark:bg-gray-900">
-                            <img src="{{ asset.cover_image_url }}" alt="{{ asset.title }}"
-                                class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105">
+            <!-- Filter Pills -->
+            <div class="flex gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar items-center">
+                <a href="{{ url_for('main.landing_page', q=search_query) }}"
+                    class="px-4 py-2.5 rounded-full font-medium text-sm whitespace-nowrap transition-colors {{ 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' if not filter_type else 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' }}">
+                    {{ translate('all') }}
+                </a>
 
-                            <!-- Status Badge -->
+                {% for type in available_types %}
+                <a href="{{ url_for('main.landing_page', q=search_query, type=type.name) }}"
+                    class="px-4 py-2.5 rounded-full font-medium text-sm whitespace-nowrap transition-colors {{ 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' if filter_type == type.name else 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' }}">
+                    {{ type.value }}s
+                </a>
+                {% endfor %}
+            </div>
+        </form>
+    </div>
+
+    <!-- MAIN CONTENT: Unified Grid -->
+    <main class="space-y-12 fade-in" style="animation-delay: 100ms;">
+
+        {% if assets %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            {% for asset in assets %}
+            <div
+                class="group relative flex flex-col bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}" class="flex-grow flex flex-col">
+                    <!-- Image Container -->
+                    <div class="relative aspect-[4/3] overflow-hidden bg-gray-100 dark:bg-gray-900">
+                        <img src="{{ asset.cover_image_url }}" alt="{{ asset.title }}"
+                            class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105">
+
+                        <!-- Badges Container -->
+                        <div class="absolute top-3 left-3 flex flex-col gap-2 items-start">
+                            <!-- Purchase Status Badge -->
                             {% set purchase_status = user_purchases.get(asset.id) %}
                             {% if purchase_status == 'COMPLETED' %}
                             <div
-                                class="absolute top-3 left-3 bg-green-500/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex items-center gap-1.5">
+                                class="bg-green-500/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex items-center gap-1.5">
                                 <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                                     <path fill-rule="evenodd"
                                         d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -63,7 +96,7 @@
                             </div>
                             {% elif purchase_status == 'PENDING' %}
                             <div
-                                class="absolute top-3 left-3 bg-yellow-500/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex items-center gap-1.5">
+                                class="bg-yellow-500/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm flex items-center gap-1.5">
                                 <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                                     <path fill-rule="evenodd"
                                         d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
@@ -72,53 +105,86 @@
                                 {{ translate('pending') }}
                             </div>
                             {% endif %}
-                        </div>
 
-                        <!-- Content -->
-                        <div class="p-6 flex flex-col flex-grow">
-                            <div class="flex justify-between items-start gap-4 mb-2">
-                                <h3
-                                    class="text-xl font-bold text-gray-900 dark:text-white leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                    {{ asset.title }}
-                                </h3>
-                            </div>
-                            <p class="text-gray-600 dark:text-gray-400 text-sm line-clamp-2 mb-4 flex-grow">
-                                {{ asset.description }}
-                            </p>
-
+                            <!-- NEW Badge (if applicable and not owned) -->
+                            {% if asset.id in new_asset_ids and purchase_status != 'COMPLETED' %}
                             <div
-                                class="flex items-center justify-between mt-auto pt-4 border-t border-gray-100 dark:border-gray-700/50">
-                                <div class="text-lg font-bold text-gray-900 dark:text-white">
-                                    {% if asset.is_subscription and asset.details and asset.details.subscription_tiers
-                                    %}
-                                    {% set min_price = asset.details.subscription_tiers | map(attribute='price') |
-                                    map('float') | min %}
-                                    <div class="flex flex-col">
-                                        <span class="text-xs text-gray-500 uppercase tracking-wide">{{
-                                            translate('starts_at') }}</span>
-                                        <span>{{ currency_symbol }} {{ "{:,.0f}".format(min_price) }}</span>
-                                    </div>
-                                    {% else %}
-                                    {{ currency_symbol }} {{ "{:,.0f}".format(asset.price|float) }}
-                                    {% endif %}
-                                </div>
-                                <span
-                                    class="text-sm font-medium text-indigo-600 dark:text-indigo-400 group-hover:translate-x-1 transition-transform flex items-center gap-1">
-                                    {{ translate('view_details') }}
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </span>
+                                class="bg-blue-600/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm animate-pulse">
+                                NEW
                             </div>
+                            {% endif %}
+
+                            <!-- Subscription Badge -->
+                            {% if asset.is_subscription %}
+                            <div
+                                class="bg-purple-600/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm">
+                                SUBSCRIPTION
+                            </div>
+                            {% endif %}
                         </div>
-                    </a>
-                </div>
-                {% endfor %}
+                    </div>
+
+                    <!-- Content -->
+                    <div class="p-6 flex flex-col flex-grow">
+                        <div class="flex justify-between items-start gap-4 mb-2">
+                            <h3
+                                class="text-xl font-bold text-gray-900 dark:text-white leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                {{ asset.title }}
+                            </h3>
+                        </div>
+                        <p class="text-gray-600 dark:text-gray-400 text-sm line-clamp-2 mb-4 flex-grow">
+                            {{ asset.description }}
+                        </p>
+
+                        <div
+                            class="flex items-center justify-between mt-auto pt-4 border-t border-gray-100 dark:border-gray-700/50">
+                            <div class="text-lg font-bold text-gray-900 dark:text-white">
+                                {% if asset.is_subscription and asset.details and asset.details.subscription_tiers %}
+                                {% set min_price = asset.details.subscription_tiers | map(attribute='price') |
+                                map('float') | min %}
+                                <div class="flex flex-col">
+                                    <span class="text-xs text-gray-500 uppercase tracking-wide">{{
+                                        translate('starts_at') }}</span>
+                                    <span>{{ currency_symbol }} {{ "{:,.0f}".format(min_price) }}</span>
+                                </div>
+                                {% else %}
+                                {{ currency_symbol }} {{ "{:,.0f}".format(asset.price|float) }}
+                                {% endif %}
+                            </div>
+                            <span
+                                class="text-sm font-medium text-indigo-600 dark:text-indigo-400 group-hover:translate-x-1 transition-transform flex items-center gap-1">
+                                {{ translate('view_details') }}
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 5l7 7-7 7" />
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+                </a>
             </div>
-        </section>
+            {% endfor %}
+        </div>
+        {% else %}
+        <!-- No Results State -->
+        <div class="text-center py-20">
+            <div
+                class="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </div>
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">{{ translate('no_results_found') or 'No
+                content found' }}</h3>
+            <p class="text-gray-500 dark:text-gray-400 mb-6">{{ translate('try_different_filter') or 'Try adjusting your
+                search or filters.' }}</p>
+            <a href="{{ url_for('main.landing_page') }}"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
+                {{ translate('clear_filters') or 'Clear Filters' }}
+            </a>
+        </div>
         {% endif %}
-        {% endfor %}
     </main>
 </div>
 

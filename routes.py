@@ -15,7 +15,7 @@ import re
 from datetime import datetime, date, timedelta # Added timedelta
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm.attributes import flag_modified
-from sqlalchemy import func # Added func import
+from sqlalchemy import func, or_ # Added func import
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash, session, g,
@@ -790,42 +790,119 @@ def simulate_uza_payment(channel_id, phone, asset_id):
 def landing_page():
     creator = Creator.query.first()
     if not creator:
-        return "<h1>Store not set up yet.</h1><p>Please complete the admin setup.</p>", 503
+        return render_template('errors/500.html'), 500
 
-    # Fetch all published assets
-    assets = DigitalAsset.query.filter_by(
-        status=AssetStatus.PUBLISHED, 
-        creator_id=creator.id
-    ).order_by(DigitalAsset.updated_at.desc()).all()
+    # Get query parameters for search and filter
+    search_query = request.args.get('q', '').strip()
+    filter_type = request.args.get('type', '').strip().upper()
 
-    # Pre-categorize assets into a dictionary
-    categorized_assets = {}
-    for asset in assets:
-        category_enum = asset.asset_type
-        if category_enum not in categorized_assets:
-            categorized_assets[category_enum] = []
-        categorized_assets[category_enum].append(asset)
+    # Base query
+    query = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED)
+
+    # Apply Search
+    if search_query:
+        query = query.filter(or_(
+            DigitalAsset.title.ilike(f'%{search_query}%'),
+            DigitalAsset.description.ilike(f'%{search_query}%')
+        ))
+
+    # Apply Type Filter
+    if filter_type and filter_type in AssetType.__members__:
+        query = query.filter(DigitalAsset.asset_type == AssetType[filter_type])
+
+    # Fetch all matching assets
+    all_assets = query.all()
+
+    # Dynamic Filters: Find which types actually exist in the DB (for the tabs)
+    # We query ALL published assets to determine available tabs, regardless of current search/filter
+    available_types_query = db.session.query(DigitalAsset.asset_type).filter_by(status=AssetStatus.PUBLISHED).distinct()
+    available_types = [row[0] for row in available_types_query]
     
-    # --- THIS IS THE NEW SESSION-AWARE LOGIC ---
-    user_purchases = {} # A dictionary to hold the status of each asset for the user
+    # Sort available types to match Enum order or custom order if needed
+    # AssetType is an Enum, so we can sort by name or value if we want consistent ordering
+    # Let's sort by the order they are defined in the Enum
+    available_types.sort(key=lambda x: list(AssetType).index(x))
+
+    # Get user's purchase history for "Unpurchased First" logic
     customer_phone = session.get('customer_phone')
+    purchased_asset_ids = set()
+    user_purchases = {} # Map asset_id -> status
+    
     if customer_phone:
         customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
         if customer:
-            # Fetch all of this customer's purchases
             purchases = Purchase.query.filter_by(customer_id=customer.id).all()
-            # Create a simple lookup map: {asset_id: status_name}
             for p in purchases:
-                # Store the most "important" status (Completed > Pending > Failed)
-                if p.asset_id not in user_purchases or p.status == PurchaseStatus.COMPLETED:
-                    user_purchases[p.asset_id] = p.status.name
+                purchased_asset_ids.add(p.asset_id)
+                # Store the most "advanced" status (COMPLETED > PENDING > FAILED)
+                current_status = user_purchases.get(p.asset_id)
+                if p.status == PurchaseStatus.COMPLETED:
+                    user_purchases[p.asset_id] = 'COMPLETED'
+                elif p.status == PurchaseStatus.PENDING and current_status != 'COMPLETED':
+                    user_purchases[p.asset_id] = 'PENDING'
+                elif p.status == PurchaseStatus.FAILED and current_status not in ['COMPLETED', 'PENDING']:
+                    user_purchases[p.asset_id] = 'FAILED'
+
+    # Smart Sorting Logic in Python (easier to handle complex custom weights)
+    # Priority:
+    # 1. Subscriptions (is_subscription=True)
+    # 2. Unpurchased Items (not in purchased_asset_ids)
+    # 3. Recency (created_at desc) - Assuming ID is a proxy for recency or added date
+    
+    def sort_key(asset):
+        # Higher score = appears first
+        score = 0
+        
+        # 1. Subscription Priority
+        if asset.is_subscription:
+            score += 1000
             
+        # 2. Unpurchased Priority
+        if asset.id not in purchased_asset_ids:
+            score += 100
+            
+        # 3. Recency (using ID as proxy for now, assuming auto-increment)
+        # Normalize ID to a small fraction to break ties without overriding main priorities
+        score += (asset.id or 0) / 100000.0
+        
+        return score
+
+    sorted_assets = sorted(all_assets, key=sort_key, reverse=True)
+
+    # Check for "New" items (e.g., created in the last 7 days)
+    # For now, we'll just mark the top 3 newest unpurchased items as "New" if we don't have created_at
+    # If you have created_at, use: asset.created_at > datetime.now() - timedelta(days=7)
+    new_asset_ids = set()
+    # Simple heuristic: Top 3 sorted assets that are unpurchased are "New" / "Featured"
+    count = 0
+    for asset in sorted_assets:
+        if asset.id not in purchased_asset_ids:
+            new_asset_ids.add(asset.id)
+            count += 1
+            if count >= 3: break
+
+    # Metadata Preparation
+    # 1. Store Bio (from Creator)
+    store_bio = creator.get_setting('store_bio')
+    meta_description = store_bio if store_bio else f"Discover amazing digital content on {creator.store_name}."
+    
+    # 2. Latest Asset Cover (for og:image)
+    # We want the absolute latest published asset, regardless of sorting
+    latest_asset = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED).order_by(DigitalAsset.id.desc()).first()
+    meta_image = latest_asset.cover_image_url if latest_asset else None
+
     return render_template(
         'user/index.html',
         creator=creator,
         store_name=creator.store_name,
-        categorized_assets=categorized_assets,
-        user_purchases=user_purchases, # Pass the purchase map to the template
+        assets=sorted_assets, # Pass flat list instead of categorized
+        user_purchases=user_purchases,
+        new_asset_ids=new_asset_ids,
+        search_query=search_query,
+        filter_type=filter_type,
+        available_types=available_types, # Pass dynamically available types
+        meta_description=meta_description, # Pass bio for metadata
+        meta_image=meta_image # Pass latest cover for metadata
     )
 
 @main_bp.route('/set-language/<lang_code>')

@@ -660,7 +660,7 @@ def manage_settings():
             'beem_api_key', 'beem_secret_key', 'beem_sender_name',
 
             # Payments
-            'payment_uza_enabled', 'payment_uza_pk', 'payment_uza_refcode', 'payment_uza_source', 'payment_uza_currency',
+            'payment_uza_enabled', 'payment_uza_pk', 'payment_uza_secret', 'payment_uza_refcode', 'payment_uza_source', 'payment_uza_currency',
             'stripe_enabled', 'paypal_enabled',
 
             # AI & Automation
@@ -688,7 +688,7 @@ def manage_settings():
                 value = request.form.get(key)
             
             # Don't save empty password/token fields if a value already exists
-            if ('token' in key or 'pass' in key or '_sk' in key or '_pk' in key) and not value:
+            if ('token' in key or 'pass' in key or '_sk' in key or '_pk' in key or '_secret' in key) and not value:
                 continue
             
             g.creator.set_setting(key, value)
@@ -1143,6 +1143,23 @@ def uza_payment_callback():
     This endpoint is stateless and must be publicly accessible.
     """
     data = request.get_json()
+    
+    # 0. Security Check: Verify the callback secret
+    # We fetch the creator (assuming single tenant/admin for now)
+    creator = Creator.query.first()
+    if creator:
+        expected_secret = creator.get_setting('payment_uza_secret')
+        if expected_secret:
+            # If a secret is configured, we MUST verify it.
+            incoming_secret = request.args.get('secret')
+            if not incoming_secret or incoming_secret != expected_secret:
+                current_app.logger.warning(f"UZA Callback: Invalid or missing secret. Expected verification.")
+                return jsonify({'status': 'error', 'message': 'Unauthorized'}), 403
+        else:
+            # If no secret is configured, we log a warning but allow it (legacy mode)
+            # OR we could reject it. Given the user's request to "secure" it, 
+            # we should encourage setting it. For now, we'll log.
+            current_app.logger.warning("UZA Callback: No secret configured in settings. Endpoint is insecure.")
     
     # 1. Basic validation of the incoming payload
     if not data or 'data' not in data:

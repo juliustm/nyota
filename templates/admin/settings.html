@@ -5,68 +5,238 @@
 {% block content %}
 <script type="application/json" id="settings-data">{{ settings_json|safe }}</script>
 
-<div x-data="settingsPage(JSON.parse(document.getElementById('settings-data').textContent || '{}'))" x-init="init()" class="space-y-8">
-    
+<div x-data="settingsPage(JSON.parse(document.getElementById('settings-data').textContent || '{}'))" x-init="init()"
+    class="space-y-8">
+
     <!-- Header Section -->
     <div class="flex items-center gap-4">
-        <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg"><svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg></div>
-        <div><h1 class="text-3xl font-bold text-gray-900 dark:text-white">Settings & Preferences</h1><p class="text-gray-600 dark:text-gray-400 mt-1">Configure your storefront, notifications, integrations, and automations.</p></div>
+        <div
+            class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg">
+            <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg></div>
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Settings & Preferences</h1>
+            <p class="text-gray-600 dark:text-gray-400 mt-1">Configure your storefront, notifications, integrations, and
+                automations.</p>
+        </div>
     </div>
-    
+
     <form method="POST" action="{{ url_for('admin.manage_settings') }}" enctype="multipart/form-data" class="space-y-8">
-        
+
         <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <div class="border-b border-gray-200 dark:border-gray-700">
                 <nav class="flex -mb-px px-6" aria-label="Tabs">
-                    <button @click="mainTab = 'storeProfile'" type="button" :class="mainTab === 'storeProfile' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'" class="flex-1 py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors"><div class="flex items-center justify-center gap-2"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>Store Profile</div></button>
-                    <button @click="mainTab = 'appearance'" type="button" :class="mainTab === 'appearance' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'" class="flex-1 py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors"><div class="flex items-center justify-center gap-2"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>Appearance</div></button>
-                    <button @click="mainTab = 'integrations'" type="button" :class="mainTab === 'integrations' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'" class="flex-1 py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors"><div class="flex items-center justify-center gap-2"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>Integrations</div></button>
+                    <button @click="mainTab = 'storeProfile'" type="button"
+                        :class="mainTab === 'storeProfile' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                        class="flex-1 py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors">
+                        <div class="flex items-center justify-center gap-2"><svg class="w-4 h-4" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>Store Profile</div>
+                    </button>
+                    <button @click="mainTab = 'appearance'" type="button"
+                        :class="mainTab === 'appearance' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                        class="flex-1 py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors">
+                        <div class="flex items-center justify-center gap-2"><svg class="w-4 h-4" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                            </svg>Appearance</div>
+                    </button>
+                    <button @click="mainTab = 'integrations'" type="button"
+                        :class="mainTab === 'integrations' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                        class="flex-1 py-4 px-1 text-center border-b-2 font-medium text-sm transition-colors">
+                        <div class="flex items-center justify-center gap-2"><svg class="w-4 h-4" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                            </svg>Integrations</div>
+                    </button>
                 </nav>
             </div>
-            
+
             <div x-show="mainTab === 'storeProfile'" x-transition class="p-8 space-y-6">
                 <!-- All input values are now bound to the Alpine `settings` object -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6"><div><label for="store_name" class="input-label">Store Name</label><input type="text" id="store_name" name="store_name" :value="settings.store_name" class="input-field"></div><div><label for="store_handle" class="input-label">Store Handle</label><div class="flex"><span class="input-field rounded-r-none bg-gray-100">nyota.store/</span><input type="text" id="store_handle" name="store_handle" :value="settings.store_handle" class="input-field rounded-l-none"></div></div></div>
-                <div><label for="store_bio" class="input-label">Store Bio</label><textarea id="store_bio" name="store_bio" rows="3" class="input-field" x-text="settings.store_bio"></textarea></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div><label for="store_name" class="input-label">Store Name</label><input type="text"
+                            id="store_name" name="store_name" :value="settings.store_name" class="input-field"></div>
+                    <div><label for="store_handle" class="input-label">Store Handle</label>
+                        <div class="flex"><span class="input-field rounded-r-none bg-gray-100">nyota.store/</span><input
+                                type="text" id="store_handle" name="store_handle" :value="settings.store_handle"
+                                class="input-field rounded-l-none"></div>
+                    </div>
+                </div>
+                <div><label for="store_bio" class="input-label">Store Bio</label><textarea id="store_bio"
+                        name="store_bio" rows="3" class="input-field" x-text="settings.store_bio"></textarea></div>
             </div>
-            
+
             <div x-show="mainTab === 'appearance'" x-transition x-cloak class="p-8 space-y-6">
-                 <div><label class="input-label">Admin Panel Theme</label><p class="text-sm text-gray-500 mb-4">Choose how your admin panel appears</p><div class="grid grid-cols-3 gap-4"><button type="button" @click="setTheme('light')" :class="{ 'ring-2 ring-indigo-500': theme === 'light' }" class="p-4 border rounded-xl bg-white text-center"><div class="w-12 h-12 bg-yellow-400 rounded-full mx-auto mb-3"></div><span class="font-medium">Light</span></button><button type="button" @click="setTheme('dark')" :class="{ 'ring-2 ring-indigo-500': theme === 'dark' }" class="p-4 border rounded-xl bg-gray-800 text-center"><div class="w-12 h-12 bg-purple-500 rounded-full mx-auto mb-3"></div><span class="font-medium text-white">Dark</span></button><button type="button" @click="setTheme('system')" :class="{ 'ring-2 ring-indigo-500': theme === 'system' }" class="p-4 border rounded-xl bg-gradient-to-r from-white to-gray-800 text-center"><div class="w-12 h-12 bg-gradient-to-r from-yellow-400 to-purple-500 rounded-full mx-auto mb-3"></div><span class="font-medium">System</span></button></div></div>
+                <div><label class="input-label">Admin Panel Theme</label>
+                    <p class="text-sm text-gray-500 mb-4">Choose how your admin panel appears</p>
+                    <div class="grid grid-cols-3 gap-4"><button type="button" @click="setTheme('light')"
+                            :class="{ 'ring-2 ring-indigo-500': theme === 'light' }"
+                            class="p-4 border rounded-xl bg-white text-center">
+                            <div class="w-12 h-12 bg-yellow-400 rounded-full mx-auto mb-3"></div><span
+                                class="font-medium">Light</span>
+                        </button><button type="button" @click="setTheme('dark')"
+                            :class="{ 'ring-2 ring-indigo-500': theme === 'dark' }"
+                            class="p-4 border rounded-xl bg-gray-800 text-center">
+                            <div class="w-12 h-12 bg-purple-500 rounded-full mx-auto mb-3"></div><span
+                                class="font-medium text-white">Dark</span>
+                        </button><button type="button" @click="setTheme('system')"
+                            :class="{ 'ring-2 ring-indigo-500': theme === 'system' }"
+                            class="p-4 border rounded-xl bg-gradient-to-r from-white to-gray-800 text-center">
+                            <div
+                                class="w-12 h-12 bg-gradient-to-r from-yellow-400 to-purple-500 rounded-full mx-auto mb-3">
+                            </div><span class="font-medium">System</span>
+                        </button></div>
+                </div>
             </div>
-            
+
             <div x-show="mainTab === 'integrations'" x-transition x-cloak class="md:grid md:grid-cols-4">
-                <nav class="md:col-span-1 p-6 space-y-1 md:border-r"><button @click="integrationTab = 'notifications'" type="button" :class="integrationTab === 'notifications' ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-50'" class="w-full text-left px-3 py-2 rounded-md font-medium text-sm">Notifications</button><button @click="integrationTab = 'payments'" type="button" :class="integrationTab === 'payments' ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-50'" class="w-full text-left px-3 py-2 rounded-md font-medium text-sm">Payments</button></nav>
+                <nav class="md:col-span-1 p-6 space-y-1 md:border-r"><button @click="integrationTab = 'notifications'"
+                        type="button"
+                        :class="integrationTab === 'notifications' ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-50'"
+                        class="w-full text-left px-3 py-2 rounded-md font-medium text-sm">Notifications</button><button
+                        @click="integrationTab = 'payments'" type="button"
+                        :class="integrationTab === 'payments' ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-50'"
+                        class="w-full text-left px-3 py-2 rounded-md font-medium text-sm">Payments</button></nav>
                 <div class="md:col-span-3 p-8">
                     <div x-show="integrationTab === 'notifications'" class="space-y-6">
-                        <div class="p-6 rounded-xl border"><div class="flex justify-between items-center"><h4 class="font-semibold">Telegram</h4><label class="toggle-wrapper"><input type="checkbox" name="telegram_enabled" class="toggle-input" x-model="telegramEnabled"><span class="toggle-slider"></span></label></div><div x-show="telegramEnabled" class="mt-4 pt-4 border-t space-y-4"><div class="grid grid-cols-2 gap-4"><div><label class="input-label">Bot Token</label><input type="password" name="telegram_bot_token" :value="settings.telegram_bot_token" class="input-field"></div><div><label class="input-label">Chat ID</label><input type="text" name="telegram_chat_id" :value="settings.telegram_chat_id" class="input-field"></div></div><div class="flex items-center gap-4"><button type="button" @click="testTelegram()" class="verify-button" :disabled="telegramTesting"><span x-text="telegramTesting ? 'Testing...' : 'Test'"></span></button><p x-show="telegramTested" :class="telegramTestSuccess ? 'text-green-600' : 'text-red-600'" x-text="telegramTestSuccess ? 'Success!' : 'Failed.'"></p></div></div></div>
-                        <div class="p-6 rounded-xl border"><div class="flex justify-between items-center"><h4 class="font-semibold">Email (SMTP)</h4><label class="toggle-wrapper"><input type="checkbox" name="email_smtp_enabled" class="toggle-input" x-model="smtpEnabled"><span class="toggle-slider"></span></label></div><div x-show="smtpEnabled" class="mt-4 pt-4 border-t space-y-4"><div><label class="input-label">SMTP Host</label><input type="text" name="smtp_host" :value="settings.smtp_host" class="input-field"></div><div class="flex items-center gap-4"><input type="email" x-model="testEmailAddress" placeholder="test@example.com" class="input-field flex-1"><button type="button" @click="testEmail()" class="verify-button" :disabled="emailTesting"><span x-text="emailTesting ? 'Sending...' : 'Send Test'"></span></button></div><p x-show="emailTested" :class="emailTestSuccess ? 'text-green-600' : 'text-red-600'" x-text="emailTestSuccess ? 'Email sent!' : 'Failed.'"></p></div></div>
+                        <div class="p-6 rounded-xl border">
+                            <div class="flex justify-between items-center">
+                                <h4 class="font-semibold">Telegram</h4><label class="toggle-wrapper"><input
+                                        type="checkbox" name="telegram_enabled" class="toggle-input"
+                                        x-model="telegramEnabled"><span class="toggle-slider"></span></label>
+                            </div>
+                            <div x-show="telegramEnabled" class="mt-4 pt-4 border-t space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><label class="input-label">Bot Token</label><input type="password"
+                                            name="telegram_bot_token" :value="settings.telegram_bot_token"
+                                            class="input-field"></div>
+                                    <div><label class="input-label">Chat ID</label><input type="text"
+                                            name="telegram_chat_id" :value="settings.telegram_chat_id"
+                                            class="input-field"></div>
+                                </div>
+                                <div class="flex items-center gap-4"><button type="button" @click="testTelegram()"
+                                        class="verify-button" :disabled="telegramTesting"><span
+                                            x-text="telegramTesting ? 'Testing...' : 'Test'"></span></button>
+                                    <p x-show="telegramTested"
+                                        :class="telegramTestSuccess ? 'text-green-600' : 'text-red-600'"
+                                        x-text="telegramTestSuccess ? 'Success!' : 'Failed.'"></p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-6 rounded-xl border">
+                            <div class="flex justify-between items-center">
+                                <h4 class="font-semibold">Email (SMTP)</h4><label class="toggle-wrapper"><input
+                                        type="checkbox" name="email_smtp_enabled" class="toggle-input"
+                                        x-model="smtpEnabled"><span class="toggle-slider"></span></label>
+                            </div>
+                            <div x-show="smtpEnabled" class="mt-4 pt-4 border-t space-y-4">
+                                <div><label class="input-label">SMTP Host</label><input type="text" name="smtp_host"
+                                        :value="settings.smtp_host" class="input-field"></div>
+                                <div class="flex items-center gap-4"><input type="email" x-model="testEmailAddress"
+                                        placeholder="test@example.com" class="input-field flex-1"><button type="button"
+                                        @click="testEmail()" class="verify-button" :disabled="emailTesting"><span
+                                            x-text="emailTesting ? 'Sending...' : 'Send Test'"></span></button></div>
+                                <p x-show="emailTested" :class="emailTestSuccess ? 'text-green-600' : 'text-red-600'"
+                                    x-text="emailTestSuccess ? 'Email sent!' : 'Failed.'"></p>
+                            </div>
+                        </div>
                     </div>
                     <div x-show="integrationTab === 'payments'" x-cloak class="space-y-6">
-                        <div class="p-6 rounded-xl border"><div class="flex justify-between items-center"><h4 class="font-bold">UZA Payments</h4><label class="toggle-wrapper"><input type="checkbox" name="payment_uza_enabled" class="toggle-input" :checked="settings.payment_uza_enabled"><span class="toggle-slider"></span></label></div><div class="mt-4 pt-4 border-t space-y-4"><div><label class="input-label">UZA Public Key (PK)</label><textarea name="payment_uza_pk" rows="3" class="input-field font-mono text-xs" x-text="settings.payment_uza_pk"></textarea></div><div class="grid grid-cols-2 gap-4"><div><label class="input-label">Reference Code</label><input type="text" name="payment_uza_refcode" :value="settings.payment_uza_refcode" class="input-field"></div><div><label class="input-label">Source Tag</label><input type="text" name="payment_uza_source" :value="settings.payment_uza_source" class="input-field"></div></div><div><label class="input-label">Currency</label><input type="text" name="payment_uza_currency" :value="settings.payment_uza_currency" class="input-field"></div></div></div>
+                        <div class="p-6 rounded-xl border">
+                            <div class="flex justify-between items-center">
+                                <h4 class="font-bold">UZA Payments</h4><label class="toggle-wrapper"><input
+                                        type="checkbox" name="payment_uza_enabled" class="toggle-input"
+                                        :checked="settings.payment_uza_enabled"><span
+                                        class="toggle-slider"></span></label>
+                            </div>
+                            <div class="mt-4 pt-4 border-t space-y-4">
+                                <div><label class="input-label">UZA Public Key (PK)</label><textarea
+                                        name="payment_uza_pk" rows="3" class="input-field font-mono text-xs"
+                                        x-text="settings.payment_uza_pk"></textarea></div>
+                                <div><label class="input-label">Callback Secret</label><input type="password"
+                                        name="payment_uza_secret" :value="settings.payment_uza_secret"
+                                        class="input-field font-mono text-sm" placeholder="Enter a strong secret key">
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><label class="input-label">Reference Code</label><input type="text"
+                                            name="payment_uza_refcode" :value="settings.payment_uza_refcode"
+                                            class="input-field"></div>
+                                    <div><label class="input-label">Source Tag</label><input type="text"
+                                            name="payment_uza_source" :value="settings.payment_uza_source"
+                                            class="input-field"></div>
+                                </div>
+                                <div><label class="input-label">Currency</label><input type="text"
+                                        name="payment_uza_currency" :value="settings.payment_uza_currency"
+                                        class="input-field"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="flex justify-end pt-8 mt-8 border-t border-gray-200 dark:border-gray-700">
-            <button type="submit" class="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-lg">Save All Settings</button>
+            <button type="submit"
+                class="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-lg">Save All
+                Settings</button>
         </div>
     </form>
 </div>
 
 <!-- All styles are now self-contained in the template for simplicity -->
 <style>
-    .input-label { @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5; }
-    .input-field { @apply w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500; }
-    .secondary-button { @apply px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium; }
-    .verify-button { @apply px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg text-sm; }
-    .toggle-wrapper { @apply relative inline-flex h-6 w-11 items-center rounded-full transition-colors; }
-    .toggle-wrapper:has(.toggle-input:checked) { @apply bg-indigo-600; }
-    .toggle-wrapper:not(:has(.toggle-input:checked)) { @apply bg-gray-300 dark:bg-gray-600; }
-    .toggle-input { @apply sr-only; }
-    .toggle-slider { @apply inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform; }
-    .toggle-input:checked + .toggle-slider { @apply translate-x-5; }
-    .toggle-input:not(:checked) + .toggle-slider { @apply translate-x-0; }
+    .input-label {
+        @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5;
+    }
+
+    .input-field {
+        @apply w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-900 dark:text-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500;
+    }
+
+    .secondary-button {
+        @apply px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm font-medium;
+    }
+
+    .verify-button {
+        @apply px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg text-sm;
+    }
+
+    .toggle-wrapper {
+        @apply relative inline-flex h-6 w-11 items-center rounded-full transition-colors;
+    }
+
+    .toggle-wrapper:has(.toggle-input:checked) {
+        @apply bg-indigo-600;
+    }
+
+    .toggle-wrapper:not(:has(.toggle-input:checked)) {
+        @apply bg-gray-300 dark:bg-gray-600;
+    }
+
+    .toggle-input {
+        @apply sr-only;
+    }
+
+    .toggle-slider {
+        @apply inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform;
+    }
+
+    .toggle-input:checked+.toggle-slider {
+        @apply translate-x-5;
+    }
+
+    .toggle-input:not(:checked)+.toggle-slider {
+        @apply translate-x-0;
+    }
 </style>
 {% endblock %}
 

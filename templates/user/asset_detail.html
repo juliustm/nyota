@@ -796,7 +796,7 @@
 
         // ASSET LOGIC
         Alpine.data('assetDetail', (symbol) => ({
-            asset: {}, purchase: null, currency: symbol, purchaseStatus: 'NONE',
+            asset: {}, purchase: null, currency: symbol, purchaseStatus: 'NONE', markedReady: false,
             init() {
                 const ad = document.getElementById('asset-data');
                 if (ad) {
@@ -807,6 +807,30 @@
                     } catch (e) { }
                 }
                 const pd = document.getElementById('purchase-data'); if (pd) try { this.purchase = JSON.parse(pd.textContent); if (this.purchase) this.purchaseStatus = this.purchase.status.name } catch (e) { }
+
+                // Check for marked availability immediately and poll if needed
+                const checkMarked = () => {
+                    if (typeof marked !== 'undefined') {
+                        this.markedReady = true;
+                    } else {
+                        // If not ready yet, poll
+                        setTimeout(checkMarked, 50);
+                    }
+                };
+                checkMarked();
+            },
+            renderMarkdown(text) {
+                if (!text) return '';
+                // If marked is ready, use it. Otherwise return raw text (which will be replaced once reactive update triggers)
+                if (this.markedReady && typeof marked !== 'undefined') {
+                    try {
+                        return marked.parse(text);
+                    } catch (e) {
+                        console.error('Markdown parsing error:', e);
+                        return text;
+                    }
+                }
+                return text;
             },
             formatCurrency(val) { return parseFloat(val || 0).toFixed(2); }
         }));
@@ -881,7 +905,7 @@
 
 {% block scripts_extra %}
 <!-- Defer heavy libraries -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -895,9 +919,5 @@
         };
         initPdfWorker();
     });
-
-    function renderMarkdown(text) {
-        return typeof marked !== 'undefined' ? marked.parse(text || '') : text;
-    }
 </script>
 {% endblock %}

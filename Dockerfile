@@ -37,4 +37,4 @@ USER nonroot
 EXPOSE 80
 
 # Command to run the application in production
-CMD ["gunicorn", "wsgi:app", "-b", "0.0.0.0:80", "--worker-class", "gevent", "--timeout", "0"]
+CMD ["gunicorn", "wsgi:app", "-b", "0.0.0.0:80", "--worker-class", "gthread", "--workers", "2", "--threads", "4", "--timeout", "120"]

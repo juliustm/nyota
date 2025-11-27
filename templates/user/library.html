@@ -126,7 +126,8 @@
                 <!-- Image -->
                 <a :href="'/asset/' + purchase.asset.slug"
                     class="relative aspect-[16/9] overflow-hidden bg-gray-100 dark:bg-gray-900 block">
-                    <img :src="purchase.asset.cover_image_url" :alt="purchase.asset.title"
+                    <img :src="purchase.asset.cover_image_url" :alt="purchase.asset.title" loading="lazy"
+                        decoding="async"
                         class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105">
 
                     <!-- Status Badge (Only for History Tab) -->

@@ -313,6 +313,7 @@ class DigitalAsset(db.Model):
             'cover_image_url': self.cover_image_url,
             'total_sales': self.total_sales or 0,
             'total_revenue': float(self.total_revenue or 0.0),
+            'uza_product_id': (self.details or {}).get('uza_product_id', ''),
             
             # Use the to_dict method from AssetFile for clean serialization
             'files': [f.to_dict() for f in self.files.all()],

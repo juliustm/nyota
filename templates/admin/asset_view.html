@@ -153,6 +153,16 @@
                             <textarea id="story" rows="12" x-model="editableAsset.story"
                                 class="input-field font-mono text-sm" placeholder="# About this asset..."></textarea>
                         </div>
+
+                        <div>
+                            <label for="uza_product_id" class="input-label">UZA Product ID
+                                <span class="text-xs font-normal text-gray-500">(Optional)</span>
+                            </label>
+                            <p class="text-xs text-gray-500 mb-2">Link this product to a UZA product for payment
+                                tracking and analytics.</p>
+                            <input type="text" id="uza_product_id" x-model="editableAsset.uza_product_id"
+                                class="input-field font-mono" placeholder="e.g., prod_abc123xyz">
+                        </div>
                     </div>
                 </div>
 
@@ -293,6 +303,17 @@
                                                         / Description</label>
                                                     <input type="text" x-model="tier.description" class="input-field"
                                                         placeholder="What do they get?">
+                                                </div>
+                                                <div class="md:col-span-3">
+                                                    <label
+                                                        class="input-label text-xs uppercase tracking-wide text-gray-500">UZA
+                                                        Product ID
+                                                        <span
+                                                            class="text-xs font-normal text-gray-400">(Optional)</span>
+                                                    </label>
+                                                    <input type="text" x-model="tier.uza_product_id"
+                                                        class="input-field font-mono text-sm"
+                                                        placeholder="e.g., prod_tier_monthly_123">
                                                 </div>
                                             </div>
                                         </div>

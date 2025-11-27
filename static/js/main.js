@@ -427,6 +427,11 @@ document.addEventListener('alpine:init', () => {
                     this.editableAsset.details = { welcomeContent: '', benefits: '' };
                 }
 
+                // Initialize UZA Product ID
+                if (!this.editableAsset.uza_product_id) {
+                    this.editableAsset.uza_product_id = this.asset.details?.uza_product_id || '';
+                }
+
                 // Initialize pricing tiers
                 if (!this.editableAsset.details.subscription_tiers) {
                     this.editableAsset.details.subscription_tiers = [];
@@ -523,7 +528,8 @@ document.addEventListener('alpine:init', () => {
                     id: this.asset.id,
                     title: this.editableAsset.title,
                     description: this.editableAsset.description,
-                    story_snippet: this.editableAsset.story
+                    story_snippet: this.editableAsset.story,
+                    uza_product_id: this.editableAsset.uza_product_id || ''
                 },
                 assetTypeEnum: this.asset.asset_type,
                 contentItems: contentItems,

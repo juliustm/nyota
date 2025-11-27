@@ -436,7 +436,12 @@ def save_asset_from_form(asset, req):
     # Ensure details is a dictionary and create a copy to modify
     asset.details = dict(asset.details or {})
     
-    # Handle Subscription Tiers
+    # Store UZA Product ID for the asset
+    uza_product_id = asset_details.get('uza_product_id', '').strip()
+    if uza_product_id:
+        asset.details['uza_product_id'] = uza_product_id
+    
+    # Handle Subscription Tiers (which may also have UZA Product IDs)
     if asset.is_subscription:
         asset.details['subscription_tiers'] = pricing_data.get('tiers', [])
 
@@ -924,9 +929,32 @@ def initiate_payment():
     # Store the customer's phone in the session for library access later
     session['customer_phone'] = phone_number
     
+    # Determine which UZA Product ID to use
+    # Priority: 1. Tier's UZA Product ID, 2. Asset's UZA Product ID, 3. Default fallback ID
+    uza_product_id = None
+    if tier and tier.get('uza_product_id'):
+        uza_product_id_str = str(tier.get('uza_product_id')).strip()
+        if uza_product_id_str:
+            try:
+                uza_product_id = int(uza_product_id_str)
+            except (ValueError, TypeError):
+                current_app.logger.warning(f"Invalid tier UZA Product ID: {uza_product_id_str}")
+    
+    if not uza_product_id and asset.details and asset.details.get('uza_product_id'):
+        uza_product_id_str = str(asset.details.get('uza_product_id')).strip()
+        if uza_product_id_str:
+            try:
+                uza_product_id = int(uza_product_id_str)
+            except (ValueError, TypeError):
+                current_app.logger.warning(f"Invalid asset UZA Product ID: {uza_product_id_str}")
+    
+    # If no UZA Product ID is configured, use a default/placeholder
+    if not uza_product_id:
+        uza_product_id = 8069  # Default fallback ID
+    
     # 4. Construct the payload for the UZA API
     uza_payload = {
-        "products": [{"id": 8069, "name": asset.title, "quantity": 1, "price": float(amount)}],
+        "products": [{"id": uza_product_id, "name": asset.title, "quantity": 1, "price": float(amount)}],
         "payment": {"type": "payby.selcom", "walletid": phone_number},
         "reference": purchase.transaction_token, # Our internal unique ID
         "pk": uza_pk,
@@ -937,10 +965,18 @@ def initiate_payment():
             "source": creator.get_setting('payment_uza_source', '#nyota')
         }
     }
+    
+    # Log the request payload for debugging
+    current_app.logger.info(f"UZA API Request Payload: {json.dumps(uza_payload, indent=2)}")
 
     # 5. Call the UZA API and handle the response
     try:
         response = requests.post("https://uza.co.tz/api/interface/embeddable/order", json=uza_payload, timeout=30)
+        
+        # Log response for debugging
+        current_app.logger.info(f"UZA API Response Status: {response.status_code}")
+        current_app.logger.info(f"UZA API Response Body: {response.text}")
+        
         response.raise_for_status() # Raise an exception for HTTP error codes (4xx or 5xx)
         response_data = response.json()
         

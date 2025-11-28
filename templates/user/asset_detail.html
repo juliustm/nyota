@@ -505,43 +505,94 @@
                             </div>
                             {% endif %}
                         </div>
-                        {% if status == 'PENDING' %}
-                        <div
-                            class="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-100 text-sm">
-                            <div class="font-bold text-yellow-800 dark:text-yellow-300 mb-1">{{
-                                translate('awaiting_payment') }}</div>
-                            <p class="text-gray-600 dark:text-gray-400 mb-2">Check phone: <span
-                                    class="font-mono font-bold">{{ latest_purchase.phone_number }}</span></p>
-                            <div class="flex gap-3 text-xs"><button @click="$dispatch('open-checkout-modal')"
-                                    class="text-indigo-600 underline">{{ translate('change_number') }}</button><button
-                                    @click="cancelPayment()" class="text-red-600 underline">{{
-                                    translate('cancel_payment') }}</button></div>
+                        <!-- Dynamic Purchase Interface -->
+                        <div x-data>
+                            <!-- PENDING STATE (Client-side) -->
+                            <template x-if="purchaseStatus === 'PENDING'">
+                                <div class="space-y-4">
+                                    <div
+                                        class="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-100 dark:border-yellow-900/30">
+                                        <div class="flex items-center gap-3 mb-3">
+                                            <div class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
+                                            <span class="font-bold text-yellow-800 dark:text-yellow-300">{{
+                                                translate('awaiting_payment') }}</span>
+                                        </div>
+                                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                            Check your phone <span
+                                                class="font-mono font-bold text-gray-900 dark:text-white"
+                                                x-text="purchase ? purchase.phone_number : ''"></span> to complete the
+                                            transaction.
+                                        </p>
+
+                                        <div class="grid grid-cols-1 gap-2">
+                                            <button @click="$dispatch('open-checkout-modal')"
+                                                class="w-full py-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-bold rounded-lg text-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
+                                                {{ translate('change_number') }}
+                                            </button>
+                                            <button @click="cancelPayment()"
+                                                class="w-full py-2.5 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-bold rounded-lg text-sm hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">
+                                                {{ translate('cancel_payment') }}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <button @click="$dispatch('open-checkout-modal')"
+                                        class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold opacity-50 cursor-not-allowed">
+                                        Processing Payment...
+                                    </button>
+                                </div>
+                            </template>
+
+                            <!-- STANDARD STATE (Client-side) -->
+                            <template x-if="purchaseStatus !== 'PENDING'">
+                                <div>
+                                    <!-- Server-side fallback for initial load if needed, but Alpine will take over -->
+                                    {% if status == 'PENDING' %}
+                                    <!-- This server-side block is now redundant if JS is active, but kept for no-js fallback or initial flash -->
+                                    <div
+                                        class="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-100 text-sm">
+                                        <div class="font-bold text-yellow-800 dark:text-yellow-300 mb-1">{{
+                                            translate('awaiting_payment') }}</div>
+                                        <p class="text-gray-600 dark:text-gray-400 mb-2">Check phone: <span
+                                                class="font-mono font-bold">{{ latest_purchase.phone_number }}</span>
+                                        </p>
+                                        <div class="flex gap-3 text-xs">
+                                            <button @click="$dispatch('open-checkout-modal')"
+                                                class="text-indigo-600 underline">{{ translate('change_number')
+                                                }}</button>
+                                            <button @click="cancelPayment()" class="text-red-600 underline">{{
+                                                translate('cancel_payment') }}</button>
+                                        </div>
+                                    </div>
+                                    {% elif status == 'FAILED' %}
+                                    <div
+                                        class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 text-sm">
+                                        <div class="font-bold text-red-800 dark:text-red-300 mb-2">{{
+                                            translate('payment_failed_retry') }}</div>
+                                        <div class="flex gap-2">
+                                            <button @click="handlePurchaseAction()"
+                                                class="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
+                                                {{ translate('retry_payment') }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                                    <button @click="handlePurchaseAction()" :disabled="isProcessing"
+                                        class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:scale-[1.02] transition-transform disabled:opacity-70">
+                                        <span x-show="!isProcessing">
+                                            {% if status == 'FAILED' %}
+                                            {{ translate('retry_payment') }}
+                                            {% else %}
+                                            <span
+                                                x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>
+                                            {% endif %}
+                                        </span>
+                                        <span x-show="isProcessing" class="animate-pulse">Processing...</span>
+                                    </button>
+                                </div>
+                            </template>
                         </div>
-                        {% elif status == 'FAILED' %}
-                        <div
-                            class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 text-sm">
-                            <div class="font-bold text-red-800 dark:text-red-300 mb-2">{{
-                                translate('payment_failed_retry') }}</div>
-                            <div class="flex gap-2">
-                                <button @click="handlePurchaseAction()"
-                                    class="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
-                                    {{ translate('retry_payment') }}
-                                </button>
-                                <button @click="window.location.href = window.location.href.split('?')[0]"
-                                    class="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium rounded-lg transition-colors">
-                                    Start Over
-                                </button>
-                            </div>
-                        </div>
-                        {% endif %}
-                        <button @click="handlePurchaseAction()" :disabled="isProcessing"
-                            class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:scale-[1.02] transition-transform disabled:opacity-70">
-                            <span x-show="!isProcessing">{% if status == 'FAILED' %}{{ translate('retry_payment') }}{%
-                                else %}<span
-                                    x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{%
-                                endif %}</span>
-                            <span x-show="isProcessing" class="animate-pulse">Processing...</span>
-                        </button>
                         {% endif %}
                     </div>
                 </div>
@@ -809,6 +860,9 @@
 
                 async loadPdf() {
                     try {
+                        // Wait for pdfjsLib to be available (handles deferred script loading)
+                        await this.waitForPdfLib();
+
                         const loadingTask = pdfjsLib.getDocument(this.url);
                         _pdfDoc = await loadingTask.promise;
                         this.numPages = _pdfDoc.numPages;
@@ -817,6 +871,22 @@
                         console.error('Error loading PDF:', error);
                         this.loading = false;
                     }
+                },
+
+                // Wait for PDF.js library to load
+                waitForPdfLib() {
+                    return new Promise((resolve) => {
+                        if (typeof pdfjsLib !== 'undefined') {
+                            resolve();
+                        } else {
+                            const checkInterval = setInterval(() => {
+                                if (typeof pdfjsLib !== 'undefined') {
+                                    clearInterval(checkInterval);
+                                    resolve();
+                                }
+                            }, 50);
+                        }
+                    });
                 },
 
                 async renderPage(num) {

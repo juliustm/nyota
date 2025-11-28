@@ -629,13 +629,37 @@ document.addEventListener('alpine:init', () => {
                 this.openModal(prefillNumber);
             });
 
-            // Listen for payment resumption (e.g., after page refresh)
-            window.addEventListener('resume-payment-check', (event) => {
-                const { purchaseId, dealId } = event.detail;
-                if (purchaseId && dealId) {
-                    this.resumePaymentCheck(purchaseId, dealId);
+            // Listen for cancellation event
+            window.addEventListener('stop-payment-verification', () => {
+                console.log('Stopping payment verification due to cancellation');
+                this.stopPolling();
+                if (this.eventSource) {
+                    this.eventSource.close();
+                    this.eventSource = null;
                 }
+                this.status = 'none';
+                this.isOpen = false;
             });
+
+            // Check for pending purchase immediately on init (handles page refresh)
+            // This avoids race conditions with external events
+            const pendingKey = `nyota_purchase_${this.asset.id}`;
+            const pendingData = localStorage.getItem(pendingKey);
+
+            if (pendingData) {
+                try {
+                    const pending = JSON.parse(pendingData);
+                    if (pending.status && pending.status.name === 'PENDING' && pending.id) {
+                        console.log('[Resumption] Found pending purchase in storage:', pending);
+                        // Small delay to ensure Alpine is fully ready
+                        setTimeout(() => {
+                            this.resumePaymentCheck(pending.id, pending.deal_id, pending.channel_id);
+                        }, 500);
+                    }
+                } catch (e) {
+                    console.error('[Resumption] Error parsing pending purchase:', e);
+                }
+            }
         },
 
         openModal(prefillNumber = null) {
@@ -702,6 +726,7 @@ document.addEventListener('alpine:init', () => {
                     const pendingPurchase = {
                         id: result.purchase_id,
                         deal_id: result.deal_id,
+                        channel_id: this.channelId, // Store channel ID for reconnection
                         status: { name: 'PENDING' }
                     };
                     localStorage.setItem(`nyota_purchase_${this.asset.id}`, JSON.stringify(pendingPurchase));
@@ -824,8 +849,8 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        resumePaymentCheck(purchaseId, dealId) {
-            console.log('Resuming payment check after refresh:', { purchaseId, dealId });
+        resumePaymentCheck(purchaseId, dealId, channelId) {
+            console.log('Resuming payment check after refresh:', { purchaseId, dealId, channelId });
 
             // Restore state
             this.purchaseId = purchaseId;
@@ -833,47 +858,70 @@ document.addEventListener('alpine:init', () => {
             this.phoneNumber = localStorage.getItem('nyota_phone') || '';
             this.status = 'waiting';
             this.statusMessage = 'Checking payment status...';
-            this.isOpen = true; // Open the modal
+            // this.isOpen = true; // User requested NOT to open modal automatically on refresh
 
-            // Start checking status immediately
-            this.checkPaymentStatus();
-            // Also start polling in case status is still pending
-            this.startPolling();
+            // Background verification continues below...
+
+            if (channelId) {
+                // If we have a channel ID, try to reconnect SSE first
+                console.log('Found existing channel ID, reconnecting SSE...');
+                this.channelId = channelId;
+                this.listenForPaymentResult();
+            } else {
+                // Fallback to polling if no channel ID (legacy support)
+                console.log('No channel ID found, falling back to polling...');
+                this.checkPaymentStatus();
+                this.startPolling();
+            }
         },
 
         listenForPaymentResult() {
             if (this.eventSource) this.eventSource.close();
 
+            // CRITICAL: Always check current status via API when connecting/reconnecting
+            // This handles cases where we missed the SSE event during network downtime or refresh
+            this.checkPaymentStatus();
+
             const streamUrl = `/api/payment-stream/${this.channelId}`;
+            console.log(`[SSE] Connecting to ${streamUrl}...`);
             this.eventSource = new EventSource(streamUrl);
+
+            this.eventSource.onopen = () => {
+                console.log('[SSE] Connection established.');
+            };
 
             this.eventSource.onmessage = (event) => {
                 const data = JSON.parse(event.data);
+                console.log('[SSE] Message received:', data);
+
                 if (data.status === 'SUCCESS') {
                     this.status = 'success';
                     this.statusMessage = data.message || 'Payment successful!';
                     this.stopPolling();
                     this.eventSource.close();
+
+                    // Clear localStorage
+                    localStorage.removeItem(`nyota_purchase_${this.asset.id}`);
+
                     setTimeout(() => { window.location.href = data.redirect_url || '/library'; }, 1500);
                 } else if (data.status === 'FAILED') {
                     this.status = 'failed';
                     this.errorMessage = data.message || 'Payment failed. Please try again.';
                     this.stopPolling();
                     this.eventSource.close();
-                } else if (data.status === 'TIMEOUT') {
-                    // Do NOT close the event source. Keep it open for potential late arrival or retry.
-                    this.status = 'timeout';
-                    this.errorMessage = 'Payment timed out. We\'re still checking...';
-                    this.startPolling(); // Start polling as fallback
                 }
+                // Note: We no longer send TIMEOUT events. The connection stays open indefinitely.
             };
 
             this.eventSource.onerror = (error) => {
-                console.warn('SSE connection error, starting polling fallback', error);
-                this.eventSource.close();
-                // Start polling if we haven't already
-                if (!this.pollingInterval && this.status === 'waiting') {
-                    this.startPolling();
+                // Browser will auto-reconnect on error, but we log it.
+                // If it's a fatal error (readyState === 2), we might need to intervene.
+                console.warn('[SSE] Connection error/interruption:', this.eventSource.readyState);
+
+                // If closed, try to reconnect after a delay if we're still waiting
+                if (this.eventSource.readyState === EventSource.CLOSED && this.status === 'waiting') {
+                    console.log('[SSE] Connection closed, attempting reconnect in 3s...');
+                    setTimeout(() => this.listenForPaymentResult(), 3000);
                 }
             };
         }

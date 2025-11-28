@@ -917,35 +917,6 @@
                     }
                 };
                 checkMarked();
-
-                // Resume payment flow if there's a pending purchase (e.g., user refreshed during payment)
-                this.resumePendingPayment();
-            },
-
-            resumePendingPayment() {
-                // Check localStorage for pending purchase
-                const pendingKey = `nyota_purchase_${this.asset.id}`;
-                const pendingData = localStorage.getItem(pendingKey);
-
-                if (pendingData) {
-                    try {
-                        const pending = JSON.parse(pendingData);
-                        // Only resume if status is PENDING
-                        if (pending.status && pending.status.name === 'PENDING' && pending.id) {
-                            console.log('Resuming payment check for purchase:', pending.id);
-                            // Dispatch event to open checkout modal in waiting state
-                            window.dispatchEvent(new CustomEvent('resume-payment-check', {
-                                detail: {
-                                    purchaseId: pending.id,
-                                    dealId: pending.deal_id,
-                                    assetId: this.asset.id
-                                }
-                            }));
-                        }
-                    } catch (e) {
-                        console.error('Error parsing pending purchase:', e);
-                    }
-                }
             },
             renderMarkdown(text) {
                 if (!text) return '';
@@ -975,7 +946,15 @@
             async cancelPayment() {
                 if (confirm('{{ translate("confirm_cancel_payment") }}')) {
                     try {
+                        // 1. Notify backend
                         await fetch('/api/cancel-payment', { method: 'POST' });
+
+                        // 2. Clear local storage
+                        localStorage.removeItem(`nyota_purchase_${this.asset.id}`);
+
+                        // 3. Stop frontend verification (polling/SSE)
+                        window.dispatchEvent(new CustomEvent('stop-payment-verification'));
+
                     } catch (e) { console.error(e); }
                     // Reload the page without query params to clear state
                     window.location.href = window.location.href.split('?')[0];

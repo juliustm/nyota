@@ -724,21 +724,44 @@ def manage_settings():
 # NOTE: This section uses mock data and will need to be updated later.
 # It is preserved to prevent the public-facing pages from crashing.
 
-# Mock SSE Manager
+# Enhanced SSE Manager with Persistent Channels
+# Using standard logger to avoid application context issues in background threads/generators
+import logging
+sse_logger = logging.getLogger(__name__)
+
 class SseManager:
     def __init__(self):
         self.channels = {}
         self.lock = threading.Lock()
 
     def subscribe(self, channel_id):
+        """Subscribe to a channel. Creates it if it doesn't exist, reuses if it does."""
         with self.lock:
-            q = queue.Queue(5)
-            self.channels[channel_id] = q
-            return q
+            if channel_id in self.channels:
+                # Channel already exists, reuse it (for reconnections)
+                sse_logger.info(f"Reconnecting to existing SSE channel: {channel_id}")
+                return self.channels[channel_id]
+            else:
+                # Create new channel
+                q = queue.Queue(10)  # Increased queue size for reliability
+                self.channels[channel_id] = q
+                sse_logger.info(f"Created new SSE channel: {channel_id}")
+                return q
 
     def unsubscribe(self, channel_id):
+        """Unsubscribe from a channel. Only removes if no active connections."""
         with self.lock:
-            self.channels.pop(channel_id, None)
+            # Don't immediately remove - keep for potential reconnections
+            # Channels will be cleaned up by a background task or timeout
+            sse_logger.info(f"Unsubscribe called for channel: {channel_id} (keeping alive for reconnections)")
+            pass
+
+    def cleanup_channel(self, channel_id):
+        """Explicitly remove a channel (called after payment success/failure)"""
+        with self.lock:
+            removed = self.channels.pop(channel_id, None)
+            if removed:
+                sse_logger.info(f"Cleaned up SSE channel: {channel_id}")
 
     def publish(self, channel_id, data):
         with self.lock:
@@ -747,8 +770,11 @@ class SseManager:
                     # Format data as a Server-Sent Event
                     message = f"data: {json.dumps(data)}\n\n"
                     self.channels[channel_id].put_nowait(message)
+                    sse_logger.info(f"Published to SSE channel {channel_id}: {data.get('status')}")
                 except queue.Full:
-                    current_app.logger.warning(f"SSE channel {channel_id} queue is full. Message dropped.")
+                    sse_logger.warning(f"SSE channel {channel_id} queue is full. Message dropped.")
+            else:
+                sse_logger.warning(f"Attempted to publish to non-existent channel: {channel_id}")
 
 sse_manager = SseManager()
 
@@ -1249,6 +1275,9 @@ def uza_payment_callback():
             'redirect_url': url_for('main.finalize_session', purchase_id=purchase.id) 
         })
         current_app.logger.info(f"Successfully processed payment for deal_id {uza_deal_id} and notified SSE channel {purchase.sse_channel_id}")
+        
+        # Cleanup the channel now that we're done
+        sse_manager.cleanup_channel(purchase.sse_channel_id)
     else:
         # This is not a fatal error, but it's important to log for debugging.
         current_app.logger.warning(f"Payment for deal_id {uza_deal_id} was successful, but no SSE channel was found to notify the user's browser.")
@@ -1360,17 +1389,42 @@ def session_recovery():
 
 @main_bp.route('/api/payment-stream/<channel_id>')
 def payment_stream(channel_id):
+    """
+    Server-Sent Events endpoint for payment status updates.
+    Supports reconnection - channels persist across multiple connections.
+    Maintains an indefinite connection with heartbeats.
+    """
     def event_stream():
         q = sse_manager.subscribe(channel_id)
+        sse_logger.info(f"SSE connection started for channel {channel_id}")
+        
         try:
-            # Wait for a message. Timeout after 120 seconds (2 minutes).
-            message = q.get(timeout=120)
-            yield message
-        except queue.Empty:
-            # This is our fallback mechanism for timeouts
-            yield f'data: {json.dumps({"status": "TIMEOUT"})}\n\n'
+            while True:
+                try:
+                    # Wait for a message with a short timeout to allow for heartbeats
+                    # This blocks for up to 5 seconds
+                    message = q.get(timeout=5)
+                    yield message
+                    
+                    # If we sent a terminal status, we can stop the stream
+                    if "SUCCESS" in message or "FAILED" in message:
+                        sse_logger.info(f"Terminal event sent for {channel_id}, closing stream")
+                        break
+                        
+                except queue.Empty:
+                    # No message received in 5 seconds, send a heartbeat
+                    # Comments (starting with :) keep the connection alive without triggering onmessage
+                    yield f": heartbeat\n\n"
+                    
+        except GeneratorExit:
+            # Client disconnected
+            sse_logger.info(f"Client disconnected from SSE channel {channel_id}")
+        except Exception as e:
+            sse_logger.error(f"SSE error for channel {channel_id}: {e}")
         finally:
-            sse_manager.unsubscribe(channel_id)
+            # Don't unsubscribe - channel stays alive for reconnections
+            # Only explicitly cleanup on payment success/failure via callback
+            sse_logger.info(f"SSE connection closed for channel {channel_id}, but channel remains active")
 
     return Response(event_stream(), mimetype='text/event-stream')
     

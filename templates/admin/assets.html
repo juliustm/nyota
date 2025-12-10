@@ -269,7 +269,7 @@
                                 <td class="px-6 py-4">
                                     <div class="flex items-center gap-4 min-w-0">
                                         <div
-                                            class="flex-shrink-0 w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
+                                            class="flex-shrink-0 w-9 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
                                             <img :src="asset.cover || '/static/images/placeholder-cover.jpg'"
                                                 :alt="asset.title" class="w-full h-full object-cover">
                                         </div>
@@ -363,9 +363,9 @@
         <template x-for="asset in paginatedAssets" :key="asset.id">
             <div
                 class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-all duration-200">
-                <div class="relative">
+                <div class="relative aspect-[3/4] bg-gray-100 dark:bg-gray-700">
                     <img :src="asset.cover || '/static/images/placeholder-cover.jpg'" :alt="asset.title"
-                        class="w-full h-40 object-cover">
+                        class="w-full h-full object-cover">
                     <div class="absolute top-3 right-3 flex gap-1">
                         <span class="px-2 py-1 rounded-full text-xs font-medium" :class="getStatusClasses(asset.status)"
                             x-text="asset.status"></span>

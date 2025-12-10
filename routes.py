@@ -817,7 +817,8 @@ def simulate_uza_payment(channel_id, phone, asset_id):
 def landing_page():
     creator = Creator.query.first()
     if not creator:
-        return render_template('errors/500.html'), 500
+        # Redirect to admin setup if store is not initialized
+        return redirect(url_for('admin.admin_home'))
 
     # Get query parameters for search and filter
     search_query = request.args.get('q', '').strip()
@@ -832,6 +833,29 @@ def landing_page():
             DigitalAsset.title.ilike(f'%{search_query}%'),
             DigitalAsset.description.ilike(f'%{search_query}%')
         ))
+
+    # --- Metadata Logic (Random Asset) ---
+    # Fetch one random asset for rich social sharing previews
+    random_asset = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED).order_by(func.random()).first()
+    
+    meta_image = None
+    meta_description = None
+    meta_title = None
+
+    if random_asset:
+        meta_image = random_asset.cover_image_url
+        # Truncate description if too long and add CTA
+        desc_text = random_asset.description or ""
+        if len(desc_text) > 200:
+            desc_text = desc_text[:197] + "..."
+        
+        meta_description = f"{desc_text} - Visit {creator.store_name} to read more."
+        
+        if creator.store_name:
+             meta_title = f"{random_asset.title} | {creator.store_name}"
+        else:
+             meta_title = random_asset.title
+    # -------------------------------------
 
     # Apply Type Filter
     if filter_type and filter_type in AssetType.__members__:
@@ -955,12 +979,26 @@ def asset_detail(slug):
                 asset_id=asset_obj.id
             ).order_by(Purchase.purchase_date.desc()).first()
 
+    # Metadata Generation
+    store_name = creator.store_name if creator else "Creator Store"
+    meta_title = f"{asset_obj.title} | {store_name}"
+    meta_image = asset_obj.cover_image_url
+    
+    # Description with CTA
+    desc_text = asset_obj.description or ""
+    if len(desc_text) > 200:
+        desc_text = desc_text[:197] + "..."
+    meta_description = f"{desc_text} - Visit {store_name} to read more."
+
     return render_template(
         'user/asset_detail.html',
         asset_obj=asset_obj,
         asset_json=asset_json,
         latest_purchase=latest_purchase, 
-        store_name=creator.store_name if creator else "Creator Store"
+        store_name=store_name,
+        meta_title=meta_title,
+        meta_description=meta_description,
+        meta_image=meta_image
     )
 
 @main_bp.route('/checkout/<slug>')

@@ -380,6 +380,8 @@ def serve_content(file_id):
         # It's an external link, redirect to it
         return redirect(asset_file.storage_path)
 
+
+
 def check_subscription_status(purchase):
     """
     Checks if a subscription purchase is still active.
@@ -982,7 +984,18 @@ def asset_detail(slug):
     # Metadata Generation
     store_name = creator.store_name if creator else "Creator Store"
     meta_title = f"{asset_obj.title} | {store_name}"
-    meta_image = asset_obj.cover_image_url
+    # Ensure the meta image URL is absolute for social previews
+    if asset_obj.cover_image_url:
+        if asset_obj.cover_image_url.startswith('http'):
+            meta_image = asset_obj.cover_image_url
+        else:
+            # Assume it's a static path relative to the static folder
+            meta_image = url_for('static', filename=asset_obj.cover_image_url, _external=True)
+        # Append a short random query string to bust caches on platforms
+        import uuid
+        meta_image = f"{meta_image}?v={uuid.uuid4().hex[:8]}"
+    else:
+        meta_image = url_for('static', filename='img/default-og.jpg', _external=True)
     
     # Description with CTA
     desc_text = asset_obj.description or ""
@@ -992,6 +1005,7 @@ def asset_detail(slug):
 
     return render_template(
         'user/asset_detail.html',
+        asset=asset_obj,
         asset_obj=asset_obj,
         asset_json=asset_json,
         latest_purchase=latest_purchase, 
@@ -1013,7 +1027,7 @@ def initiate_payment():
     Creates a pending purchase record and calls the UZA payment gateway API.
     """
     data = request.get_json()
-    phone_number = data.get('phone_number')
+    phone_number = str(data.get('phone_number', '')).strip() # Cast to string and strip
     asset_id = data.get('asset_id')
     channel_id = data.get('channel_id') # The unique ID for the user's browser tab
 
@@ -1071,8 +1085,19 @@ def initiate_payment():
     
     # Store the customer's phone in the session for library access later
     # BUT mark as unverified until payment is successful
-    session['customer_phone'] = phone_number
+    
+    # CRITICAL FIX: If the user is changing numbers (e.g. paying for someone else or fixing a typo),
+    # we MUST ensure the session is completely effectively checking out the old user and checking in the new one.
+    # We remove old keys to prevent any "verified" state from leaking.
+    if session.get('customer_phone') and str(session.get('customer_phone')).strip() != str(phone_number).strip():
+        session.pop('customer_phone', None)
+        session.pop('is_verified', None)
+        
+    session['customer_phone'] = str(phone_number).strip()
     session['is_verified'] = False
+    session.permanent = True # Ensure cookie persists across requests
+    session.modified = True
+
     
     # Determine which UZA Product ID to use
     # Priority: 1. Tier's UZA Product ID, 2. Asset's UZA Product ID, 3. Default fallback ID
@@ -1209,34 +1234,46 @@ def payment_status(purchase_id):
     Polling endpoint to check the status of a payment.
     Used as a fallback when SSE fails or times out.
     """
-    purchase = Purchase.query.get(purchase_id)
-    if not purchase:
-        return jsonify({'success': False, 'message': 'Purchase not found.'}), 404
+    purchase = Purchase.query.get_or_404(purchase_id)
     
-    # Security check: Ensure the session phone matches the purchase phone
+    # Security: 
+    # 1. If user is strictly logged in, phone must match.
+    # 2. If user is in "pending payment" state (unverified session), phone must match session.
+    # 3. If session has no phone, we might technically deny, BUT for better UX on same-device flow,
+    #    we could allow if the purchase is very recent (e.g. < 10 mins) to support "lost session" edge cases,
+    #    but that's risky. Let's stick to session phone matching.
+    
     session_phone = session.get('customer_phone')
-    if not session_phone or not purchase.customer or purchase.customer.whatsapp_number != session_phone:
-        return jsonify({'success': False, 'message': 'Unauthorized.'}), 403
+    
+    current_app.logger.info(f"Payment Status Check - Purchase ID: {purchase_id}")
+    current_app.logger.info(f"Session Phone: {session_phone}")
+    if purchase.customer:
+        current_app.logger.info(f"Purchase Customer Phone: {purchase.customer.whatsapp_number}")
+    else:
+        current_app.logger.info("Purchase has no customer!")
+
+    if not session_phone:
+        # Edge case: If session is empty, but we are polling a valid purchase ID. 
+        # For security, we return 403. The frontend should have the cookie.
+        current_app.logger.warning("FAILED: No session phone found.")
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+    if not purchase.customer or str(purchase.customer.whatsapp_number).strip() != str(session_phone).strip():
+        # Strict check: Phone in session MUST match phone on purchase
+        current_app.logger.warning(f"FAILED: Phone mismatch. Session: {session_phone}, Purchase: {purchase.customer.whatsapp_number if purchase.customer else 'None'}")
+        return jsonify({'success': False, 'message': 'Unauthorized owner'}), 403
     
     # Return the current status
+    redirect_url = None
     if purchase.status == PurchaseStatus.COMPLETED:
-        return jsonify({
-            'success': True,
-            'status': 'COMPLETED',
-            'redirect_url': url_for('main.finalize_session', purchase_id=purchase.id)
-        })
-    elif purchase.status == PurchaseStatus.FAILED:
-        return jsonify({
-            'success': True,
-            'status': 'FAILED',
-            'message': 'Payment was declined.'
-        })
-    else:  # PENDING
-        return jsonify({
-            'success': True,
-            'status': 'PENDING',
-            'message': 'Payment is still pending confirmation.'
-        })
+         redirect_url = url_for('main.finalize_session', purchase_id=purchase.id)
+
+    return jsonify({
+        'success': True,
+        'status': purchase.status.name,
+        'redirect_url': redirect_url
+    })
+
 
 
 @main_bp.route('/api/uza-callback', methods=['POST'])

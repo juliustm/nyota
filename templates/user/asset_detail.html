@@ -14,6 +14,25 @@
         return 'other';
     }
 </script>
+<!-- dFlip CSS -->
+<link href="https://cdn.jsdelivr.net/npm/@dearhive/dearflip-jquery-flipbook/dflip/css/dflip.min.css" rel="stylesheet"
+    type="text/css">
+<link href="https://cdn.jsdelivr.net/npm/@dearhive/dearflip-jquery-flipbook/dflip/css/themify-icons.min.css"
+    rel="stylesheet" type="text/css">
+<style>
+    ._df_book-stage {
+        background-color: rgba(20, 20, 20, 0.95) !important;
+    }
+
+    /* Mobile optimization */
+    @media (max-width: 768px) {
+        .df-ui-btn {
+            transform: scale(1.2);
+        }
+
+        /* larger touch targets */
+    }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -198,102 +217,38 @@
                                         </p>
                                     </div>
 
-                                    <!-- PDF VIEWER -->
+                                    <!-- PDF VIEWER OVERLAY & TRIGGER (dFlip Integration) -->
                                     <template x-if="type === 'pdf'">
-                                        <!-- Container switches to fixed/z-100 on fullscreen to cover overlapping elements -->
-                                        <div x-data="pdfViewer(file.link)" x-init="loadPdf()"
-                                            :class="isFullscreen ? 'fixed inset-0 z-[100] h-[100dvh] w-screen bg-black' : 'relative h-[60vh] min-h-[500px] bg-gray-100 dark:bg-gray-900 sm:rounded-xl border-y sm:border border-gray-200 dark:border-gray-700'"
-                                            class="flex flex-col group transition-all duration-300">
+                                        <div class="px-4 sm:px-0">
+                                            <!-- dFlip Lightbox Trigger
+                                                 Note: dFlip automatically attaches to elements with class _df_button 
+                                                 and source attribute. 
+                                            -->
+                                            <div class="_df_button group relative block w-full aspect-[3/4] sm:aspect-[4/3] md:aspect-[3/1] bg-gray-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+                                                :source="'/content/' + file.id" :id="'df_book_' + file.id">
 
-                                            <!-- Toolbar -->
-                                            <div class="flex-none flex items-center justify-between px-3 py-3 bg-gray-900 text-white shadow-lg z-20 transition-transform duration-300"
-                                                :class="{'translate-y-[-100%]': isFullscreen && controlsHidden}">
-
-                                                <div class="flex items-center gap-2">
-                                                    <button @click="prevPage()" :disabled="page <= 1"
-                                                        class="p-2 rounded-full active:bg-gray-700 disabled:opacity-30">
-                                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24"
-                                                            stroke="currentColor">
-                                                            <path stroke-linecap="round" stroke-linejoin="round"
-                                                                stroke-width="2" d="M15 19l-7-7 7-7" />
-                                                        </svg>
-                                                    </button>
-                                                    <span class="text-base font-bold min-w-[3rem] text-center">
-                                                        <span x-text="page"></span>/<span
-                                                            x-text="numPages || '-'"></span>
-                                                    </span>
-                                                    <button @click="nextPage()" :disabled="page >= numPages"
-                                                        class="p-2 rounded-full active:bg-gray-700 disabled:opacity-30">
-                                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24"
-                                                            stroke="currentColor">
-                                                            <path stroke-linecap="round" stroke-linejoin="round"
-                                                                stroke-width="2" d="M9 5l7 7-7 7" />
-                                                        </svg>
-                                                    </button>
+                                                <!-- Cover Art / Background -->
+                                                <div
+                                                    class="absolute inset-0 opacity-40 mix-blend-overlay bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
                                                 </div>
 
-                                                <div class="flex items-center gap-1">
-                                                    <button @click="fitWidth()"
-                                                        class="px-3 py-1.5 text-xs font-bold uppercase bg-gray-700 rounded mr-1">Fit</button>
-                                                    <button @click="toggleFullscreen()"
-                                                        class="p-2 rounded-lg bg-indigo-600 active:bg-indigo-700 text-white shadow-sm">
-                                                        <svg x-show="!isFullscreen" class="w-5 h-5" fill="none"
-                                                            viewBox="0 0 24 24" stroke="currentColor">
+                                                <div
+                                                    class="absolute inset-0 flex flex-col items-center justify-center text-white p-6 text-center">
+                                                    <div
+                                                        class="w-16 h-16 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                                                        <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24"
+                                                            stroke="currentColor">
                                                             <path stroke-linecap="round" stroke-linejoin="round"
                                                                 stroke-width="2"
-                                                                d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                                                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                                                         </svg>
-                                                        <svg x-show="isFullscreen" class="w-5 h-5" fill="none"
-                                                            viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path stroke-linecap="round" stroke-linejoin="round"
-                                                                stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                                        </svg>
-                                                    </button>
+                                                    </div>
+                                                    <h3 class="text-2xl font-bold mb-2">Read {{ asset.title }}</h3>
+                                                    <p
+                                                        class="text-gray-300 text-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                        Tap to Read Fullscreen (dFlip)
+                                                    </p>
                                                 </div>
-                                            </div>
-
-                                            <!-- Scrollable Canvas -->
-                                            <div x-ref="container"
-                                                class="flex-grow relative w-full overflow-auto bg-gray-100 dark:bg-gray-900 flex justify-center"
-                                                @touchstart="handleTouchStart" @touchend="handleTouchEnd"
-                                                @click="if(isFullscreen) controlsHidden = !controlsHidden"
-                                                style="-webkit-overflow-scrolling: touch;">
-
-                                                <div x-show="loading"
-                                                    class="absolute inset-0 flex flex-col items-center justify-center bg-gray-100/90 dark:bg-gray-900/90 z-10">
-                                                    <svg class="animate-spin h-10 w-10 text-indigo-600 mb-2"
-                                                        xmlns="http://www.w3.org/2000/svg" fill="none"
-                                                        viewBox="0 0 24 24">
-                                                        <circle class="opacity-25" cx="12" cy="12" r="10"
-                                                            stroke="currentColor" stroke-width="4"></circle>
-                                                        <path class="opacity-75" fill="currentColor"
-                                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                                                    </svg>
-                                                    <span
-                                                        class="text-xs font-bold text-gray-500 uppercase">Loading...</span>
-                                                </div>
-
-                                                <canvas x-ref="canvas"
-                                                    class="shadow-xl block origin-top transition-transform duration-150"></canvas>
-                                            </div>
-
-                                            <!-- Floating Zoom (Fullscreen) -->
-                                            <div x-show="isFullscreen"
-                                                class="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 bg-gray-900/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl z-20 border border-gray-700 transition-transform duration-300"
-                                                :class="{'translate-y-[200%]': controlsHidden}" @click.stop>
-                                                <button @click="zoomOut()" class="p-2 active:text-indigo-400"><svg
-                                                        class="w-8 h-8" fill="none" viewBox="0 0 24 24"
-                                                        stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                                            stroke-width="2" d="M20 12H4" />
-                                                    </svg></button>
-                                                <div class="w-px h-6 bg-gray-600"></div>
-                                                <button @click="zoomIn()" class="p-2 active:text-indigo-400"><svg
-                                                        class="w-8 h-8" fill="none" viewBox="0 0 24 24"
-                                                        stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                                            stroke-width="2" d="M12 4v16m8-8H4" />
-                                                    </svg></button>
                                             </div>
                                         </div>
                                     </template>
@@ -451,7 +406,8 @@
                                     </div>
                                     <div class="flex-1 min-w-0 pt-1">
                                         <p class="font-medium text-gray-900 dark:text-white text-sm"
-                                            x-text="file.title"></p>
+                                            x-text="file.title">
+                                        </p>
                                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1"
                                             x-text="file.description || '{{ translate('included_resource') }}'"></p>
                                     </div>
@@ -611,7 +567,8 @@
                         <span class="font-bold text-yellow-800 dark:text-yellow-300 flex items-center gap-2">
                             <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
-                                    stroke-width="4"></circle>
+                                    stroke-width="4">
+                                </circle>
                                 <path class="opacity-75" fill="currentColor"
                                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                             </svg>
@@ -1077,24 +1034,59 @@
     .pb-safe {
         padding-bottom: env(safe-area-inset-bottom);
     }
+
+    /* Force hide dFlip controls */
+    .df-ui-btn.df-ui-share,
+    .df-ui-btn.df-ui-download {
+        display: none !important;
+    }
 </style>
 {% endblock %}
 
 {% block scripts_extra %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script>
+    // Global dFlip configuration
+    var dFlipLocation = "https://cdn.jsdelivr.net/npm/@dearhive/dearflip-jquery-flipbook/dflip/";
+
+    // dFlip default options - optimized for performance and mobile
+    var DF_OPTIONS = {
+        webgl: false,
+        height: "100%",
+        duration: 800,
+        backgroundColor: "rgba(20,20,20,0.95)",
+        soundEnable: false,
+
+        // Mobile UX defaults
+        pageMode: "auto",
+        singlePageMode: "auto",
+
+        // Controls - Hide Share and Download
+        // Note: CSS class hiding added above as robust fallback
+        showDownload: false,
+        share: false,
+
+        // Styling
+        allControls: "alt",
+        controlsPosition: "bottom",
+        paddingTop: 30,
+        paddingBottom: 30,
+        paddingLeft: 30,
+        paddingRight: 30,
+
+        // Text
+        text: {
+            toggleSound: "Sound On/Off",
+            toggleThumbnails: "Thumbnails",
+            toggleOutline: "Contents",
+            nextPage: "Next",
+            toggleFullscreen: "Full",
+            zoomIn: "+",
+            zoomOut: "-",
+        }
+    };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@dearhive/dearflip-jquery-flipbook/dflip/js/dflip.min.js"></script>
 <!-- Defer heavy libraries -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
-<script>
-    document.addEventListener('DOMContentLoaded', () => {
-        // Initialize PDF worker after library loads
-        const initPdfWorker = () => {
-            if (typeof pdfjsLib !== 'undefined') {
-                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-            } else {
-                setTimeout(initPdfWorker, 100);
-            }
-        };
-        initPdfWorker();
-    });
-</script>
 {% endblock %}

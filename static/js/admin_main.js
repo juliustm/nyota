@@ -85,7 +85,7 @@ document.addEventListener('alpine:init', () => {
                         created_at: asset.created_at || new Date().toISOString()
                     }));
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error('Error parsing assets data:', e);
                 this.assets = [];
             }
@@ -98,7 +98,7 @@ document.addEventListener('alpine:init', () => {
             // Apply search filter
             if (this.searchTerm) {
                 const term = this.searchTerm.toLowerCase();
-                filtered = filtered.filter(asset => 
+                filtered = filtered.filter(asset =>
                     asset.title.toLowerCase().includes(term) ||
                     (asset.description && asset.description.toLowerCase().includes(term)) ||
                     asset.type.toLowerCase().includes(term)
@@ -118,7 +118,7 @@ document.addEventListener('alpine:init', () => {
             // Apply sorting
             filtered.sort((a, b) => {
                 let aVal, bVal;
-                
+
                 switch (this.sortBy) {
                     case 'sales':
                         aVal = a.sales || 0;
@@ -171,10 +171,10 @@ document.addEventListener('alpine:init', () => {
         formatDate(dateString) {
             if (!dateString) return 'N/A';
             const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'short', 
-                day: 'numeric' 
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
             });
         },
 
@@ -197,7 +197,7 @@ document.addEventListener('alpine:init', () => {
             if (confirm(`Are you sure you want to ${action} ${count} asset(s)?`)) {
                 // Here you would typically make an API call
                 console.log(`Applying ${action} to:`, this.selectedAssets);
-                
+
                 // Update local state for demo purposes
                 this.assets = this.assets.map(asset => {
                     if (this.selectedAssets.includes(asset.id)) {
@@ -212,7 +212,7 @@ document.addEventListener('alpine:init', () => {
 
                 this.selectedAssets = [];
                 this.bulkAction = '';
-                
+
                 // Show success message (you could integrate a toast notification here)
                 alert(`Successfully ${action}ed ${count} asset(s)`);
             }
@@ -344,7 +344,7 @@ document.addEventListener('alpine:init', () => {
                         notes: supporter.notes || ''
                     }));
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error('Error parsing supporters data:', e);
                 this.supporters = [];
             }
@@ -357,7 +357,7 @@ document.addEventListener('alpine:init', () => {
             // Apply search filter
             if (this.searchTerm) {
                 const term = this.searchTerm.toLowerCase();
-                filtered = filtered.filter(supporter => 
+                filtered = filtered.filter(supporter =>
                     supporter.name.toLowerCase().includes(term) ||
                     supporter.email.toLowerCase().includes(term) ||
                     (supporter.notes && supporter.notes.toLowerCase().includes(term)) ||
@@ -389,7 +389,7 @@ document.addEventListener('alpine:init', () => {
             // Apply sorting
             filtered.sort((a, b) => {
                 let aVal, bVal;
-                
+
                 switch (this.sortBy) {
                     case 'recent':
                         aVal = new Date(a.join_date);
@@ -436,10 +436,10 @@ document.addEventListener('alpine:init', () => {
         formatDate(dateString) {
             if (!dateString) return 'N/A';
             const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'short', 
-                day: 'numeric' 
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
             });
         },
 
@@ -462,7 +462,7 @@ document.addEventListener('alpine:init', () => {
             if (confirm(`Are you sure you want to ${action} ${count} supporter(s)?`)) {
                 // Here you would typically make an API call
                 console.log(`Applying ${action} to:`, this.selectedSupporters);
-                
+
                 // Update local state for demo purposes
                 if (action === 'affiliate') {
                     this.supporters = this.supporters.map(supporter => {
@@ -475,7 +475,7 @@ document.addEventListener('alpine:init', () => {
 
                 this.selectedSupporters = [];
                 this.bulkAction = '';
-                
+
                 // Show success message
                 alert(`Successfully ${action}ed ${count} supporter(s)`);
             }
@@ -578,7 +578,7 @@ document.addEventListener('alpine:init', () => {
             story_snippet: '',
             price: 0
         },
-        
+
         // Steps Definition
         steps: [
             { number: 1, title: 'Type', subtitle: 'Choose content type' },
@@ -586,29 +586,29 @@ document.addEventListener('alpine:init', () => {
             { number: 3, title: 'Content', subtitle: 'Add files/links' },
             { number: 4, title: 'Pricing', subtitle: 'Set price & delivery' }
         ],
-        
+
         // Step-specific Data
-        contentItems: [{ 
-            type: 'file', 
-            title: '', 
-            description: '', 
-            file: null, 
+        contentItems: [{
+            type: 'file',
+            title: '',
+            description: '',
+            file: null,
             link: '',
             releaseDate: '',
             expirationDate: ''
         }],
-        customFields: [{ 
-            type: 'text', 
-            question: '' 
+        customFields: [{
+            type: 'text',
+            question: ''
         }],
-        eventDetails: { 
-            link: '', 
-            date: '', 
-            time: '', 
-            maxAttendees: '' 
+        eventDetails: {
+            link: '',
+            date: '',
+            time: '',
+            maxAttendees: ''
         },
-        subscriptionDetails: { 
-            welcomeContent: '', 
+        subscriptionDetails: {
+            welcomeContent: '',
             benefits: '',
             billingCycle: 'monthly'
         },
@@ -622,7 +622,7 @@ document.addEventListener('alpine:init', () => {
             amount: '',
             billingCycle: 'monthly'
         },
-        
+
         // Asset Type Details
         assetTypeDetails: {
             'video-series': {
@@ -656,22 +656,93 @@ document.addEventListener('alpine:init', () => {
                 guide: ['Provide valuable welcome content', 'Set clear expectations for frequency']
             }
         },
-        
+
         // Initialization
         init() {
             try {
                 const dataElement = document.getElementById('asset-form-data');
+                // Check if we are in "Edit" mode (server provided data)
+                let isEditMode = false;
+
                 if (dataElement) {
                     const existingData = JSON.parse(dataElement.textContent);
-                    this.asset = { ...this.asset, ...existingData };
+                    // If the server gave us an ID, it's an existing asset
+                    if (existingData.id) {
+                        this.asset = { ...this.asset, ...existingData };
+                        isEditMode = true;
+                    }
+                    // For new assets, we might still have some defaults or re-rendered invalid form data
+                    else if (existingData.type) {
+                        this.asset = { ...this.asset, ...existingData };
+                    }
+
                     if (existingData.type) {
                         this.assetType = existingData.type;
-                        this.step = 2;
+                        // Only jump to step 2 if we actually have data (not just a restored empty draft)
+                        if (isEditMode) this.step = 2;
                     }
                 }
-            } catch(e) { 
-                console.error('Error parsing asset form data:', e); 
+
+                // Handling Local Storage Verification (Only for NEW assets)
+                if (!isEditMode) {
+                    const savedDraft = localStorage.getItem('nyota_asset_draft');
+                    if (savedDraft) {
+                        try {
+                            const draft = JSON.parse(savedDraft);
+                            // Simple check: is this draft effectively empty? 
+                            // Or should we just restore it?
+                            // Let's restore it, but maybe imply it? 
+                            // for now, just restore it to solve the USER's pain point immediately.
+                            this.assetType = draft.assetType || '';
+                            this.asset = { ...this.asset, ...draft.asset };
+                            this.pricing = draft.pricing || this.pricing;
+                            this.contentItems = draft.contentItems || this.contentItems;
+                            this.eventDetails = draft.eventDetails || this.eventDetails;
+                            this.customFields = draft.customFields || this.customFields;
+                            this.subscriptionDetails = draft.subscriptionDetails || this.subscriptionDetails;
+                            this.newsletterDetails = draft.newsletterDetails || this.newsletterDetails;
+                            this.step = draft.step || 1;
+
+                            console.log('Restored draft from Local Storage');
+                        } catch (e) {
+                            console.error('Error restoring draft:', e);
+                            localStorage.removeItem('nyota_asset_draft');
+                        }
+                    }
+                }
+
+                // Setup Watchers for Auto-Save
+                this.$watch('asset', () => this.saveLocally());
+                this.$watch('assetType', () => this.saveLocally());
+                this.$watch('pricing', () => this.saveLocally());
+                this.$watch('contentItems', () => this.saveLocally());
+                this.$watch('step', () => this.saveLocally());
+
+            } catch (e) {
+                console.error('Error parsing asset form data:', e);
             }
+        },
+
+        saveLocally() {
+            // Don't save if we are editing an existing asset (optional, but safer to avoid overwriting "new" draft with "edit" data)
+            if (this.asset.id) return;
+
+            const payload = {
+                assetType: this.assetType,
+                asset: this.asset,
+                pricing: this.pricing,
+                contentItems: this.contentItems,
+                step: this.step,
+                eventDetails: this.eventDetails,
+                customFields: this.customFields,
+                subscriptionDetails: this.subscriptionDetails,
+                newsletterDetails: this.newsletterDetails
+            };
+            localStorage.setItem('nyota_asset_draft', JSON.stringify(payload));
+        },
+
+        clearDraft() {
+            localStorage.removeItem('nyota_asset_draft');
         },
 
         // Methods
@@ -684,76 +755,129 @@ document.addEventListener('alpine:init', () => {
                 this.contentItems = [{ type: 'file', title: '', file: null, releaseDate: '', expirationDate: '' }];
             }
         },
-        
+
         getAssetTypeDetails() {
-            return this.assetTypeDetails[this.assetType] || { 
+            return this.assetTypeDetails[this.assetType] || {
                 title: 'Content',
                 description: 'Digital content',
                 contentDescription: 'Add your content',
                 guide: []
             };
         },
-        
+
         previewCoverImage(event) {
             const file = event.target.files[0];
             if (file) {
                 this.asset.cover_image_url = URL.createObjectURL(file);
             }
         },
-        
+
         refreshPreview() {
             // Force preview update if needed
             console.log('Preview refreshed');
         },
-        
+
         // Content Management
-        addContentItem(type) { 
-            const newItem = { 
-                type: type, 
-                title: '', 
-                description: '', 
-                file: null, 
-                link: '' 
+        addContentItem(type) {
+            const newItem = {
+                type: type,
+                title: '',
+                description: '',
+                file: null,
+                link: ''
             };
-            
+
             if (type === 'file') {
                 newItem.releaseDate = '';
                 newItem.expirationDate = '';
             }
-            
-            this.contentItems.push(newItem); 
+
+            this.contentItems.push(newItem);
         },
-        
-        removeContentItem(index) { 
+
+        removeContentItem(index) {
             if (this.contentItems.length > 1) {
                 this.contentItems.splice(index, 1);
             }
         },
-        
+
         // Custom Fields Management
-        addCustomField() { 
-            this.customFields.push({ type: 'text', question: '' }); 
+        addCustomField() {
+            this.customFields.push({ type: 'text', question: '' });
         },
-        
-        removeCustomField(index) { 
+
+        removeCustomField(index) {
             if (this.customFields.length > 1) {
                 this.customFields.splice(index, 1);
             }
         },
-        
+
         // Validation helpers
         isValidStep(stepNumber) {
-            switch(stepNumber) {
+            switch (stepNumber) {
                 case 2:
                     return this.asset.title && this.asset.description;
                 case 3:
-                    return this.contentItems.length > 0 && 
+                    return this.contentItems.length > 0 &&
                         this.contentItems.every(item => item.title);
                 case 4:
                     return this.pricing.amount !== '';
                 default:
                     return true;
             }
+        },
+
+        submitForm(action) {
+            // Backend Enum Mapping
+            const typeMapping = {
+                'video-series': 'VIDEO_SERIES',
+                'ticket': 'TICKET',
+                'digital-file': 'DIGITAL_PRODUCT',
+                'subscription': 'SUBSCRIPTION',
+                'newsletter': 'NEWSLETTER'
+            };
+
+            // Prepare the payload
+            const payload = {
+                action: action,
+                asset: this.asset,
+                assetTypeEnum: typeMapping[this.assetType],
+                pricing: this.pricing,
+                contentItems: this.contentItems,
+                // Include all potential type-specific data
+                eventDetails: this.eventDetails,
+                customFields: this.customFields,
+                subscriptionDetails: this.subscriptionDetails,
+                newsletterDetails: this.newsletterDetails
+            };
+
+            // Find or create the hidden input
+            let hiddenInput = this.$refs.assetForm.querySelector('input[name="asset_data"]');
+            if (!hiddenInput) {
+                hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = 'asset_data';
+                this.$refs.assetForm.appendChild(hiddenInput);
+            }
+
+            // Set data and submit
+            hiddenInput.value = JSON.stringify(payload);
+
+            // Clear the draft, because we are submitting now. 
+            // If submission fails (server error), the page will reload and 
+            // since we used standard form submit, the browser *might* restore form state, 
+            // OR the server re-renders the template with the submitted values.
+            // But if we want to be safe against "Back" button, maybe we should clear it ONLY on success?
+            // Actually, for better UX, let's NOT clear it here.
+            // Instead, we should clear it if the server tells us 'success' on the NEXT page load.
+            // BUT, since we can't easily do that cross-page without cookies, 
+            // let's clear it here. If the user hits back, they might lose data, BUT they just submitted it.
+            // Re-think: If submission fails, the server usually re-renders the page with the data. 
+            // So clearing it here is acceptable for a "happy path". 
+            // If the user refreshes the page after submission? It's gone. Good.
+            this.clearDraft();
+
+            this.$refs.assetForm.submit();
         }
     }));
 });

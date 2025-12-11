@@ -13,21 +13,27 @@ import threading
 import requests
 import re
 from datetime import datetime, date, timedelta # Added timedelta
-from werkzeug.utils import secure_filename
-from sqlalchemy.orm.attributes import flag_modified
-from sqlalchemy import func, or_ # Added func import
-
+from functools import wraps
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, session, g,
-    jsonify, current_app, Response, send_from_directory, abort
+    Blueprint, render_template, request, jsonify, redirect, 
+    url_for, flash, g, session, current_app, abort, send_from_directory,
+    Response
 )
+from werkzeug.utils import secure_filename
+from sqlalchemy import or_, func
+from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.ext.declarative import DeclarativeMeta
 
 from models.nyota import (
-    db, Creator, DigitalAsset, AssetStatus, AssetType, AssetFile, 
-    SubscriptionInterval, CreatorSetting, Customer, Purchase, Comment, PurchaseStatus, AccessAttempt
+    db, Creator, CreatorSetting, DigitalAsset, AssetFile, 
+    Purchase, Customer, Subscription, Comment, Rating, 
+    Ambassador, AssetStatus, AssetType, PurchaseStatus, 
+    SubscriptionInterval, SubscriptionStatus, TicketStatus,
+    AccessAttempt
 )
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
+from extensions import limiter
 
 # --- Helper for JSON serialization ---
 def json_serial(obj):
@@ -816,6 +822,7 @@ def simulate_uza_payment(channel_id, phone, asset_id):
     sse_manager.unsubscribe(channel_id)
 
 @main_bp.route('/')
+@limiter.limit("60 per minute")
 def landing_page():
     creator = Creator.query.first()
     if not creator:
@@ -836,28 +843,7 @@ def landing_page():
             DigitalAsset.description.ilike(f'%{search_query}%')
         ))
 
-    # --- Metadata Logic (Random Asset) ---
-    # Fetch one random asset for rich social sharing previews
-    random_asset = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED).order_by(func.random()).first()
-    
-    meta_image = None
-    meta_description = None
-    meta_title = None
 
-    if random_asset:
-        meta_image = random_asset.cover_image_url
-        # Truncate description if too long and add CTA
-        desc_text = random_asset.description or ""
-        if len(desc_text) > 200:
-            desc_text = desc_text[:197] + "..."
-        
-        meta_description = f"{desc_text} - Visit {creator.store_name} to read more."
-        
-        if creator.store_name:
-             meta_title = f"{random_asset.title} | {creator.store_name}"
-        else:
-             meta_title = random_asset.title
-    # -------------------------------------
 
     # Apply Type Filter
     if filter_type and filter_type in AssetType.__members__:
@@ -935,28 +921,45 @@ def landing_page():
             count += 1
             if count >= 3: break
 
-    # Metadata Preparation
-    # 1. Store Bio (from Creator)
-    store_bio = creator.get_setting('store_bio')
-    meta_description = store_bio if store_bio else f"Discover amazing digital content on {creator.store_name}."
+    # --- Dynamic Metadata for Social Sharing ---
+    # Use a random published asset to make social previews dynamic and engaging
+    random_asset = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED).order_by(func.random()).first()
     
-    # 2. Latest Asset Cover (for og:image)
-    # We want the absolute latest published asset, regardless of sorting
-    latest_asset = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED).order_by(DigitalAsset.id.desc()).first()
-    meta_image = latest_asset.cover_image_url if latest_asset else None
+    meta_title = creator.store_name or "Nyota ✨ Store"
+    meta_description = creator.get_setting('store_bio') or f"Discover amazing digital content on {creator.store_name}."
+    meta_image = url_for('static', filename='img/default-og.jpg', _external=True)
+    
+    if random_asset:
+        # Build persuasive meta from random asset
+        meta_title = f"{random_asset.title} | {creator.store_name}"
+        
+        # Create description with CTA
+        desc_text = random_asset.description or ""
+        if len(desc_text) > 140:
+            desc_text = desc_text[:137] + "..."
+        meta_description = f"{desc_text} 🛒 Get instant access at {creator.store_name}!"
+        
+        # Ensure absolute URL for image
+        if random_asset.cover_image_url:
+            if random_asset.cover_image_url.startswith('http'):
+                meta_image = random_asset.cover_image_url
+            else:
+                # Relative URL - make it absolute
+                meta_image = url_for('static', filename=random_asset.cover_image_url.lstrip('/'), _external=True)
 
     return render_template(
         'user/index.html',
         creator=creator,
         store_name=creator.store_name,
-        assets=sorted_assets, # Pass flat list instead of categorized
+        assets=sorted_assets,
         user_purchases=user_purchases,
         new_asset_ids=new_asset_ids,
         search_query=search_query,
         filter_type=filter_type,
-        available_types=available_types, # Pass dynamically available types
-        meta_description=meta_description, # Pass bio for metadata
-        meta_image=meta_image # Pass latest cover for metadata
+        available_types=available_types,
+        meta_title=meta_title,
+        meta_description=meta_description,
+        meta_image=meta_image
     )
 
 @main_bp.route('/set-language/<lang_code>')
@@ -965,7 +968,59 @@ def set_language(lang_code):
         session['language'] = lang_code
     return redirect(request.referrer or url_for('main.landing_page'))
 
+@main_bp.route('/sitemap.xml')
+def sitemap():
+    """Generate dynamic XML sitemap for search engines"""
+    from flask import make_response
+    from datetime import datetime
+    
+    # Get all published assets
+    assets = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED).all()
+    
+    # Build sitemap XML
+    xml = ['<?xml version="1.0" encoding="UTF-8"?>']
+    xml.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    
+    # Landing page
+    xml.append('  <url>')
+    xml.append(f'    <loc>{url_for("main.landing_page", _external=True)}</loc>')
+    xml.append('    <changefreq>daily</changefreq>')
+    xml.append('    <priority>1.0</priority>')
+    xml.append('  </url>')
+    
+    # All published assets
+    for asset in assets:
+        xml.append('  <url>')
+        xml.append(f'    <loc>{url_for("main.asset_detail", slug=asset.slug, _external=True)}</loc>')
+        if asset.updated_at:
+            xml.append(f'    <lastmod>{asset.updated_at.strftime("%Y-%m-%d")}</lastmod>')
+        xml.append('    <changefreq>weekly</changefreq>')
+        xml.append('    <priority>0.8</priority>')
+        xml.append('  </url>')
+    
+    xml.append('</urlset>')
+    
+    response = make_response('\n'.join(xml))
+    response.headers['Content-Type'] = 'application/xml; charset=utf-8'
+    return response
+
+@main_bp.route('/robots.txt')
+def robots():
+    """Generate robots.txt to allow search engine indexing"""
+    from flask import make_response
+    
+    txt = [
+        'User-agent: *',
+        'Allow: /',
+        f'Sitemap: {url_for("main.sitemap", _external=True)}'
+    ]
+    
+    response = make_response('\n'.join(txt))
+    response.headers['Content-Type'] = 'text/plain; charset=utf-8'
+    return response
+
 @main_bp.route('/asset/<slug>')
+@limiter.limit("60 per minute")
 def asset_detail(slug):
     asset_obj = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
     asset_json = json.dumps(asset_obj.to_dict(), default=json_serial)
@@ -997,11 +1052,22 @@ def asset_detail(slug):
     else:
         meta_image = url_for('static', filename='img/default-og.jpg', _external=True)
     
-    # Description with CTA
+    # Description with persuasive CTA and price
     desc_text = asset_obj.description or ""
-    if len(desc_text) > 200:
-        desc_text = desc_text[:197] + "..."
-    meta_description = f"{desc_text} - Visit {store_name} to read more."
+    if len(desc_text) > 130:
+        desc_text = desc_text[:127] + "..."
+    
+    # Add price info for better conversion
+    price_text = ""
+    if asset_obj.is_subscription and asset_obj.details and asset_obj.details.get('subscription_tiers'):
+        min_price = min(float(tier.get('price', 0)) for tier in asset_obj.details['subscription_tiers'])
+        currency = creator.get_setting('payment_uza_currency', 'TZS')
+        price_text = f" From {currency} {min_price:,.0f}/month."
+    elif asset_obj.price:
+        currency = creator.get_setting('payment_uza_currency', 'TZS')
+        price_text = f" {currency} {float(asset_obj.price):,.0f}."
+    
+    meta_description = f"{desc_text}{price_text} 🚀 Get instant access at {store_name}!"
 
     return render_template(
         'user/asset_detail.html',
@@ -1021,6 +1087,7 @@ def checkout(slug):
     return render_template('user/checkout.html', asset=asset.to_dict(), channel_id=str(uuid.uuid4()))
 
 @main_bp.route('/api/initiate-payment', methods=['POST'])
+@limiter.limit("10 per minute")
 def initiate_payment():
     """
     Handles the initial payment request from a customer's browser.
@@ -1179,6 +1246,7 @@ def initiate_payment():
         return jsonify({'success': False, 'message': 'Could not connect to the payment provider. Please try again.'}), 500
 
 @main_bp.route('/api/retry-payment', methods=['POST'])
+@limiter.limit("10 per minute")
 def retry_payment():
     """
     Handles retrying a payment for an existing FAILED or PENDING purchase
@@ -1229,6 +1297,7 @@ def retry_payment():
         return jsonify({'success': False, 'message': 'Could not retry payment.'}), 500
 
 @main_bp.route('/api/payment-status/<int:purchase_id>', methods=['GET'])
+@limiter.limit("10 per minute")
 def payment_status(purchase_id):
     """
     Polling endpoint to check the status of a payment.

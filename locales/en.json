@@ -99,5 +99,7 @@
     "library_help_text": "Enter the phone number you used to purchase and the date of your last purchase",
     "logged_in_as": "Logged in as",
     "switch_account": "Switch Account",
-    "sign_out": "Sign Out"
+    "sign_out": "Sign Out",
+    "filter": "Filter",
+    "filter_content": "Filter Content"
 }

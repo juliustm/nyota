@@ -621,7 +621,11 @@ document.addEventListener('alpine:init', () => {
         tiers: [],
         purchaseId: null,
         dealId: null,
+        purchaseId: null,
+        dealId: null,
         pollingInterval: null,
+        pollCount: 0,
+        maxPolls: 120, // 10 minutes at 5s interval
 
         init() {
             window.addEventListener('open-checkout-modal', (event) => {
@@ -662,7 +666,7 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        openModal(prefillNumber = null) {
+        openModal(prefillNumber = null, autoRetry = false) {
             this.isOpen = true; this.status = 'ready';
             this.errorMessage = ''; this.statusMessage = '';
             this.phoneNumber = prefillNumber || localStorage.getItem('nyota_phone') || '';
@@ -673,6 +677,17 @@ document.addEventListener('alpine:init', () => {
             this.selectedTier = this.tiers.length > 0 ? this.tiers[0] : null;
 
             this.$nextTick(() => { if (this.$refs.phoneInput) this.$refs.phoneInput.focus(); });
+
+            if (autoRetry) {
+                // If retrying, specific logic to avoid double-initiation or just immediate start
+                this.retryPayment();
+            }
+        },
+
+        dispatchStatus(status, data = {}) {
+            window.dispatchEvent(new CustomEvent('payment-status-change', {
+                detail: { status: status, ...data }
+            }));
         },
 
         closeModal() {
@@ -731,6 +746,7 @@ document.addEventListener('alpine:init', () => {
                     };
                     localStorage.setItem(`nyota_purchase_${this.asset.id}`, JSON.stringify(pendingPurchase));
 
+                    this.dispatchStatus('PENDING', { phoneNumber: this.phoneNumber });
                     this.listenForPaymentResult();
                 } else {
                     this.status = 'failed';
@@ -751,6 +767,7 @@ document.addEventListener('alpine:init', () => {
             this.status = 'initiating';
             this.errorMessage = '';
             this.stopPolling(); // Stop any existing polling
+            this.pollCount = 0; // Reset counter
 
             try {
                 const response = await fetch('/api/retry-payment', {
@@ -768,6 +785,7 @@ document.addEventListener('alpine:init', () => {
                 if (response.ok && result.success) {
                     this.status = 'waiting';
                     this.statusMessage = result.message || 'New request sent. Check your phone.';
+                    this.dispatchStatus('PENDING', { phoneNumber: this.phoneNumber });
                     // Ensure listener is active (it might have been closed if we navigated away, though we kept it open on timeout)
                     if (!this.eventSource || this.eventSource.readyState === EventSource.CLOSED) {
                         this.listenForPaymentResult();
@@ -788,7 +806,17 @@ document.addEventListener('alpine:init', () => {
                 return;
             }
 
-            console.log(`[POLLING] Checking payment status for purchase #${this.purchaseId}...`);
+            console.log(`[POLLING] Checking payment status for purchase #${this.purchaseId}... (${this.pollCount}/${this.maxPolls})`);
+
+            this.pollCount++;
+            if (this.pollCount > this.maxPolls) {
+                console.warn('[POLLING] Max polling attempts reached. Stopping.');
+                this.stopPolling();
+                this.status = 'timeout';
+                this.errorMessage = 'Payment verification timed out. Please check your phone or retry.';
+                if (this.eventSource) this.eventSource.close();
+                return;
+            }
 
             try {
                 const response = await fetch(`/api/payment-status/${this.purchaseId}`);
@@ -835,6 +863,7 @@ document.addEventListener('alpine:init', () => {
         startPolling() {
             console.log('🔄 [POLLING] Starting background payment verification (every 5 seconds)');
             this.stopPolling(); // Clear any existing interval
+            this.pollCount = 0; // Reset counter on fresh start
 
             // Check immediately, then every 5 seconds
             this.checkPaymentStatus();
@@ -897,6 +926,7 @@ document.addEventListener('alpine:init', () => {
                 if (data.status === 'SUCCESS') {
                     this.status = 'success';
                     this.statusMessage = data.message || 'Payment successful!';
+                    this.dispatchStatus('COMPLETED');
                     this.stopPolling();
                     this.eventSource.close();
 
@@ -907,6 +937,7 @@ document.addEventListener('alpine:init', () => {
                 } else if (data.status === 'FAILED') {
                     this.status = 'failed';
                     this.errorMessage = data.message || 'Payment failed. Please try again.';
+                    this.dispatchStatus('FAILED');
                     this.stopPolling();
                     this.eventSource.close();
                 }

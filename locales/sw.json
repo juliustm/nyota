@@ -102,5 +102,7 @@
     "sign_out": "Toka",
     "confirm_cancel_payment": "Je, unataka kughairi malipo haya na kuanza upya?",
     "back": "Rudi",
-    "reset": "Weka Upya"
+    "reset": "Weka Upya",
+    "filter": "Chuja",
+    "filter_content": "Chuja Maudhui"
 }

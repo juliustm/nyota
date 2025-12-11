@@ -31,8 +31,18 @@ from utils.translator import translate
 def get_locale():
     if 'language' in session:
         return session['language']
-    # Default to Swahili if no preference is set
-    return request.accept_languages.best_match(['sw', 'en']) or 'sw'
+    
+    # Check headers for country code (Cloudflare, App Engine, or Generic)
+    country = request.headers.get('CF-IPCountry') or \
+              request.headers.get('X-AppEngine-Country') or \
+              request.headers.get('X-Country-Code')
+    
+    # If a country is detected and it is NOT Tanzania, default to English
+    if country and country.upper() != 'TZ':
+        return 'en'
+        
+    # Default to Swahili for Tanzania and all unknown locations
+    return 'sw'
 
 
 # --- Application Factory Function ---

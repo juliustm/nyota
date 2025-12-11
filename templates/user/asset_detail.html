@@ -2,7 +2,45 @@
 
 {% block title %}{{ asset_obj.title }} | {{ store_name }}{% endblock %}
 
+{% block meta_description %}{{ asset_obj.description | striptags | truncate(160) }}{% endblock %}
+
+{% block og_title %}{{ asset_obj.title }}{% endblock %}
+{% block og_description %}{{ asset_obj.description | striptags | truncate(200) }}{% endblock %}
+{% block og_image %}{{ asset_obj.cover_image_url }}{% endblock %}
+{% block og_type %}product{% endblock %}
+
+{% block twitter_title %}{{ asset_obj.title }}{% endblock %}
+{% block twitter_description %}{{ asset_obj.description | striptags | truncate(200) }}{% endblock %}
+{% block twitter_image %}{{ asset_obj.cover_image_url }}{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": "{{ asset_obj.title }}",
+  "description": "{{ asset_obj.description | striptags | truncate(500) }}",
+  "image": "{{ meta_image }}",
+  "url": "{{ request.url }}",
+  "offers": {
+    "@type": "Offer",
+    "price": "{{ asset_obj.price }}",
+    "priceCurrency": "{{ currency_symbol }}",
+    "availability": "https://schema.org/InStock",
+    "url": "{{ request.url }}"
+  },
+  "brand": {
+    "@type": "Organization",
+    "name": "{{ store_name }}"
+  }
+}
+</script>
+{% endblock %}
+
 {% block head_extra %}
+<!-- Product Meta Data -->
+<meta property="product:price:amount" content="{{ asset_obj.price }}">
+<meta property="product:price:currency" content="{{ currency_code or 'KES' }}">
 <!-- Global Helpers -->
 <script>
     function getFileType(url) {
@@ -467,34 +505,42 @@
                             <template x-if="purchaseStatus === 'PENDING'">
                                 <div class="space-y-4">
                                     <div
-                                        class="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-100 dark:border-yellow-900/30">
-                                        <div class="flex items-center gap-3 mb-3">
-                                            <div class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
-                                            <span class="font-bold text-yellow-800 dark:text-yellow-300">{{
+                                        class="p-6 bg-yellow-50 dark:bg-yellow-900/10 rounded-2xl border border-yellow-100 dark:border-yellow-900/30 text-center">
+
+                                        <div class="flex items-center justify-center gap-2 mb-2">
+                                            <div class="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse"></div>
+                                            <span class="font-bold text-lg text-yellow-800 dark:text-yellow-400">{{
                                                 translate('awaiting_payment') }}</span>
                                         </div>
-                                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                                            Check your phone <span
+
+                                        <p class="text-gray-600 dark:text-gray-400 mb-6 text-sm">
+                                            {{ translate('check_phone_instruction') }} <span
                                                 class="font-mono font-bold text-gray-900 dark:text-white"
-                                                x-text="purchase ? purchase.phone_number : ''"></span> to complete the
-                                            transaction.
+                                                x-text="purchase ? purchase.phone_number : ''"></span>
                                         </p>
 
-                                        <div class="grid grid-cols-1 gap-2">
+                                        <div class="space-y-3">
                                             <button @click="$dispatch('open-checkout-modal')"
-                                                class="w-full py-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-bold rounded-lg text-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
+                                                class="w-full py-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 font-bold rounded-xl text-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors">
                                                 {{ translate('change_number') }}
                                             </button>
+
                                             <button @click="cancelPayment()"
-                                                class="w-full py-2.5 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-bold rounded-lg text-sm hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">
+                                                class="w-full py-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 font-bold rounded-xl text-sm hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
                                                 {{ translate('cancel_payment') }}
                                             </button>
                                         </div>
                                     </div>
 
-                                    <button @click="$dispatch('open-checkout-modal')"
-                                        class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold opacity-50 cursor-not-allowed">
-                                        Processing Payment...
+                                    <button disabled
+                                        class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold opacity-50 cursor-not-allowed flex items-center justify-center gap-2">
+                                        <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                                stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor"
+                                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                        </svg>
+                                        {{ translate('processing_payment') }}...
                                     </button>
                                 </div>
                             </template>
@@ -502,50 +548,40 @@
                             <!-- STANDARD STATE (Client-side) -->
                             <template x-if="purchaseStatus !== 'PENDING'">
                                 <div>
-                                    <!-- Server-side fallback for initial load if needed, but Alpine will take over -->
-                                    {% if status == 'PENDING' %}
-                                    <!-- This server-side block is now redundant if JS is active, but kept for no-js fallback or initial flash -->
-                                    <div
-                                        class="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl border border-yellow-100 text-sm">
-                                        <div class="font-bold text-yellow-800 dark:text-yellow-300 mb-1">{{
-                                            translate('awaiting_payment') }}</div>
-                                        <p class="text-gray-600 dark:text-gray-400 mb-2">Check phone: <span
-                                                class="font-mono font-bold">{{ latest_purchase.phone_number }}</span>
-                                        </p>
-                                        <div class="flex gap-3 text-xs">
-                                            <button @click="$dispatch('open-checkout-modal')"
-                                                class="text-indigo-600 underline">{{ translate('change_number')
-                                                }}</button>
-                                            <button @click="cancelPayment()" class="text-red-600 underline">{{
-                                                translate('cancel_payment') }}</button>
-                                        </div>
-                                    </div>
-                                    {% elif status == 'FAILED' %}
-                                    <div
-                                        class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 text-sm">
-                                        <div class="font-bold text-red-800 dark:text-red-300 mb-2">{{
-                                            translate('payment_failed_retry') }}</div>
-                                        <div class="flex gap-2">
-                                            <button @click="handlePurchaseAction()"
-                                                class="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
+                                    <!-- Failed State - Show specific retry card -->
+                                    <template x-if="purchaseStatus === 'FAILED'">
+                                        <div
+                                            class="mb-6 p-6 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/30 text-center">
+                                            <div class="text-red-600 dark:text-red-400 font-bold text-lg mb-2">{{
+                                                translate('payment_failed') }}</div>
+                                            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">{{
+                                                translate('payment_failed_desc') or 'Please try again or use a different
+                                                number.' }}</p>
+
+                                            <button @click="$dispatch('open-checkout-modal', { autoRetry: true })"
+                                                class="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg shadow-red-500/20 transition-all hover:-translate-y-0.5">
                                                 {{ translate('retry_payment') }}
                                             </button>
                                         </div>
-                                    </div>
-                                    {% endif %}
+                                    </template>
 
-                                    <button @click="handlePurchaseAction()" :disabled="isProcessing"
-                                        class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:scale-[1.02] transition-transform disabled:opacity-70">
-                                        <span x-show="!isProcessing">
-                                            {% if status == 'FAILED' %}
-                                            {{ translate('retry_payment') }}
-                                            {% else %}
-                                            <span
-                                                x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>
-                                            {% endif %}
-                                        </span>
-                                        <span x-show="isProcessing" class="animate-pulse">Processing...</span>
-                                    </button>
+                                    <!-- Purchase Button (Hidden if Failed to avoid duplicate CTAs, or keep as alternative?) -->
+                                    <!-- We hide the main purchase button if failed because we showed a specific retry card above. 
+                                         Actually, let's keep the main button effectively acting as "Subscribe/Purchase" but if Failed 
+                                         maybe we want it to be clean. The user wants "Retry Payment" QUICKLY. 
+                                         The card above provides that. Let's hide the standard button if failed to focus attention on the retry card.
+                                    -->
+                                    <template x-if="purchaseStatus !== 'FAILED'">
+                                        <button @click="handlePurchaseAction()" :disabled="isProcessing"
+                                            class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:scale-[1.02] transition-transform disabled:opacity-70 shadow-xl">
+                                            <span x-show="!isProcessing">
+                                                <span
+                                                    x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>
+                                            </span>
+                                            <span x-show="isProcessing" class="animate-pulse">{{ translate('processing')
+                                                }}...</span>
+                                        </button>
+                                    </template>
                                 </div>
                             </template>
                         </div>
@@ -562,21 +598,17 @@
 
             <!-- PENDING STATE -->
             <template x-if="purchaseStatus === 'PENDING'">
-                <div class="p-4 space-y-3">
+                <div
+                    class="p-4 space-y-4 bg-yellow-50 dark:bg-yellow-900/10 border-t border-yellow-100 dark:border-yellow-900/30">
                     <div class="flex items-center justify-between text-sm">
-                        <span class="font-bold text-yellow-800 dark:text-yellow-300 flex items-center gap-2">
-                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
-                                    stroke-width="4">
-                                </circle>
-                                <path class="opacity-75" fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                            </svg>
+                        <span class="font-bold text-yellow-800 dark:text-yellow-400 flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></div>
                             {{ translate('awaiting_payment') }}
                         </span>
-                        <span class="font-mono text-gray-600 dark:text-gray-400"
+                        <span class="font-mono text-gray-900 dark:text-white font-bold"
                             x-text="purchase ? purchase.phone_number : ''"></span>
                     </div>
+
                     <div class="grid grid-cols-2 gap-3">
                         <button @click="cancelPayment()"
                             class="px-4 py-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-bold rounded-xl text-sm">
@@ -592,32 +624,47 @@
 
             <!-- STANDARD STATE (NONE or FAILED) -->
             <template x-if="purchaseStatus !== 'PENDING'">
-                <div class="p-4 flex items-center gap-4">
-                    <div class="flex-1 min-w-0">
-                        {% if asset_obj.is_subscription and asset_obj.details and asset_obj.details.subscription_tiers
-                        %}
-                        {% set min_price = asset_obj.details.subscription_tiers | map(attribute='price') | map('float')
-                        |
-                        min %}
-                        <p class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{{
-                            translate('starts_at') }}</p>
-                        <p class="font-bold text-lg text-gray-900 dark:text-white truncate">
-                            <span x-text="currency"></span><span x-text="formatCurrency({{ min_price }})"></span>
-                        </p>
-                        {% else %}
-                        <p class="font-bold text-lg text-gray-900 dark:text-white truncate">
-                            <span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span>
-                        </p>
-                        {% endif %}
+                <div class="p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
+
+                    <!-- Failed State Alert in Mobile Footer -->
+                    <template x-if="purchaseStatus === 'FAILED'">
+                        <div
+                            class="mb-4 flex items-center justify-between bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
+                            <span class="text-xs font-bold text-red-600 dark:text-red-400">{{
+                                translate('payment_failed_short') or 'Payment Failed' }}</span>
+                            <button @click="$dispatch('open-checkout-modal', { autoRetry: true })"
+                                class="text-xs font-bold text-white bg-red-600 px-3 py-1.5 rounded-lg shadow-sm">
+                                {{ translate('retry') }}
+                            </button>
+                        </div>
+                    </template>
+
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1 min-w-0">
+                            {% if asset_obj.is_subscription and asset_obj.details and
+                            asset_obj.details.subscription_tiers %}
+                            {% set min_price = asset_obj.details.subscription_tiers | map(attribute='price') |
+                            map('float') | min %}
+                            <p class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{{
+                                translate('starts_at') }}</p>
+                            <p class="font-bold text-lg text-gray-900 dark:text-white truncate">
+                                <span x-text="currency"></span><span x-text="formatCurrency({{ min_price }})"></span>
+                            </p>
+                            {% else %}
+                            <p class="font-bold text-lg text-gray-900 dark:text-white truncate">
+                                <span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span>
+                            </p>
+                            {% endif %}
+                        </div>
+                        <button @click="handlePurchaseAction()" :disabled="isProcessing"
+                            class="px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl shadow-lg disabled:opacity-70">
+                            <span x-show="!isProcessing">
+                                <span
+                                    x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>
+                            </span>
+                            <span x-show="isProcessing">...</span>
+                        </button>
                     </div>
-                    <button @click="handlePurchaseAction()" :disabled="isProcessing"
-                        class="px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl shadow-lg disabled:opacity-70">
-                        <span x-show="!isProcessing">{% if status == 'FAILED' %}{{ translate('retry_payment') }}{% else
-                            %}<span
-                                x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>{%
-                            endif %}</span>
-                        <span x-show="isProcessing">...</span>
-                    </button>
                 </div>
             </template>
         </div>
@@ -944,6 +991,14 @@
                     }
                 };
                 checkMarked();
+
+                // Listen for payment status updates from the checkout modal
+                window.addEventListener('payment-status-change', (e) => {
+                    this.purchaseStatus = e.detail.status;
+                    if (e.detail.status === 'COMPLETED') {
+                        setTimeout(() => window.location.reload(), 1500);
+                    }
+                });
             },
             renderMarkdown(text) {
                 if (!text) return '';

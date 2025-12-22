@@ -3,9 +3,76 @@
 {% block title %}Assets{% endblock %}
 
 {% block content %}
-<script type="application/json" id="assets-data">{{ assets|safe }}</script>
+<div x-data="{
+    selectedAssets: [],
+    bulkAction: '',
+    viewMode: localStorage.getItem('adminAssetsViewMode') || 'list',
+    
+    init() {
+        this.$watch('viewMode', value => localStorage.setItem('adminAssetsViewMode', value));
+    },
 
-<div x-data="adminAssets()" x-init="init()" class="space-y-6">
+    toggleSelectAll() {
+        if (this.selectedAssets.length === {{ assets|length }}) {
+            this.selectedAssets = [];
+        } else {
+            this.selectedAssets = [
+                {% for asset in assets %}{{ asset.id }}{{ ',' if not loop.last }}{% endfor %}
+            ];
+        }
+    },
+
+    async applyBulkAction() {
+        if (!this.bulkAction || this.selectedAssets.length === 0) return alert('Please select an action and at least one asset.');
+        if (this.bulkAction === 'delete' && !confirm(`Permanently delete ${this.selectedAssets.length} asset(s)? This cannot be undone.`)) return;
+
+        try {
+            const response = await fetch('/admin/api/assets/bulk-action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: this.bulkAction, ids: this.selectedAssets })
+            });
+            const result = await response.json();
+            if (response.ok && result.success) {
+                alert(result.message);
+                window.location.reload();
+            } else {
+                alert('Error: ' + (result.message || 'An unknown error occurred.'));
+            }
+        } catch (e) {
+            alert('A server connection error occurred.');
+        }
+    },
+
+    confirmDelete(assetId) {
+        if (confirm('Are you sure you want to permanently delete this asset?')) {
+            this.selectedAssets = [assetId];
+            this.bulkAction = 'delete';
+            this.applyBulkAction();
+        }
+    },
+
+    async duplicateAsset(assetId) {
+        if (confirm('Create a duplicate of this asset? It will be saved as a draft.')) {
+            try {
+                const response = await fetch(`/admin/api/assets/${assetId}/duplicate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    alert(result.message);
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + (result.message || 'An unknown error occurred.'));
+                }
+            } catch (e) {
+                alert('A server connection error occurred.');
+            }
+        }
+    }
+}" class="space-y-6">
+
     <!-- Header Section -->
     <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
@@ -62,7 +129,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Assets</p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1" x-text="assets.length"></p>
+                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ stats.total_assets }}</p>
                 </div>
                 <div class="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
                     <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24"
@@ -78,8 +145,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Published</p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1"
-                        x-text="getStatusCount('Published')"></p>
+                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ stats.published_count }}</p>
                 </div>
                 <div class="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
                     <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24"
@@ -95,8 +161,8 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Revenue</p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1"
-                        x-text="`{{ currency_symbol }}${getTotalRevenue().toFixed(2)}`"></p>
+                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ stats.total_revenue |
+                        format_currency(currency_symbol) }}</p>
                 </div>
                 <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
                     <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24"
@@ -112,7 +178,7 @@
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Sales</p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1" x-text="getTotalSales()"></p>
+                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ stats.total_sales }}</p>
                 </div>
                 <div class="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
                     <svg class="w-6 h-6 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24"
@@ -127,7 +193,7 @@
 
     <!-- Filters and Search -->
     <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-        <div class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+        <form method="get" class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
             <!-- Search -->
             <div class="relative flex-1 w-full lg:max-w-md">
                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -136,7 +202,7 @@
                             d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                 </div>
-                <input type="text" x-model.debounce.300ms="searchTerm"
+                <input type="text" name="search" value="{{ current_filters.search }}"
                     placeholder="Search assets by title, type, or description..."
                     class="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
             </div>
@@ -145,12 +211,14 @@
             <div class="flex flex-wrap gap-3 w-full lg:w-auto">
                 <!-- Status Filter -->
                 <div class="relative">
-                    <select x-model="statusFilter"
+                    <select name="status" onchange="this.form.submit()"
                         class="pl-3 pr-8 py-2.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none min-w-[120px]">
-                        <option value="all">All Status</option>
-                        <option value="Published">Published</option>
-                        <option value="Draft">Draft</option>
-                        <option value="Archived">Archived</option>
+                        <option value="">All Status</option>
+                        <option value="Published" {% if current_filters.status=='Published' %}selected{% endif %}>
+                            Published</option>
+                        <option value="Draft" {% if current_filters.status=='Draft' %}selected{% endif %}>Draft</option>
+                        <option value="Archived" {% if current_filters.status=='Archived' %}selected{% endif %}>Archived
+                        </option>
                     </select>
                     <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
                         <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -159,43 +227,9 @@
                     </div>
                 </div>
 
-                <!-- Type Filter -->
-                <div class="relative">
-                    <select x-model="typeFilter"
-                        class="pl-3 pr-8 py-2.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none min-w-[140px]">
-                        <option value="all">All Types</option>
-                        <option value="video-series">Video Course</option>
-                        <option value="ticket">Event & Webinar</option>
-                        <option value="digital-file">Digital Product</option>
-                        <option value="subscription">Subscription</option>
-                        <option value="newsletter">Newsletter</option>
-                    </select>
-                    <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-                        <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                        </svg>
-                    </div>
-                </div>
-
-                <!-- Sort -->
-                <div class="relative">
-                    <select x-model="sortBy"
-                        class="pl-3 pr-8 py-2.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none min-w-[140px]">
-                        <option value="title">Sort by Title</option>
-                        <option value="sales">Sort by Sales</option>
-                        <option value="revenue">Sort by Revenue</option>
-                        <option value="created">Sort by Date</option>
-                    </select>
-                    <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-                        <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                        </svg>
-                    </div>
-                </div>
-
-                <!-- View Toggle -->
+                <!-- View Toggle (Client-side only) -->
                 <div class="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
-                    <button @click="viewMode = 'list'"
+                    <button type="button" @click="viewMode = 'list'"
                         :class="{ 'bg-white dark:bg-gray-600 shadow-sm text-indigo-600 dark:text-indigo-400': viewMode === 'list' }"
                         class="p-1.5 rounded-md transition-colors" title="List View">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -203,7 +237,7 @@
                                 d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                         </svg>
                     </button>
-                    <button @click="viewMode = 'grid'"
+                    <button type="button" @click="viewMode = 'grid'"
                         :class="{ 'bg-white dark:bg-gray-600 shadow-sm text-indigo-600 dark:text-indigo-400': viewMode === 'grid' }"
                         class="p-1.5 rounded-md transition-colors" title="Grid View">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -212,29 +246,52 @@
                         </svg>
                     </button>
                 </div>
-            </div>
-        </div>
 
-        <!-- Active Filters -->
-        <div x-show="hasActiveFilters()"
-            class="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <template x-for="filter in getActiveFilters()" :key="filter.key">
-                <div
-                    class="inline-flex items-center gap-1 px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 rounded-full text-sm">
-                    <span x-text="filter.label"></span>
-                    <button @click="removeFilter(filter.key)" class="hover:text-indigo-600 dark:hover:text-indigo-200">
-                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-            </template>
-            <button @click="clearAllFilters"
+                <!-- Search Button (Optional but good for UX) -->
+                <button type="submit"
+                    class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors text-sm">
+                    Search
+                </button>
+            </div>
+        </form>
+
+        <!-- Active Filters Display -->
+        {% if current_filters.search or current_filters.status %}
+        <div class="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            {% if current_filters.search %}
+            <div
+                class="inline-flex items-center gap-1 px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 rounded-full text-sm">
+                <span>Search: "{{ current_filters.search }}"</span>
+                <a href="{{ url_for('admin.list_assets', status=current_filters.status) }}"
+                    class="hover:text-indigo-600 dark:hover:text-indigo-200">
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </a>
+            </div>
+            {% endif %}
+
+            {% if current_filters.status %}
+            <div
+                class="inline-flex items-center gap-1 px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 rounded-full text-sm">
+                <span>Status: {{ current_filters.status }}</span>
+                <a href="{{ url_for('admin.list_assets', search=current_filters.search) }}"
+                    class="hover:text-indigo-600 dark:hover:text-indigo-200">
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </a>
+            </div>
+            {% endif %}
+
+            <a href="{{ url_for('admin.list_assets') }}"
                 class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 underline">
                 Clear all
-            </button>
+            </a>
         </div>
+        {% endif %}
     </div>
 
     <!-- Assets List/Grid -->
@@ -247,7 +304,7 @@
                         <tr>
                             <th class="px-6 py-4 w-8">
                                 <input type="checkbox" @change="toggleSelectAll"
-                                    :checked="selectedAssets.length === filteredAssets.length && filteredAssets.length > 0"
+                                    :checked="selectedAssets.length > 0 && selectedAssets.length === {{ assets|length }}"
                                     class="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
                             </th>
                             <th class="px-6 py-4 text-left">Asset</th>
@@ -260,98 +317,90 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        <template x-for="asset in paginatedAssets" :key="asset.id">
-                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                <td class="px-6 py-4">
-                                    <input type="checkbox" :value="asset.id" x-model="selectedAssets"
-                                        class="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
-                                </td>
-                                <td class="px-6 py-4">
-                                    <div class="flex items-center gap-4 min-w-0">
-                                        <div
-                                            class="flex-shrink-0 w-9 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
-                                            <img :src="asset.cover || '/static/images/placeholder-cover.jpg'"
-                                                :alt="asset.title" class="w-full h-full object-cover">
-                                        </div>
-                                        <div class="min-w-0 flex-1">
-                                            <p class="font-semibold text-gray-900 dark:text-white truncate"
-                                                x-text="asset.title"></p>
-                                            <p class="text-xs text-gray-500 dark:text-gray-400 truncate"
-                                                x-text="asset.description || 'No description'"></p>
-                                        </div>
+                        {% for asset in assets %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" value="{{ asset.id }}" x-model.number="selectedAssets"
+                                    class="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-4 min-w-0">
+                                    <div
+                                        class="flex-shrink-0 w-9 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
+                                        <img src="{{ asset.cover or '/static/images/placeholder-cover.jpg' }}"
+                                            alt="{{ asset.title }}" class="w-full h-full object-cover">
                                     </div>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <span
-                                        class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 capitalize"
-                                        x-text="getAssetTypeLabel(asset.type)"></span>
-                                </td>
-                                <td class="px-6 py-4">
-                                    <span
-                                        class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
-                                        :class="getStatusClasses(asset.status)">
-                                        <span x-text="asset.status"></span>
-                                    </span>
-                                </td>
-                                <td class="px-6 py-4 text-right font-medium text-gray-900 dark:text-white"
-                                    x-text="asset.sales || 0"></td>
-                                <td class="px-6 py-4 text-right font-medium text-gray-900 dark:text-white"
-                                    x-text="`{{ currency_symbol }}${(asset.revenue || 0).toFixed(2)}`"></td>
-                                <td class="px-6 py-4 text-right text-gray-500 dark:text-gray-400 text-xs"
-                                    x-text="formatDate(asset.updated_at)"></td>
-                                <td class="px-6 py-4 text-right">
-                                    <div class="flex items-center justify-end gap-2">
-                                        <a :href="'/admin/assets/' + asset.id + '/edit'"
-                                            class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                                            title="Edit">
-                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                            </svg>
-                                        </a>
-                                        <button @click="duplicateAsset(asset.id)"
-                                            class="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
-                                            title="Duplicate">
-                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                            </svg>
-                                        </button>
-                                        <button @click="confirmDelete(asset.id)"
-                                            class="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                                            title="Delete">
-                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                            </svg>
-                                        </button>
+                                    <div class="min-w-0 flex-1">
+                                        <p class="font-semibold text-gray-900 dark:text-white truncate">{{ asset.title
+                                            }}</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{
+                                            asset.description or 'No description' }}</p>
                                     </div>
-                                </td>
-                            </tr>
-                        </template>
-                        <tr x-show="filteredAssets.length === 0">
-                            <td colspan="8" class="text-center py-12">
-                                <div class="text-gray-500 dark:text-gray-400">
-                                    <svg class="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none"
-                                        viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
-                                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                    <p class="text-lg font-medium mb-1">No assets found</p>
-                                    <p class="text-sm mb-4"
-                                        x-text="hasActiveFilters() ? 'Try adjusting your filters' : 'Get started by creating your first asset'">
-                                    </p>
-                                    <a href="{{ url_for('admin.asset_new') }}"
-                                        class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors text-sm">
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span
+                                    class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 capitalize">
+                                    {{ asset.type | replace('_', ' ') | title }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span
+                                    class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium 
+                                    {% if asset.status == 'Published' %}bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300
+                                    {% elif asset.status == 'Draft' %}bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300
+                                    {% else %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{% endif %}">
+                                    {{ asset.status }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">{{ asset.sales }}
+                            </td>
+                            <td class="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">{{ asset.revenue
+                                | format_currency(currency_symbol) }}</td>
+                            <td class="px-6 py-4 text-right text-gray-500 dark:text-gray-400 text-xs">{{
+                                asset.updated_at.strftime('%b %d, %Y') }}</td>
+                            <td class="px-6 py-4 text-right">
+                                <div class="flex items-center justify-end gap-2">
+                                    <a href="{{ url_for('admin.asset_edit', asset_id=asset.id) }}"
+                                        class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                                        title="Edit">
                                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M12 4v16m8-8H4" />
+                                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                         </svg>
+                                    </a>
+                                    <button @click="duplicateAsset({{ asset.id }})"
+                                        class="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                                        title="Duplicate">
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                        </svg>
+                                    </button>
+                                    <button @click="confirmDelete({{ asset.id }})"
+                                        class="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                                        title="Delete">
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-12">
+                                <div class="text-gray-500 dark:text-gray-400">
+                                    <p class="text-lg font-medium mb-1">No assets found</p>
+                                    <a href="{{ url_for('admin.asset_new') }}"
+                                        class="inline-flex items-center gap-2 px-4 py-2 mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors text-sm">
                                         Create New Asset
                                     </a>
                                 </div>
                             </td>
                         </tr>
+                        {% endfor %}
                     </tbody>
                 </table>
             </div>
@@ -360,118 +409,170 @@
 
     <!-- Grid View -->
     <div x-show="viewMode === 'grid'" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        <template x-for="asset in paginatedAssets" :key="asset.id">
-            <div
-                class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-all duration-200">
-                <div class="relative aspect-[3/4] bg-gray-100 dark:bg-gray-700">
-                    <img :src="asset.cover || '/static/images/placeholder-cover.jpg'" :alt="asset.title"
-                        class="w-full h-full object-cover">
-                    <div class="absolute top-3 right-3 flex gap-1">
-                        <span class="px-2 py-1 rounded-full text-xs font-medium" :class="getStatusClasses(asset.status)"
-                            x-text="asset.status"></span>
+        {% for asset in assets %}
+        <div
+            class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-all duration-200">
+            <div class="relative aspect-[3/4] bg-gray-100 dark:bg-gray-700">
+                <img src="{{ asset.cover or '/static/images/placeholder-cover.jpg' }}" alt="{{ asset.title }}"
+                    class="w-full h-full object-cover">
+                <div class="absolute top-3 right-3 flex gap-1">
+                    <span class="px-2 py-1 rounded-full text-xs font-medium 
+                        {% if asset.status == 'Published' %}bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300
+                        {% elif asset.status == 'Draft' %}bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300
+                        {% else %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{% endif %}">
+                        {{ asset.status }}
+                    </span>
+                </div>
+                <div class="absolute top-3 left-3">
+                    <input type="checkbox" value="{{ asset.id }}" x-model.number="selectedAssets"
+                        class="w-4 h-4 text-indigo-600 bg-white border-gray-300 rounded focus:ring-indigo-500">
+                </div>
+            </div>
+
+            <div class="p-4">
+                <div class="flex items-start justify-between gap-3 mb-3">
+                    <h3 class="font-semibold text-gray-900 dark:text-white text-sm leading-tight flex-1">{{ asset.title
+                        }}</h3>
+                    <span
+                        class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 capitalize flex-shrink-0">
+                        {{ asset.type | replace('_', ' ') | title }}
+                    </span>
+                </div>
+
+                <p class="text-xs text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">{{ asset.description or 'No
+                    description available' }}</p>
+
+                <div class="grid grid-cols-2 gap-4 text-xs mb-4">
+                    <div class="text-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                        <div class="font-semibold text-gray-900 dark:text-white">{{ asset.sales }}</div>
+                        <div class="text-gray-500 dark:text-gray-400">Sales</div>
                     </div>
-                    <div class="absolute top-3 left-3">
-                        <input type="checkbox" :value="asset.id" x-model="selectedAssets"
-                            class="w-4 h-4 text-indigo-600 bg-white border-gray-300 rounded focus:ring-indigo-500">
+                    <div class="text-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                        <div class="font-semibold text-gray-900 dark:text-white">{{ asset.revenue |
+                            format_currency(currency_symbol) }}</div>
+                        <div class="text-gray-500 dark:text-gray-400">Revenue</div>
                     </div>
                 </div>
 
-                <div class="p-4">
-                    <div class="flex items-start justify-between gap-3 mb-3">
-                        <h3 class="font-semibold text-gray-900 dark:text-white text-sm leading-tight flex-1"
-                            x-text="asset.title"></h3>
-                        <span
-                            class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 capitalize flex-shrink-0"
-                            x-text="getAssetTypeLabel(asset.type)"></span>
-                    </div>
-
-                    <p class="text-xs text-gray-600 dark:text-gray-400 mb-4 line-clamp-2"
-                        x-text="asset.description || 'No description available'"></p>
-
-                    <div class="grid grid-cols-2 gap-4 text-xs mb-4">
-                        <div class="text-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                            <div class="font-semibold text-gray-900 dark:text-white" x-text="asset.sales || 0"></div>
-                            <div class="text-gray-500 dark:text-gray-400">Sales</div>
-                        </div>
-                        <div class="text-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                            <div class="font-semibold text-gray-900 dark:text-white"
-                                x-text="`{{ currency_symbol }}${(asset.revenue || 0).toFixed(2)}`"></div>
-                            <div class="text-gray-500 dark:text-gray-400">Revenue</div>
-                        </div>
-                    </div>
-
-                    <div class="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
-                        <span class="text-xs text-gray-500 dark:text-gray-400"
-                            x-text="formatDate(asset.updated_at)"></span>
-                        <div class="flex gap-1">
-                            <a :href="'/admin/assets/' + asset.id + '/edit'"
-                                class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-                                title="Edit">
-                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                            </a>
-                            <button @click="duplicateAsset(asset.id)"
-                                class="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
-                                title="Duplicate">
-                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                            </button>
-                        </div>
+                <div class="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
+                    <span class="text-xs text-gray-500 dark:text-gray-400">{{ asset.updated_at.strftime('%b %d, %Y')
+                        }}</span>
+                    <div class="flex gap-1">
+                        <a href="{{ url_for('admin.asset_edit', asset_id=asset.id) }}"
+                            class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                            title="Edit">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        </a>
+                        <button @click="duplicateAsset({{ asset.id }})"
+                            class="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                            title="Duplicate">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>
-        </template>
-
-        <div x-show="filteredAssets.length === 0" class="col-span-full">
+        </div>
+        {% else %}
+        <!-- Empty state handles by List view logic if viewMode is grid but empty? No, need check here too or simpler shared empty state -->
+        <div class="col-span-full">
             <div
                 class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-12 text-center">
-                <svg class="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24"
-                    stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No assets found</h3>
-                <p class="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto"
-                    x-text="hasActiveFilters() ? 'Try adjusting your search or filters to find what you are looking for.' : 'Start by creating your first digital asset to showcase your content.'">
-                </p>
+                <p class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No assets found</p>
                 <a href="{{ url_for('admin.asset_new') }}"
                     class="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                    </svg>
                     Create Your First Asset
                 </a>
             </div>
         </div>
+        {% endfor %}
     </div>
 
     <!-- Pagination -->
-    <div x-show="filteredAssets.length > 0"
-        class="flex items-center justify-between bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-4">
-        <div class="text-sm text-gray-700 dark:text-gray-300">
-            Showing <span x-text="paginatedAssets.length"></span> of <span x-text="filteredAssets.length"></span> assets
+    {% if pagination.pages > 1 %}
+    <div
+        class="flex items-center justify-between border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 sm:px-6 mt-4 rounded-xl">
+        <div class="flex flex-1 justify-between sm:hidden">
+            {% if pagination.has_prev %}
+            <a href="{{ url_for('admin.list_assets', page=pagination.prev_num, search=current_filters.search, status=current_filters.status) }}"
+                class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Previous</a>
+            {% else %}
+            <span
+                class="relative inline-flex items-center rounded-md border border-gray-300 bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500 cursor-not-allowed">Previous</span>
+            {% endif %}
+
+            {% if pagination.has_next %}
+            <a href="{{ url_for('admin.list_assets', page=pagination.next_num, search=current_filters.search, status=current_filters.status) }}"
+                class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Next</a>
+            {% else %}
+            <span
+                class="relative inline-flex items-center rounded-md border border-gray-300 bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500 cursor-not-allowed">Next</span>
+            {% endif %}
         </div>
-        <div class="flex items-center gap-2">
-            <button @click="previousPage" :disabled="currentPage === 1"
-                class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-                </svg>
-            </button>
-            <span class="text-sm text-gray-700 dark:text-gray-300">
-                Page <span x-text="currentPage"></span>
-            </span>
-            <button @click="nextPage" :disabled="currentPage * itemsPerPage >= filteredAssets.length"
-                class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                </svg>
-            </button>
+        <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+            <div>
+                <p class="text-sm text-gray-700 dark:text-gray-300">
+                    Showing <span class="font-medium">{{ (pagination.page - 1) * pagination.per_page + 1 }}</span> to
+                    <span class="font-medium">{{ (pagination.page - 1) * pagination.per_page + assets|length }}</span>
+                    of <span class="font-medium">{{ pagination.total }}</span> results
+                </p>
+            </div>
+            <div>
+                <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                    <!-- Previous -->
+                    {% if pagination.has_prev %}
+                    <a href="{{ url_for('admin.list_assets', page=pagination.prev_num, search=current_filters.search, status=current_filters.status) }}"
+                        class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
+                        <span class="sr-only">Previous</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd"
+                                d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </a>
+                    {% endif %}
+
+                    <!-- Numbers -->
+                    {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=1)
+                    %}
+                    {% if page_num %}
+                    {% if pagination.page == page_num %}
+                    <span
+                        class="relative z-10 inline-flex items-center bg-blue-600 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">{{
+                        page_num }}</span>
+                    {% else %}
+                    <a href="{{ url_for('admin.list_assets', page=page_num, search=current_filters.search, status=current_filters.status) }}"
+                        class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700">{{
+                        page_num }}</a>
+                    {% endif %}
+                    {% else %}
+                    <span
+                        class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 focus:outline-offset-0">...</span>
+                    {% endif %}
+                    {% endfor %}
+
+                    <!-- Next -->
+                    {% if pagination.has_next %}
+                    <a href="{{ url_for('admin.list_assets', page=pagination.next_num, search=current_filters.search, status=current_filters.status) }}"
+                        class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
+                        <span class="sr-only">Next</span>
+                        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd"
+                                d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </a>
+                    {% endif %}
+                </nav>
+            </div>
         </div>
     </div>
+    {% endif %}
+
 </div>
 {% endblock %}

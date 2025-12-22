@@ -20,7 +20,7 @@ from flask import (
     Response
 )
 from werkzeug.utils import secure_filename
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, distinct
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
@@ -157,66 +157,192 @@ def creator_logout():
 @admin_bp.route('/dashboard')
 @creator_login_required
 def creator_dashboard():
+    # --- FILTERS ---
+    period = request.args.get('period', '30d') # Default to last 30 days
+    asset_id = request.args.get('asset_id', type=int)
+    
+    start_date = None
+    end_date = datetime.utcnow()
+    
+    if period == '7d':
+        start_date = end_date - timedelta(days=7)
+    elif period == '30d':
+        start_date = end_date - timedelta(days=30)
+    elif period == '90d':
+        start_date = end_date - timedelta(days=90)
+    elif period == '1y':
+        start_date = end_date - timedelta(days=365)
+    elif period == 'all':
+        start_date = None
+    elif period == 'custom':
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        if start_date_str:
+            try:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+            except ValueError:
+                pass
+        if end_date_str:
+            try:
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d') + timedelta(days=1) - timedelta(seconds=1) # End of day
+            except ValueError:
+                pass
+
+    # Base Query for Completed Purchases
+    base_query = db.session.query(Purchase).join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.status == PurchaseStatus.COMPLETED
+    )
+
+    if asset_id:
+        base_query = base_query.filter(Purchase.asset_id == asset_id)
+    
     # --- STATS CALCULATION ---
-    # Total earnings from completed purchases
-    total_earnings = db.session.query(func.sum(Purchase.amount_paid)).join(DigitalAsset).filter(
+    
+    # Total Earnings (Filtered by Asset, but usually we want Total All Time or Filtered Period?)
+    # Let's make the "Total Earnings" card respect the Time Filter too, or maybe keep it All Time?
+    # Usually "Total Earnings" implies All Time. "Earnings (Period)" implies Filter.
+    # But for a standard dashboard, often top cards update with filters. 
+    # Let's align with "Earnings (This Month)" replacement -> "Earnings (Selected Period)"
+    
+    # 1. Total Earnings (All Time, but filtered by Asset if selected)
+    total_earnings_query = db.session.query(func.sum(Purchase.amount_paid)).join(DigitalAsset).filter(
         DigitalAsset.creator_id == g.creator.id,
         Purchase.status == PurchaseStatus.COMPLETED
-    ).scalar() or decimal.Decimal(0)
+    )
+    if asset_id:
+        total_earnings_query = total_earnings_query.filter(Purchase.asset_id == asset_id)
+    total_earnings = total_earnings_query.scalar() or decimal.Decimal(0)
 
-    # Total number of completed sales
-    total_sales = Purchase.query.join(DigitalAsset).filter(
+    # 2. Earnings (Selected Period)
+    period_earnings_query = base_query
+    if start_date:
+        period_earnings_query = period_earnings_query.filter(Purchase.purchase_date >= start_date)
+    if end_date and period == 'custom':
+        period_earnings_query = period_earnings_query.filter(Purchase.purchase_date <= end_date)
+    period_earnings = period_earnings_query.with_entities(func.sum(Purchase.amount_paid)).scalar() or decimal.Decimal(0)
+
+    # 3. Total Sales (Selected Period)
+    period_sales = period_earnings_query.with_entities(func.count(Purchase.id)).scalar() or 0
+
+    # 4. Supporters (Total Unique, filtered by Asset if selected)
+    # Note: Supporters count usually refers to total unique customers all time for the creator/asset
+    supporters_query = db.session.query(func.count(Customer.id.distinct())).join(Purchase).join(DigitalAsset).filter(
         DigitalAsset.creator_id == g.creator.id,
         Purchase.status == PurchaseStatus.COMPLETED
-    ).count()
+    )
+    if asset_id:
+        supporters_query = supporters_query.filter(Purchase.asset_id == asset_id)
+    supporters_count = supporters_query.scalar() or 0
 
-    # Total unique customers who have completed a purchase
-    supporters_count = db.session.query(func.count(Customer.id.distinct())).join(Purchase).join(DigitalAsset).filter(
-        DigitalAsset.creator_id == g.creator.id,
-        Purchase.status == PurchaseStatus.COMPLETED
-    ).scalar() or 0
-
-    # Earnings this month
-    start_of_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0)
-    earnings_this_month = db.session.query(func.sum(Purchase.amount_paid)).join(DigitalAsset).filter(
-        DigitalAsset.creator_id == g.creator.id,
-        Purchase.status == PurchaseStatus.COMPLETED,
-        Purchase.purchase_date >= start_of_month
-    ).scalar() or decimal.Decimal(0)
-
-    # New supporters this month
-    new_supporters_this_month = db.session.query(func.count(Customer.id.distinct())).join(Purchase).join(DigitalAsset).filter(
-        DigitalAsset.creator_id == g.creator.id,
-        Purchase.status == PurchaseStatus.COMPLETED,
-        Customer.created_at >= start_of_month
-    ).scalar() or 0
-
+    # New Supporters (Selected Period) - Customers whose *first* purchase was in this period? 
+    # Or just unique customers who bought in this period?
+    # Let's do unique customers who bought in this period for simplicity as "Active Supporters"
+    # period_supporters = period_earnings_query.with_entities(func.count(Purchase.customer_id.distinct())).scalar() or 0
+    
     stats = {
         'total_earnings': total_earnings,
-        'total_sales': total_sales,
+        'period_earnings': period_earnings,
+        'period_sales': period_sales,
         'supporters_count': supporters_count,
-        'earnings_this_month': earnings_this_month,
-        'new_supporters_this_month': new_supporters_this_month
+        'period': period
     }
     
-    # --- RECENT ACTIVITY (SALES) ---
-    # Fetch the 10 most recent purchases (completed or pending)
-    recent_activity = Purchase.query.join(DigitalAsset).filter(
+    # --- RECENT ACTIVITY (SALES) with PAGINATION ---
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '').strip()
+    per_page = 10
+    
+    activity_query = Purchase.query.join(DigitalAsset).filter(
         DigitalAsset.creator_id == g.creator.id
-    ).order_by(Purchase.purchase_date.desc()).limit(10).all()
+    )
+    
+    if asset_id:
+        activity_query = activity_query.filter(Purchase.asset_id == asset_id)
+        
+    if start_date:
+        activity_query = activity_query.filter(Purchase.purchase_date >= start_date)
+    if end_date and period == 'custom':
+        activity_query = activity_query.filter(Purchase.purchase_date <= end_date)
+
+    if search:
+        activity_query = activity_query.join(Customer).filter(
+            or_(
+                Customer.whatsapp_number.ilike(f"%{search}%"),
+                DigitalAsset.title.ilike(f"%{search}%")
+            )
+        )
+        
+    recent_activity = activity_query.order_by(Purchase.purchase_date.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    # Fetch all assets for the filter dropdown
+    all_assets = DigitalAsset.query.filter_by(creator_id=g.creator.id).with_entities(DigitalAsset.id, DigitalAsset.title).all()
 
     return render_template(
         'admin/dashboard.html', 
         stats=stats, 
-        activity=recent_activity
+        activity=recent_activity,
+        assets=all_assets,
+        current_filters={
+            'period': period,
+            'asset_id': asset_id,
+            'search': search
+        }
     )
 
 @admin_bp.route('/assets')
 @creator_login_required
 def list_assets():
-    creator_assets = DigitalAsset.query.filter_by(creator_id=g.creator.id).order_by(DigitalAsset.updated_at.desc()).all()
-    assets_data = [{'id': a.id, 'title': a.title, 'description': a.description, 'cover': a.cover_image_url, 'type': a.asset_type.name, 'status': a.status.value, 'sales': a.total_sales, 'revenue': float(a.total_revenue), 'updated_at': a.updated_at} for a in creator_assets]
-    return render_template('admin/assets.html', assets=json.dumps(assets_data, default=json_serial))
+    # --- FILTERS & PAGINATION ---
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '').strip()
+    status = request.args.get('status', '').strip()
+    per_page = 20
+
+    query = DigitalAsset.query.filter_by(creator_id=g.creator.id)
+
+    if search:
+        query = query.filter(DigitalAsset.title.ilike(f"%{search}%"))
+    
+    if status and status in [s.value for s in AssetStatus]:
+        query = query.filter(DigitalAsset.status == AssetStatus(status))
+    
+    pagination = query.order_by(DigitalAsset.updated_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    creator_assets = pagination.items
+
+    assets_data = [{
+        'id': a.id, 
+        'title': a.title, 
+        'description': a.description, 
+        'cover': a.cover_image_url, 
+        'type': a.asset_type.name, 
+        'status': a.status.value, 
+        'sales': a.total_sales, 
+        'revenue': float(a.total_revenue), 
+        'updated_at': a.updated_at
+    } for a in creator_assets]
+    
+    # --- STATS ---
+    stats = {
+        'total_assets': DigitalAsset.query.filter_by(creator_id=g.creator.id).count(),
+        'published_count': DigitalAsset.query.filter_by(creator_id=g.creator.id, status=AssetStatus.PUBLISHED).count(),
+        'total_revenue': db.session.query(func.sum(DigitalAsset.total_revenue)).filter_by(creator_id=g.creator.id).scalar() or 0.0,
+        'total_sales': db.session.query(func.sum(DigitalAsset.total_sales)).filter_by(creator_id=g.creator.id).scalar() or 0
+    }
+
+    return render_template(
+        'admin/assets.html', 
+        assets_json=json.dumps(assets_data, default=json_serial),
+        assets=assets_data,
+        pagination=pagination,
+        stats=stats,
+        current_filters={'search': search, 'status': status}
+    )
 
 @admin_bp.route('/assets/new', methods=['GET', 'POST'])
 @creator_login_required
@@ -612,34 +738,117 @@ def duplicate_asset(asset_id):
 def supporters():
     """Fetches all customers and their aggregated data for the admin supporters page."""
     
-    # --- THIS IS THE NEW, CORRECTED QUERY ---
-    
-    # 1. Find the IDs of all unique customers who have made a purchase from this creator.
-    #    This is a very efficient and direct way to identify supporters.
-    supporter_ids_query = db.session.query(Customer.id).distinct().join(Purchase).join(DigitalAsset).filter(
+    # --- FILTERS & PAGINATION ---
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '').strip()
+    asset_id = request.args.get('asset_id', type=int)
+    per_page = 20
+
+    # 1. Base Query to Find Supporter IDs (Efficient Filtering)
+    # Start with Customer to facilitate search on phone number
+    query = db.session.query(Customer.id).distinct().join(Purchase).join(DigitalAsset).filter(
         DigitalAsset.creator_id == g.creator.id
     )
-    supporter_ids = [item[0] for item in supporter_ids_query.all()]
 
-    # 2. If there are any supporters, fetch their full objects with all relationships pre-loaded.
-    #    This avoids the complex join issues and is the recommended pattern.
-    if supporter_ids:
+    if search:
+        # Search by phone number (whatsapp_number)
+        query = query.filter(Customer.whatsapp_number.ilike(f"%{search}%"))
+        
+    if asset_id:
+        query = query.filter(Purchase.asset_id == asset_id)
+
+    # 2. Get TOTAL COUNT for pagination (before slicing logic, but wait, distinct makes count tricky)
+    # The clean way with distinct is query.count() which SQLAlchemy handles well usually, 
+    # but for manual pagination we need IDs first.
+    
+    # Execute query to get ALL matching IDs (for this creator/filter)
+    # Optimization: If listing is huge, this list might be big, but for < 10k items it's fine.
+    # For true scalability we'd paginate the subquery, but let's grab IDs for now.
+    all_supporter_ids = [item[0] for item in query.all()]
+    
+    total_items = len(all_supporter_ids)
+    
+    # Slice IDs for current page
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_supporter_ids = all_supporter_ids[start:end]
+
+    # 3. Fetch full objects for the current page
+    if page_supporter_ids:
         all_customers = db.session.query(Customer).filter(
-            Customer.id.in_(supporter_ids)
+            Customer.id.in_(page_supporter_ids)
         ).options(
             db.selectinload(Customer.purchases),
             db.selectinload(Customer.subscriptions),
             db.selectinload(Customer.ambassador_profile)
         ).all()
+        
+        # Sort them? logic above didn't specify sort order. 
+        # Default sort by ID or maybe Join Date? 
+        # The list `page_supporter_ids` has order if query had order_by. 
+        # Let's verify updated_at or something?
+        # The original query didn't order. Let's order by latest purchase date ideally, 
+        # but that requires a complex join. Let's just trust ID order (creation time roughly).
+        
     else:
         all_customers = []
 
-    # 3. Serialize each customer. This part remains the same.
+    # 4. Serialize each customer
     supporters_data = [customer.to_dict_detailed() for customer in all_customers]
+
+    # Create a simple pagination object to mimic SQLAlchemy's Pagination
+    class SimplePagination:
+        def __init__(self, page, per_page, total, items):
+            self.page = page
+            self.per_page = per_page
+            self.total = total
+            self.items = items
+            self.pages = int((total + per_page - 1) / per_page)
+            self.has_prev = page > 1
+            self.has_next = page < self.pages
+            self.prev_num = page - 1
+            self.next_num = page + 1
+            
+        def iter_pages(self, left_edge=2, left_current=2, right_current=5, right_edge=2):
+            last = 0
+            for num in range(1, self.pages + 1):
+                if num <= left_edge or \
+                   (num > self.page - left_current - 1 and num < self.page + right_current) or \
+                   num > self.pages - right_edge:
+                    if last + 1 != num:
+                        yield None
+                    yield num
+                    last = num
+
+    pagination = SimplePagination(page, per_page, total_items, supporters_data)
+    
+    # Fetch all assets for filter
+    all_assets = DigitalAsset.query.filter_by(creator_id=g.creator.id).with_entities(DigitalAsset.id, DigitalAsset.title).all()
+
+    # --- STATS ---
+    total_supporters = db.session.query(func.count(distinct(Customer.id))).join(Purchase).join(DigitalAsset).filter(DigitalAsset.creator_id == g.creator.id).scalar() or 0
+    
+    total_revenue = db.session.query(func.sum(Purchase.amount_paid)).join(DigitalAsset).filter(DigitalAsset.creator_id == g.creator.id, Purchase.status == PurchaseStatus.COMPLETED).scalar() or 0.0
+    
+    affiliate_count = db.session.query(func.count(distinct(Customer.id))).join(Purchase).join(DigitalAsset).outerjoin(Ambassador, Customer.id == Ambassador.customer_id).filter(DigitalAsset.creator_id == g.creator.id, Ambassador.id != None).scalar() or 0
+    
+    avg_ltv = (total_revenue / total_supporters) if total_supporters > 0 else 0.0
+
+    stats = {
+        'total_supporters': total_supporters,
+        'total_revenue': total_revenue,
+        'affiliate_count': affiliate_count,
+        'avg_ltv': avg_ltv
+    }
 
     return render_template(
         'admin/supporters.html', 
-        supporters=json.dumps(supporters_data, default=json_serial)
+        supporters_json=json.dumps(supporters_data, default=json_serial),
+        supporters=supporters_data,
+        pagination=pagination,
+        assets=all_assets,
+        stats=stats,
+        current_filters={'search': search, 'asset_id': asset_id}
     )
 
 @admin_bp.route('/settings', methods=['GET', 'POST'])

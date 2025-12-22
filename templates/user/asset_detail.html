@@ -414,6 +414,23 @@
                                             </a>
                                         </div>
                                     </template>
+
+                                    <!-- Download Button (If Allowed & Not 'other' which is already a download card) -->
+                                    <template x-if="asset.allow_download && type !== 'other'">
+                                        <div class="mt-4 px-4 sm:px-0">
+                                            <a :href="file.link" download target="_blank"
+                                                class="inline-flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors">
+                                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        stroke-width="2"
+                                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                </svg>
+                                                <span>{{ translate('download') }} <span
+                                                        x-text="file.title || 'File'"></span></span>
+                                            </a>
+                                        </div>
+                                    </template>
                                 </div>
                             </template>
                         </div>

@@ -276,6 +276,7 @@ class DigitalAsset(db.Model):
     status = db.Column(db.Enum(AssetStatus), default=AssetStatus.DRAFT, nullable=False, index=True)
     is_subscription = db.Column(db.Boolean, default=False)
     subscription_interval = db.Column(db.Enum(SubscriptionInterval), nullable=True)
+    allow_download = db.Column(db.Boolean, default=True) # New field for download control
     
     # Type-Specific Fields
     event_date = db.Column(db.DateTime, nullable=True)
@@ -319,6 +320,7 @@ class DigitalAsset(db.Model):
             'asset_type': self.asset_type.name if self.asset_type else None,
             'is_subscription': self.is_subscription,
             'subscription_interval': self.subscription_interval.name if self.subscription_interval else None,
+            'allow_download': self.allow_download,
             'cover_image_url': self.cover_image_url,
             'total_sales': self.total_sales or 0,
             'total_revenue': float(self.total_revenue or 0.0),

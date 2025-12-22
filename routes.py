@@ -1319,15 +1319,46 @@ def robots():
 @main_bp.route('/asset/<slug>')
 @limiter.limit("60 per minute")
 def asset_detail(slug):
-    asset_obj = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
-    asset_json = json.dumps(asset_obj.to_dict(), default=json_serial)
-    creator = Creator.query.get(asset_obj.creator_id)
-    latest_purchase = None
+    # Fetch asset without status filter first
+    asset_obj = DigitalAsset.query.filter_by(slug=slug).first_or_404()
+    
+    # Permission Logic
+    is_creator = 'creator_id' in session and session['creator_id'] == asset_obj.creator_id
     customer_phone = session.get('customer_phone')
+    has_purchased = False
+    
     if customer_phone:
         customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
         if customer:
-            # Find the most recent purchase attempt for this asset by this customer
+            # Check for completed purchase logic
+            has_purchased = Purchase.query.filter_by(
+                customer_id=customer.id, 
+                asset_id=asset_obj.id, 
+                status=PurchaseStatus.COMPLETED
+            ).first() is not None
+
+    # Visibility Rules
+    if asset_obj.status == AssetStatus.PUBLISHED:
+        pass # Public
+    elif asset_obj.status == AssetStatus.ARCHIVED:
+        # Visible only to Owners (Purchasers) and Creator
+        if not (has_purchased or is_creator):
+            abort(404)
+    else: # DRAFT or others
+        # Visible only to Creator
+        if not is_creator:
+            abort(404)
+            
+    asset_json = json.dumps(asset_obj.to_dict(), default=json_serial)
+    creator = Creator.query.get(asset_obj.creator_id)
+    latest_purchase = None
+    
+    if customer_phone:
+        customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
+        if customer:
+            # Re-query for latest purchase attempt (might be pending/failed)
+            # We already checked purchase status for permission, but this logic
+            # is used for the UI state (e.g. "Processing", "Buy Now")
             latest_purchase = Purchase.query.filter_by(
                 customer_id=customer.id, 
                 asset_id=asset_obj.id

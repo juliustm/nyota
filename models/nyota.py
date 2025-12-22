@@ -212,13 +212,21 @@ class Customer(db.Model):
     ratings = db.relationship('Rating', back_populates='customer')
     ambassador_profile = db.relationship('Ambassador', back_populates='customer', uselist=False)
 
-    def to_dict_detailed(self):
+    def to_dict_detailed(self, creator_id=None):
         """Serializes the customer with aggregated purchase and status data."""
         
         # Calculate total spent and number of purchases
         total_spent = 0
         purchase_count = 0
         for p in self.purchases:
+            # Skip if asset is missing (deleted or data integrity issue)
+            if not p.asset:
+               continue
+               
+            # Filter by creator if specified to ensure isolation
+            if creator_id and p.asset.creator_id != creator_id:
+                continue
+                
             if p.status == PurchaseStatus.COMPLETED:
                 total_spent += p.amount_paid
                 purchase_count += 1
@@ -229,9 +237,10 @@ class Customer(db.Model):
         return {
             'id': self.id,
             'name': self.whatsapp_number, # Using phone number as name for now
+            'whatsapp_number': self.whatsapp_number,
             'email': self.whatsapp_number, # Placeholder
             'avatar': f'https://i.pravatar.cc/48?u={self.whatsapp_number}', # Placeholder
-            'join_date': self.created_at.isoformat(),
+            'join_date': self.created_at.strftime('%b %d, %Y'),
             'total_spent': float(total_spent),
             'purchases': purchase_count,
             'is_affiliate': self.ambassador_profile is not None,

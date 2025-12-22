@@ -11,33 +11,37 @@
         </div>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="mt-6">
-                {% for category, message in messages %}
-                    <div class="px-4 py-3 rounded-lg text-sm {% if category == 'danger' %}bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300{% else %}bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300{% endif %}" role="alert">
-                        {{ message }}
-                    </div>
-                {% endfor %}
-                </div>
-            {% endif %}
+        {% if messages %}
+        <div class="mt-6">
+            {% for category, message in messages %}
+            <div class="px-4 py-3 rounded-lg text-sm {% if category == 'danger' %}bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300{% else %}bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300{% endif %}"
+                role="alert">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
         {% endwith %}
 
         <form method="POST" class="mt-6 space-y-6">
             <div>
-                <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
+                <label for="username"
+                    class="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
                 <input type="text" name="username" id="username" required autofocus
-                       class="mt-1 w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 dark:bg-gray-700"
-                       placeholder="Your creator username">
+                    class="mt-1 w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 dark:bg-gray-700"
+                    placeholder="Your creator username">
             </div>
-            <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">
+            <button type="submit"
+                class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">
                 Continue
             </button>
         </form>
-        
+
         <div class="text-center mt-6">
             <p class="text-sm text-gray-500 dark:text-gray-400">
-                First time here? 
-                <a href="{{ url_for('admin.list_assets') }}" class="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+                First time here?
+                <a href="{{ url_for('main.index') }}"
+                    class="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
                     Set up your store.
                 </a>
             </p>

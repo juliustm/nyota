@@ -262,7 +262,7 @@
             <div
                 class="inline-flex items-center gap-1 px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 rounded-full text-sm">
                 <span>Search: "{{ current_filters.search }}"</span>
-                <a href="{{ url_for('admin.list_assets', status=current_filters.status) }}"
+                <a href="{{ url_for('asset_id', status=current_filters.status) }}"
                     class="hover:text-indigo-600 dark:hover:text-indigo-200">
                     <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -276,7 +276,7 @@
             <div
                 class="inline-flex items-center gap-1 px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300 rounded-full text-sm">
                 <span>Status: {{ current_filters.status }}</span>
-                <a href="{{ url_for('admin.list_assets', search=current_filters.search) }}"
+                <a href="{{ url_for('asset_id', search=current_filters.search) }}"
                     class="hover:text-indigo-600 dark:hover:text-indigo-200">
                     <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -499,7 +499,7 @@
         class="flex items-center justify-between border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 sm:px-6 mt-4 rounded-xl">
         <div class="flex flex-1 justify-between sm:hidden">
             {% if pagination.has_prev %}
-            <a href="{{ url_for('admin.list_assets', page=pagination.prev_num, search=current_filters.search, status=current_filters.status) }}"
+            <a href="{{ url_for('asset_id', page=pagination.prev_num, search=current_filters.search, status=current_filters.status) }}"
                 class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Previous</a>
             {% else %}
             <span
@@ -507,7 +507,7 @@
             {% endif %}
 
             {% if pagination.has_next %}
-            <a href="{{ url_for('admin.list_assets', page=pagination.next_num, search=current_filters.search, status=current_filters.status) }}"
+            <a href="{{ url_for('asset_id', page=pagination.next_num, search=current_filters.search, status=current_filters.status) }}"
                 class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Next</a>
             {% else %}
             <span
@@ -526,7 +526,7 @@
                 <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
                     <!-- Previous -->
                     {% if pagination.has_prev %}
-                    <a href="{{ url_for('admin.list_assets', page=pagination.prev_num, search=current_filters.search, status=current_filters.status) }}"
+                    <a href="{{ url_for('asset_id', page=pagination.prev_num, search=current_filters.search, status=current_filters.status) }}"
                         class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
                         <span class="sr-only">Previous</span>
                         <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -546,7 +546,7 @@
                         class="relative z-10 inline-flex items-center bg-blue-600 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">{{
                         page_num }}</span>
                     {% else %}
-                    <a href="{{ url_for('admin.list_assets', page=page_num, search=current_filters.search, status=current_filters.status) }}"
+                    <a href="{{ url_for('asset_id', page=page_num, search=current_filters.search, status=current_filters.status) }}"
                         class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700">{{
                         page_num }}</a>
                     {% endif %}
@@ -558,7 +558,7 @@
 
                     <!-- Next -->
                     {% if pagination.has_next %}
-                    <a href="{{ url_for('admin.list_assets', page=pagination.next_num, search=current_filters.search, status=current_filters.status) }}"
+                    <a href="{{ url_for('asset_id', page=pagination.next_num, search=current_filters.search, status=current_filters.status) }}"
                         class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
                         <span class="sr-only">Next</span>
                         <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">

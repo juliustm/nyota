@@ -25,11 +25,6 @@
     viewSupporter(id) {
         window.location.href = `/admin/supporters/${id}`;
     },
-    
-    messageSupporter(id) {
-        // Placeholder for message functionality
-        alert('Message feature coming soon for supporter ' + id);
-    },
 
     async applyBulkAction() {
         if (!this.bulkAction || this.selectedSupporters.length === 0) return alert('Please select an action and at least one supporter.');
@@ -278,13 +273,14 @@
                                                 d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                         </svg>
                                     </button>
-                                    <button @click="messageSupporter({{ supporter.id }})"
-                                        class="p-1.5 text-gray-400 hover:text-green-600" title="Send Message">
+                                    <a href="https://wa.me/{{ supporter.whatsapp_number | replace('+','') | replace(' ','') }}"
+                                        target="_blank" class="p-1.5 text-gray-400 hover:text-green-600"
+                                        title="Message on WhatsApp">
                                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                                         </svg>
-                                    </button>
+                                    </a>
                                 </div>
                             </td>
                         </tr>
@@ -357,13 +353,13 @@
                                 d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                     </button>
-                    <button @click="messageSupporter({{ supporter.id }})"
-                        class="p-1.5 text-gray-400 hover:text-green-600" title="Message">
+                    <a href="https://wa.me/{{ supporter.whatsapp_number | replace('+','') | replace(' ','') }}"
+                        target="_blank" class="p-1.5 text-gray-400 hover:text-green-600" title="Message on WhatsApp">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                         </svg>
-                    </button>
+                    </a>
                 </div>
             </div>
         </div>

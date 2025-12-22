@@ -354,7 +354,7 @@ def asset_new():
             db.session.add(new_asset)
             db.session.commit()
             flash(f"Asset '{new_asset.title}' created successfully!", "success")
-            return redirect(url_for('admin.list_assets'))
+            return redirect(url_for('admin.asset_edit', asset_id=new_asset.id))
         except ValueError as e:
             flash(str(e), 'danger')
             return render_template('admin/asset_form.html', asset=request.form.get('asset_data', '{}'))
@@ -452,7 +452,7 @@ def save_asset():
             return jsonify({'success': True, 'message': f"Asset '{asset.title}' saved successfully!"})
             
         flash(f"Asset '{asset.title}' saved successfully!", "success")
-        return redirect(url_for('admin.list_assets'))
+        return redirect(url_for('admin.asset_edit', asset_id=asset.id))
         
     except ValueError as e:
         if request.headers.get('Accept') == 'application/json':
@@ -778,23 +778,16 @@ def supporters():
         all_customers = db.session.query(Customer).filter(
             Customer.id.in_(page_supporter_ids)
         ).options(
-            db.selectinload(Customer.purchases),
+            db.selectinload(Customer.purchases).joinedload(Purchase.asset), # Load asset for creator check
             db.selectinload(Customer.subscriptions),
             db.selectinload(Customer.ambassador_profile)
         ).all()
-        
-        # Sort them? logic above didn't specify sort order. 
-        # Default sort by ID or maybe Join Date? 
-        # The list `page_supporter_ids` has order if query had order_by. 
-        # Let's verify updated_at or something?
-        # The original query didn't order. Let's order by latest purchase date ideally, 
-        # but that requires a complex join. Let's just trust ID order (creation time roughly).
         
     else:
         all_customers = []
 
     # 4. Serialize each customer
-    supporters_data = [customer.to_dict_detailed() for customer in all_customers]
+    supporters_data = [customer.to_dict_detailed(creator_id=g.creator.id) for customer in all_customers]
 
     # Create a simple pagination object to mimic SQLAlchemy's Pagination
     class SimplePagination:
@@ -851,6 +844,101 @@ def supporters():
         current_filters={'search': search, 'asset_id': asset_id}
     )
 
+@admin_bp.route('/supporters/<int:id>')
+@creator_login_required
+def supporter_detail(id):
+    customer = Customer.query.get_or_404(id)
+    
+    # Calculate stats
+    purchases = Purchase.query.join(DigitalAsset).filter(
+        Purchase.customer_id == id,
+        DigitalAsset.creator_id == g.creator.id
+    ).order_by(Purchase.purchase_date.desc()).all()
+    
+    total_spent = sum(p.amount_paid for p in purchases if p.status == PurchaseStatus.COMPLETED)
+    purchase_count = len([p for p in purchases if p.status == PurchaseStatus.COMPLETED])
+    avg_order = (total_spent / purchase_count) if purchase_count > 0 else 0
+    
+    stats = {
+        'total_spent': total_spent,
+        'purchase_count': purchase_count,
+        'avg_order': avg_order
+    }
+    
+    return render_template(
+        'admin/supporter_detail.html',
+        supporter=customer,
+        purchases=purchases,
+        stats=stats
+    )
+
+# --- TOOLTIP API ENDPOINTS ---
+
+@admin_bp.route('/api/tooltip/customer/<int:id>')
+@creator_login_required
+def tooltip_customer(id):
+    customer = Customer.query.get_or_404(id)
+    currency_symbol = g.creator.get_setting('currency_symbol', 'TZS')
+    
+    # Creator-specific stats
+    query = db.session.query(
+        func.sum(Purchase.amount_paid),
+        func.count(Purchase.id),
+        func.max(Purchase.purchase_date)
+    ).join(DigitalAsset).filter(
+        Purchase.customer_id == id,
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.status == PurchaseStatus.COMPLETED
+    )
+    
+    total_spent, count, last_active = query.first()
+    
+    return jsonify({
+        'title': customer.whatsapp_number,
+        'items': [
+            {'label': 'Joined', 'value': customer.created_at.strftime('%b %Y')},
+            {'label': 'Total Spent', 'value': f"{currency_symbol} {total_spent:,.2f}" if total_spent else f"{currency_symbol} 0.00"},
+            {'label': 'Purchases', 'value': str(count or 0)},
+            {'label': 'Last Active', 'value': last_active.strftime('%b %d') if last_active else 'N/A'}
+        ]
+    })
+
+@admin_bp.route('/api/tooltip/asset/<int:id>')
+@creator_login_required
+def tooltip_asset(id):
+    asset = DigitalAsset.query.get_or_404(id)
+    if asset.creator_id != g.creator.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    currency_symbol = g.creator.get_setting('currency_symbol', 'TZS')
+        
+    return jsonify({
+        'title': asset.title,
+        'items': [
+            {'label': 'Price', 'value': f"{currency_symbol} {asset.price:,.2f}"},
+            {'label': 'Status', 'value': asset.status.value},
+            {'label': 'Sales', 'value': str(asset.total_sales)},
+            {'label': 'Revenue', 'value': f"{currency_symbol} {asset.total_revenue:,.2f}"}
+        ]
+    })
+
+@admin_bp.route('/api/tooltip/purchase/<int:id>')
+@creator_login_required
+def tooltip_purchase(id):
+    purchase = Purchase.query.get_or_404(id)
+    # Ensure creator owns the asset involved
+    if purchase.asset.creator_id != g.creator.id:
+        return jsonify({'error': 'Unauthorized'}), 403
+        
+    return jsonify({
+        'title': f"Order #{purchase.id}",
+        'items': [
+            {'label': 'Date', 'value': purchase.purchase_date.strftime('%b %d, %I:%M %p')},
+            {'label': 'Gateway Ref', 'value': purchase.payment_gateway_ref or 'N/A'},
+            {'label': 'Status', 'value': purchase.status.value},
+            {'label': 'Transaction', 'value': purchase.transaction_token[:8] + '...'}
+        ]
+    })
 @admin_bp.route('/settings', methods=['GET', 'POST'])
 @creator_login_required
 def manage_settings():

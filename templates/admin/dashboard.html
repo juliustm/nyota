@@ -10,66 +10,108 @@
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
             <p class="text-gray-600 dark:text-gray-400 mt-1">Overview of your store's performance.</p>
         </div>
+        <div class="flex items-center gap-3">
+            <button type="submit" form="dashboardFilterForm" formaction="{{ url_for('admin.export_dashboard_data') }}"
+                class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                <svg class="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Export CSV
+            </button>
+        </div>
+    </div>
 
-        <!-- Filter Form -->
-        <form method="get" class="flex flex-wrap gap-2 items-center w-full md:w-auto">
-            <div class="relative w-full md:w-64">
+    <!-- Filter Toolbar -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+        <form id="dashboardFilterForm" method="get"
+            class="flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
+            <!-- Search -->
+            <div class="relative w-full lg:max-w-md">
                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                 </div>
-                <input type="text" name="search" value="{{ current_filters.search }}" placeholder="Search orders..."
-                    class="block w-full pl-10 pr-3 py-2 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500 dark:placeholder-gray-400">
-            </div>
-            <select name="period" id="periodSelect"
-                onchange="toggleCustomDates(this.value); if(this.value !== 'custom') this.form.submit()"
-                class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500">
-                <option value="7d" {% if current_filters.period=='7d' %}selected{% endif %}>Last 7 Days</option>
-                <option value="30d" {% if current_filters.period=='30d' %}selected{% endif %}>Last 30 Days</option>
-                <option value="90d" {% if current_filters.period=='90d' %}selected{% endif %}>Last 90 Days</option>
-                <option value="1y" {% if current_filters.period=='1y' %}selected{% endif %}>Last Year</option>
-                <option value="all" {% if current_filters.period=='all' %}selected{% endif %}>All Time</option>
-                <option value="custom" {% if current_filters.period=='custom' %}selected{% endif %}>Custom Range
-                </option>
-            </select>
-
-            <div id="customDates"
-                class="{% if current_filters.period != 'custom' %}hidden{% endif %} flex items-center gap-2">
-                <input type="date" name="start_date" value="{{ request.args.get('start_date', '') }}"
-                    class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500">
-                <span class="text-gray-500">-</span>
-                <input type="date" name="end_date" value="{{ request.args.get('end_date', '') }}"
-                    class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500">
-                <button type="submit" class="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                </button>
+                <input type="text" name="search" value="{{ current_filters.search }}"
+                    placeholder="Search by name, phone or asset..."
+                    class="block w-full pl-10 pr-3 py-2 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500 dark:placeholder-gray-400 active:ring-2 transition-shadow">
             </div>
 
-            <script>
-                function toggleCustomDates(value) {
-                    const customDates = document.getElementById('customDates');
-                    if (value === 'custom') {
-                        customDates.classList.remove('hidden');
-                    } else {
-                        customDates.classList.add('hidden');
-                    }
-                }
-            </script>
+            <!-- Filters Group -->
+            <div class="flex flex-col sm:flex-row gap-3 w-full lg:w-auto overflow-x-auto pb-1 sm:pb-0">
 
-            <select name="asset_id" onchange="this.form.submit()"
-                class="rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500 max-w-[200px]">
-                <option value="">All Assets</option>
-                {% for asset_id, asset_title in assets %}
-                <option value="{{ asset_id }}" {% if current_filters.asset_id==asset_id %}selected{% endif %}>{{
-                    asset_title }}</option>
-                {% endfor %}
-            </select>
+                <!-- Period Selector -->
+                <div class="flex items-center gap-2">
+                    <select name="period" id="periodSelect"
+                        onchange="toggleCustomDates(this.value); if(this.value !== 'custom') this.form.submit()"
+                        class="block w-full sm:w-auto rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500 shadow-sm cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-colors">
+                        <option value="7d" {% if current_filters.period=='7d' %}selected{% endif %}>Last 7 Days</option>
+                        <option value="30d" {% if current_filters.period=='30d' %}selected{% endif %}>Last 30 Days
+                        </option>
+                        <option value="90d" {% if current_filters.period=='90d' %}selected{% endif %}>Last 90 Days
+                        </option>
+                        <option value="1y" {% if current_filters.period=='1y' %}selected{% endif %}>Last Year</option>
+                        <option value="all" {% if current_filters.period=='all' %}selected{% endif %}>All Time</option>
+                        <option value="custom" {% if current_filters.period=='custom' %}selected{% endif %}>Custom Range
+                        </option>
+                    </select>
+                </div>
+
+                <!-- Custom Dates (Hidden by default) -->
+                <div id="customDates"
+                    class="{% if current_filters.period != 'custom' %}hidden{% endif %} flex items-center gap-2 animate-fade-in-down bg-gray-50 dark:bg-gray-700/50 p-1 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <input type="date" name="start_date" value="{{ request.args.get('start_date', '') }}"
+                        class="p-1.5 rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 text-xs focus:ring-blue-500 focus:border-blue-500">
+                    <span class="text-gray-400">-</span>
+                    <input type="date" name="end_date" value="{{ request.args.get('end_date', '') }}"
+                        class="p-1.5 rounded-md border-gray-200 dark:border-gray-600 dark:bg-gray-700 text-xs focus:ring-blue-500 focus:border-blue-500">
+                    <button type="submit" class="p-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 shadow-sm">
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="h-auto w-px bg-gray-300 dark:bg-gray-700 hidden sm:block mx-1"></div>
+
+                <!-- Status & Asset -->
+                <select name="status" onchange="this.form.submit()"
+                    class="block w-full sm:w-auto rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500 shadow-sm cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-colors">
+                    <option value="">All Statuses</option>
+                    <option value="COMPLETED" {% if current_filters.status=='COMPLETED' %}selected{% endif %}>Paid
+                    </option>
+                    <option value="PENDING" {% if current_filters.status=='PENDING' %}selected{% endif %}>Pending
+                    </option>
+                    <option value="FAILED" {% if current_filters.status=='FAILED' %}selected{% endif %}>Failed</option>
+                </select>
+
+                <select name="asset_id" onchange="this.form.submit()"
+                    class="block w-full sm:w-auto rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500 shadow-sm max-w-[160px] truncate cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-colors">
+                    <option value="">All Assets</option>
+                    {% for asset_id, asset_title in assets %}
+                    <option value="{{ asset_id }}" {% if current_filters.asset_id==asset_id %}selected{% endif %}>{{
+                        asset_title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
         </form>
     </div>
+
+    <script>
+        function toggleCustomDates(value) {
+            const customDates = document.getElementById('customDates');
+            if (value === 'custom') {
+                customDates.classList.remove('hidden');
+                // Focus first input
+                setTimeout(() => customDates.querySelector('input').focus(), 100);
+            } else {
+                customDates.classList.add('hidden');
+            }
+        }
+    </script>
 
     <!-- Key Metrics Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -177,7 +219,7 @@
             class="flex items-center justify-between border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 sm:px-6 mt-4 rounded-xl">
             <div class="flex flex-1 justify-between sm:hidden">
                 {% if activity.has_prev %}
-                <a href="{{ url_for('admin.creator_dashboard', page=activity.prev_num, period=current_filters.period, asset_id=current_filters.asset_id, search=current_filters.search) }}"
+                <a href="{{ url_for('admin.creator_dashboard', page=activity.prev_num, period=current_filters.period, asset_id=current_filters.asset_id, search=current_filters.search, status=current_filters.status, start_date=request.args.get('start_date'), end_date=request.args.get('end_date')) }}"
                     class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Previous</a>
                 {% else %}
                 <span
@@ -185,7 +227,7 @@
                 {% endif %}
 
                 {% if activity.has_next %}
-                <a href="{{ url_for('admin.creator_dashboard', page=activity.next_num, period=current_filters.period, asset_id=current_filters.asset_id, search=current_filters.search) }}"
+                <a href="{{ url_for('admin.creator_dashboard', page=activity.next_num, period=current_filters.period, asset_id=current_filters.asset_id, search=current_filters.search, status=current_filters.status, start_date=request.args.get('start_date'), end_date=request.args.get('end_date')) }}"
                     class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Next</a>
                 {% else %}
                 <span
@@ -204,7 +246,7 @@
                     <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
                         <!-- Previous -->
                         {% if activity.has_prev %}
-                        <a href="{{ url_for('admin.creator_dashboard', page=activity.prev_num, period=current_filters.period, asset_id=current_filters.asset_id, search=current_filters.search) }}"
+                        <a href="{{ url_for('admin.creator_dashboard', page=activity.prev_num, period=current_filters.period, asset_id=current_filters.asset_id, search=current_filters.search, status=current_filters.status, start_date=request.args.get('start_date'), end_date=request.args.get('end_date')) }}"
                             class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
                             <span class="sr-only">Previous</span>
                             <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -224,7 +266,7 @@
                             class="relative z-10 inline-flex items-center bg-blue-600 px-4 py-2 text-sm font-semibold text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">{{
                             page_num }}</span>
                         {% else %}
-                        <a href="{{ url_for('admin.creator_dashboard', page=page_num, period=current_filters.period, asset_id=current_filters.asset_id, search=current_filters.search) }}"
+                        <a href="{{ url_for('admin.creator_dashboard', page=page_num, period=current_filters.period, asset_id=current_filters.asset_id, search=current_filters.search, status=current_filters.status, start_date=request.args.get('start_date'), end_date=request.args.get('end_date')) }}"
                             class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 dark:text-gray-300 dark:ring-gray-600 dark:hover:bg-gray-700">{{
                             page_num }}</a>
                         {% endif %}
@@ -236,7 +278,7 @@
 
                         <!-- Next -->
                         {% if activity.has_next %}
-                        <a href="{{ url_for('admin.creator_dashboard', page=activity.next_num, period=current_filters.period, asset_id=current_filters.asset_id, search=current_filters.search) }}"
+                        <a href="{{ url_for('admin.creator_dashboard', page=activity.next_num, period=current_filters.period, asset_id=current_filters.asset_id, search=current_filters.search, status=current_filters.status, start_date=request.args.get('start_date'), end_date=request.args.get('end_date')) }}"
                             class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0">
                             <span class="sr-only">Next</span>
                             <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">

@@ -13,6 +13,8 @@ import threading
 import requests
 import re
 from datetime import datetime, date, timedelta # Added timedelta
+import csv
+import io
 from functools import wraps
 from flask import (
     Blueprint, render_template, request, jsonify, redirect, 
@@ -264,6 +266,11 @@ def creator_dashboard():
         activity_query = activity_query.filter(Purchase.purchase_date >= start_date)
     if end_date and period == 'custom':
         activity_query = activity_query.filter(Purchase.purchase_date <= end_date)
+    
+    # --- STATUS FILTER ---
+    status = request.args.get('status', '').strip()
+    if status and status in [s.name for s in PurchaseStatus]:
+        activity_query = activity_query.filter(Purchase.status == PurchaseStatus[status])
 
     if search:
         activity_query = activity_query.join(Customer).filter(
@@ -288,8 +295,110 @@ def creator_dashboard():
         current_filters={
             'period': period,
             'asset_id': asset_id,
-            'search': search
+            'search': search,
+            'status': status
         }
+    )
+
+@admin_bp.route('/dashboard/export')
+@creator_login_required
+def export_dashboard_data():
+    """Exports the current dashboard view (Recent Orders) to CSV with creative stats."""
+    
+    # --- REPLICATE FILTERS ---
+    period = request.args.get('period', '30d')
+    asset_id = request.args.get('asset_id', type=int)
+    search = request.args.get('search', '').strip()
+    status = request.args.get('status', '').strip()
+    
+    start_date = None
+    end_date = datetime.utcnow()
+    
+    if period == '7d': start_date = end_date - timedelta(days=7)
+    elif period == '30d': start_date = end_date - timedelta(days=30)
+    elif period == '90d': start_date = end_date - timedelta(days=90)
+    elif period == '1y': start_date = end_date - timedelta(days=365)
+    elif period == 'custom':
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        if start_date_str:
+            try: start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+            except ValueError: pass
+        if end_date_str:
+            try: end_date = datetime.strptime(end_date_str, '%Y-%m-%d') + timedelta(days=1) - timedelta(seconds=1)
+            except ValueError: pass
+
+    # Build Query
+    query = Purchase.query.join(DigitalAsset).filter(DigitalAsset.creator_id == g.creator.id)
+    
+    if asset_id: query = query.filter(Purchase.asset_id == asset_id)
+    if start_date: query = query.filter(Purchase.purchase_date >= start_date)
+    if end_date and period == 'custom': query = query.filter(Purchase.purchase_date <= end_date)
+    
+    if search:
+        query = query.join(Customer).filter(
+            or_(
+                Customer.whatsapp_number.ilike(f"%{search}%"),
+                DigitalAsset.title.ilike(f"%{search}%")
+            )
+        )
+        
+    if status and status in [s.name for s in PurchaseStatus]:
+        query = query.filter(Purchase.status == PurchaseStatus[status])
+        
+    # Order by date desc
+    purchases = query.order_by(Purchase.purchase_date.desc()).all()
+    
+    # Generate CSV
+    si = io.StringIO()
+    cw = csv.writer(si)
+    
+    # Headers
+    headers = [
+        'Order ID', 'Date', 'Time', 'Customer Phone', 'Asset', 'Status', 'Amount', 
+        'Past Purchase 1 (Date - Asset - Amount)', 
+        'Past Purchase 2 (Date - Asset - Amount)'
+    ]
+    cw.writerow(headers)
+    
+    for p in purchases:
+        # Creative Stats: Fetch up to 2 past purchases for this customer, BEFORE this purchase
+        past_purchases = Purchase.query.filter(
+            Purchase.customer_id == p.customer_id,
+            Purchase.id < p.id, # Strictly before this purchase
+            Purchase.status == PurchaseStatus.COMPLETED # Only count completed past purchases? Or all? Usually Completed is more relevant for value.
+        ).order_by(Purchase.purchase_date.desc()).limit(2).all()
+        
+        past_1_str = "N/A"
+        if len(past_purchases) > 0:
+            pp1 = past_purchases[0]
+            asset_title = pp1.asset.title if pp1.asset else "Unknown Asset"
+            past_1_str = f"{pp1.purchase_date.strftime('%Y-%m-%d')} - {asset_title} - {pp1.amount_paid}"
+            
+        past_2_str = "N/A"
+        if len(past_purchases) > 1:
+            pp2 = past_purchases[1]
+            asset_title = pp2.asset.title if pp2.asset else "Unknown Asset"
+            past_2_str = f"{pp2.purchase_date.strftime('%Y-%m-%d')} - {asset_title} - {pp2.amount_paid}"
+            
+        cw.writerow([
+            p.id,
+            p.purchase_date.strftime('%Y-%m-%d'),
+            p.purchase_date.strftime('%H:%M:%S'),
+            p.customer.whatsapp_number,
+            p.asset.title,
+            p.status.name,
+            p.amount_paid,
+            past_1_str,
+            past_2_str
+        ])
+        
+    output = si.getvalue()
+    
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-disposition": f"attachment; filename=orders_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
     )
 
 @admin_bp.route('/assets')

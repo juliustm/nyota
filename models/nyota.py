@@ -413,7 +413,8 @@ class Purchase(db.Model):
                 "value": self.status.value
             },
             "transaction_token": self.transaction_token,
-            "payment_gateway_ref": self.payment_gateway_ref
+            "payment_gateway_ref": self.payment_gateway_ref,
+            "customer_phone": self.customer.whatsapp_number if self.customer else None
         }
 
 class Subscription(db.Model):

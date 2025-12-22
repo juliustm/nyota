@@ -1642,22 +1642,13 @@ def payment_status(purchase_id):
     
     session_phone = session.get('customer_phone')
     
-    current_app.logger.info(f"Payment Status Check - Purchase ID: {purchase_id}")
-    current_app.logger.info(f"Session Phone: {session_phone}")
-    if purchase.customer:
-        current_app.logger.info(f"Purchase Customer Phone: {purchase.customer.whatsapp_number}")
-    else:
-        current_app.logger.info("Purchase has no customer!")
-
     if not session_phone:
         # Edge case: If session is empty, but we are polling a valid purchase ID. 
         # For security, we return 403. The frontend should have the cookie.
-        current_app.logger.warning("FAILED: No session phone found.")
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
     if not purchase.customer or str(purchase.customer.whatsapp_number).strip() != str(session_phone).strip():
         # Strict check: Phone in session MUST match phone on purchase
-        current_app.logger.warning(f"FAILED: Phone mismatch. Session: {session_phone}, Purchase: {purchase.customer.whatsapp_number if purchase.customer else 'None'}")
         return jsonify({'success': False, 'message': 'Unauthorized owner'}), 403
     
     # Return the current status

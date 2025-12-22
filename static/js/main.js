@@ -24,7 +24,17 @@ document.addEventListener('alpine:init', () => {
 
     Alpine.data('assetDetail', (currencySymbol) => ({
         asset: {}, countdown: 'Loading...', currency: currencySymbol, visibleReviews: 3,
+        toast: { show: false, message: '', type: 'success' },
+
         init() { try { const dataElement = document.getElementById('asset-data'); if (dataElement) this.asset = JSON.parse(dataElement.textContent); } catch (e) { console.error('Error parsing asset detail data:', e); } if (this.asset.asset_type === 'TICKET' && this.asset.event_date) { this.countdownInterval = setInterval(() => this.updateCountdown(), 1000); this.updateCountdown(); } },
+
+        showToast(message, type = 'success') {
+            this.toast.message = message;
+            this.toast.type = type;
+            this.toast.show = true;
+            setTimeout(() => { this.toast.show = false; }, 3000);
+        },
+
         updateCountdown() { const eventDate = new Date(this.asset.event_date).getTime(); const now = new Date().getTime(); const distance = eventDate - now; if (distance < 0) { this.countdown = "EVENT HAS PASSED"; if (this.countdownInterval) clearInterval(this.countdownInterval); return; } const d = Math.floor(distance / (1000 * 60 * 60 * 24)); const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)); const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)); const s = Math.floor((distance % (1000 * 60)) / 1000); this.countdown = `${d}d ${h}h ${m}m ${s}s`; },
         get averageRating() { if (!this.asset.reviews || this.asset.reviews.length === 0) return 'N/A'; const total = this.asset.reviews.reduce((sum, review) => sum + review.rating, 0); return (total / this.asset.reviews.length).toFixed(1); },
         showMoreReviews() { this.visibleReviews += 5; },
@@ -621,13 +631,17 @@ document.addEventListener('alpine:init', () => {
         tiers: [],
         purchaseId: null,
         dealId: null,
-        purchaseId: null,
-        dealId: null,
         pollingInterval: null,
         pollCount: 0,
         maxPolls: 120, // 10 minutes at 5s interval
+        modalTimeout: null, // Timeout for modal auto-refresh
 
         init() {
+            this.$watch('isOpen', value => {
+                if (!value) {
+                    this.clearModalTimeout();
+                }
+            });
             window.addEventListener('open-checkout-modal', (event) => {
                 const prefillNumber = event.detail ? event.detail.phoneNumber : localStorage.getItem('nyota_phone');
                 this.openModal(prefillNumber);
@@ -681,6 +695,23 @@ document.addEventListener('alpine:init', () => {
             if (autoRetry) {
                 // If retrying, specific logic to avoid double-initiation or just immediate start
                 this.retryPayment();
+            }
+        },
+
+        startTimeoutTimer() {
+            this.clearModalTimeout();
+            this.modalTimeout = setTimeout(() => {
+                if (this.isOpen && this.status === 'waiting') {
+                    // Reload the page to show the "Still Waiting" / "Retry" state (yellow card)
+                    window.location.reload();
+                }
+            }, 15000); // 15 seconds
+        },
+
+        clearModalTimeout() {
+            if (this.modalTimeout) {
+                clearTimeout(this.modalTimeout);
+                this.modalTimeout = null;
             }
         },
 
@@ -748,6 +779,7 @@ document.addEventListener('alpine:init', () => {
 
                     this.dispatchStatus('PENDING', { phoneNumber: this.phoneNumber });
                     this.listenForPaymentResult();
+                    this.startTimeoutTimer();
                 } else {
                     this.status = 'failed';
                     this.errorMessage = result.message || 'Could not start payment.';
@@ -786,6 +818,7 @@ document.addEventListener('alpine:init', () => {
                     this.status = 'waiting';
                     this.statusMessage = result.message || 'New request sent. Check your phone.';
                     this.dispatchStatus('PENDING', { phoneNumber: this.phoneNumber });
+                    this.startTimeoutTimer();
                     // Ensure listener is active (it might have been closed if we navigated away, though we kept it open on timeout)
                     if (!this.eventSource || this.eventSource.readyState === EventSource.CLOSED) {
                         this.listenForPaymentResult();
@@ -829,6 +862,7 @@ document.addEventListener('alpine:init', () => {
                         console.log('[POLLING] ✅ PAYMENT CONFIRMED! Redirecting...');
                         this.status = 'success';
                         this.statusMessage = 'Payment confirmed!';
+                        this.clearModalTimeout(); // Clear timeout on success
                         this.stopPolling();
                         if (this.eventSource) this.eventSource.close();
 

@@ -1,9 +1,8 @@
 # Shipfile
-packages: build-essential python3-dev python3-cffi libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-xlib-2.0-0 libffi-dev shared-mime-info 
 script: |
   pip install -r requirements.txt
   export FLASK_APP=main.py
   export PYTHONPATH=/app
-  python deploy.py
+  flask db upgrade
 
 run: gunicorn wsgi:app -b 0.0.0.0:80 --reload --worker-class gthread --workers 2 --threads 4 --timeout 120

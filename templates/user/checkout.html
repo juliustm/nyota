@@ -6,9 +6,7 @@
 <script type="application/json" id="checkout-data">{{ asset|tojson|safe }}</script>
 
 <div x-data="checkoutForm(JSON.parse(document.getElementById('checkout-data').textContent), '{{ channel_id }}')"
-    data-payment-url="{{ url_for('main.initiate_payment') }}"
-    data-session-url="{{ url_for('main.set_payment_success_session') }}"
-    class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
+    data-payment-url="{{ url_for('main.initiate_payment') }}" class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-24">
 
     <!-- Header -->
     <div class="text-center py-8 md:py-12 fade-in">

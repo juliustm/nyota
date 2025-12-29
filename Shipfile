@@ -2,6 +2,7 @@
 script: |
   pip install -r requirements.txt
   export FLASK_APP=main.py
+  export PYTHONPATH=/app
   flask db upgrade
 
 run: gunicorn wsgi:app -b 0.0.0.0:80 --reload --worker-class gthread --workers 2 --threads 4 --timeout 120

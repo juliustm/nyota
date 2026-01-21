@@ -2,17 +2,19 @@ services:
   app:
     build: .
     container_name: nyota_app
+    user: root
     ports:
       - "80:80"
     volumes:
       - .:/app
-      - db_data:/app/data
+      - nyota_persistence:/nyota
     environment:
       - FLASK_APP=main.py
       - PYTHONPATH=/app
+      - PERSISTENCE_DIR=/nyota
       - FLASK_DEBUG=1
     # Override the default command for development with hot-reloading
     command: gunicorn --bind 0.0.0.0:80 --workers 1 --threads 8 --reload "wsgi:app"
 
 volumes:
-  db_data:
+  nyota_persistence:

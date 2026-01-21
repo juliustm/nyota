@@ -615,11 +615,23 @@ def serve_content(file_id):
     # storage_path is stored as "secure_uploads/filename"
     if asset_file.storage_path.startswith('secure_uploads/'):
         filename = asset_file.storage_path.replace('secure_uploads/', '')
-        directory = os.path.join(current_app.instance_path, 'secure_uploads')
+        directory = current_app.config['SECURE_UPLOADS_DIR']
         return send_from_directory(directory, filename)
     else:
         # It's an external link, redirect to it
         return redirect(asset_file.storage_path)
+
+@main_bp.route('/media/covers/<path:filename>')
+def serve_cover_image(filename):
+    """Serve cover images from the persistent user data directory."""
+    return send_from_directory(current_app.config['COVERS_DIR'], filename)
+
+@main_bp.route('/media/logos/<path:filename>')
+def serve_logo_image(filename):
+    """Serve logo images from the persistent user data directory."""
+    return send_from_directory(current_app.config['LOGOS_DIR'], filename)
+
+
 
 
 
@@ -667,10 +679,10 @@ def save_asset_from_form(asset, req):
         file = req.files['cover_image']
         if file and file.filename:
             filename = f"{asset.id or 'new'}_{int(datetime.now().timestamp())}_{secure_filename(file.filename)}"
-            upload_path = os.path.join(current_app.root_path, 'static/uploads/covers')
-            os.makedirs(upload_path, exist_ok=True)
+            upload_path = current_app.config['COVERS_DIR']
+            # os.makedirs(upload_path, exist_ok=True) # Already handled in config
             file.save(os.path.join(upload_path, filename))
-            asset.cover_image_url = f'/static/uploads/covers/{filename}'
+            asset.cover_image_url = f'/media/covers/{filename}'
 
     pricing_data = form_data.get('pricing', {})
     asset.price = decimal.Decimal(pricing_data.get('amount') or 0.0)
@@ -717,10 +729,11 @@ def save_asset_from_form(asset, req):
         for f in existing_files:
             existing_files_map[f.id] = {'path': f.storage_path, 'type': f.file_type}
             
+    
     AssetFile.query.filter_by(asset_id=asset.id).delete()
     
-    secure_upload_dir = os.path.join(current_app.instance_path, 'secure_uploads')
-    os.makedirs(secure_upload_dir, exist_ok=True)
+    secure_upload_dir = current_app.config['SECURE_UPLOADS_DIR']
+    # os.makedirs(secure_upload_dir, exist_ok=True) # Already handled in config
     
     for i, item in enumerate(form_data.get('contentItems', [])):
         # Check for uploaded file
@@ -1113,10 +1126,10 @@ def manage_settings():
             file = request.files['store_logo']
             if file and file.filename:
                 filename = f"logo_{g.creator.id}_{int(time.time())}_{secure_filename(file.filename)}"
-                upload_path = os.path.join(current_app.root_path, 'static/uploads/logos')
-                os.makedirs(upload_path, exist_ok=True)
+                upload_path = current_app.config['LOGOS_DIR']
+                # os.makedirs(upload_path, exist_ok=True)
                 file.save(os.path.join(upload_path, filename))
-                g.creator.set_setting('store_logo_url', f'/static/uploads/logos/{filename}')
+                g.creator.set_setting('store_logo_url', f'/media/logos/{filename}')
 
         db.session.commit()
         flash("Settings saved successfully!", "success")

@@ -19,7 +19,7 @@ class Config:
     # We use '/nyota' as the immutable persistence volume.
     # In production/docker, this should be a volume mount.
     # For local dev without docker, we can fallback to a local folder or just use absolute path if writable.
-    PERSISTENCE_DIR = os.environ.get('PERSISTENCE_DIR', '/nyota')
+    PERSISTENCE_DIR = os.environ.get('PERSISTENCE_DIR', './nyota')
 
     # 1. Database Directory
     DB_DIR = os.path.join(PERSISTENCE_DIR, 'db')

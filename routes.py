@@ -69,6 +69,14 @@ def before_admin_request():
             session.clear()
             return redirect(url_for('admin.creator_login'))
 
+@admin_bp.context_processor
+def utility_processor():
+    def resolve_avatar(supporter):
+        from utils.avatar_helper import get_avatar_data
+        return get_avatar_data(supporter)
+    return dict(resolve_avatar=resolve_avatar)
+
+
 # --- AUTH & SETUP ROUTES ---
 
 @admin_bp.route('/')

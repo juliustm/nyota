@@ -8,7 +8,7 @@ class Config:
 
     # Session timeout configuration (90 days for buyer convenience)
     PERMANENT_SESSION_LIFETIME = timedelta(days=90)
-    
+
     # Security flags for session cookies
     SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False') == 'True'  # True in production (HTTPS)
     SESSION_COOKIE_HTTPONLY = True  # Prevent XSS attacks
@@ -19,7 +19,11 @@ class Config:
     # We use '/nyota' as the immutable persistence volume.
     # In production/docker, this should be a volume mount.
     # For local dev without docker, we can fallback to a local folder or just use absolute path if writable.
-    PERSISTENCE_DIR = os.environ.get('PERSISTENCE_DIR', './nyota')
+    PERSISTENCE_DIR = os.environ.get('PERSISTENCE_DIR', 'nyota')
+
+    # Convert to absolute path if it's relative
+    if not os.path.isabs(PERSISTENCE_DIR):
+        PERSISTENCE_DIR = os.path.abspath(PERSISTENCE_DIR)
 
     # 1. Database Directory
     DB_DIR = os.path.join(PERSISTENCE_DIR, 'db')
@@ -38,7 +42,7 @@ class Config:
     COVERS_DIR = os.path.join(USER_DATA_DIR, 'covers')
     LOGOS_DIR = os.path.join(USER_DATA_DIR, 'logos')
     SECURE_UPLOADS_DIR = os.path.join(USER_DATA_DIR, 'secure_uploads')
-    
+
     os.makedirs(COVERS_DIR, exist_ok=True)
     os.makedirs(LOGOS_DIR, exist_ok=True)
     os.makedirs(SECURE_UPLOADS_DIR, exist_ok=True)

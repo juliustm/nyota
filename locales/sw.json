@@ -122,5 +122,12 @@
     "check_status_now": "Angalia Hali Sasa",
     "refresh_page": "Pakia Upya Ukurasa",
     "already_paid_question": "Umeshalipa kwenye simu?",
-    "click_check_status_or_refresh": "Bofya 'Angalia Hali' hapa chini au pakia upya ukurasa ili kufikia maudhui."
+    "click_check_status_or_refresh": "Bofya 'Angalia Hali' hapa chini au pakia upya ukurasa ili kufikia maudhui.",
+    "label_files": "Mafaili",
+    "label_file": "Faili",
+    "label_links": "Viungo",
+    "label_link": "Kiungo",
+    "type_course": "KOZI",
+    "type_ticket": "TIKETI",
+    "type_newsletter": "JARIDA"
 }

@@ -22,7 +22,7 @@ from flask import (
     Response
 )
 from werkzeug.utils import secure_filename
-from sqlalchemy import or_, func, distinct
+from sqlalchemy import or_, func, distinct, case
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
@@ -1336,6 +1336,56 @@ def landing_page():
 
     sorted_assets = sorted(all_assets, key=sort_key, reverse=True)
 
+    # --- Pre-fetch Asset File Metadata (Count & Types) ---
+    # Avoid N+1 queries by fetching all file info for these assets in one go
+    asset_meta = {}
+    if sorted_assets:
+        asset_ids = [a.id for a in sorted_assets]
+        
+        # Query to get file counts and types per asset
+        # We detect links: if storage_path starts with http/https, it's a link
+        
+        # Define a case statement for the effective type
+        # Check for 'link' based on storage_path URL pattern
+        type_column = case(
+            (or_(AssetFile.storage_path.like('http%'), AssetFile.storage_path.like('https%')), 'link'),
+            else_=AssetFile.file_type
+        ).label('effective_type')
+
+        file_stats = db.session.query(
+            AssetFile.asset_id,
+            type_column,
+            db.func.count(AssetFile.id)
+        ).filter(
+            AssetFile.asset_id.in_(asset_ids)
+        ).group_by(
+            AssetFile.asset_id,
+            type_column
+        ).all()
+
+        # Process results into a usable dictionary
+        # Structure: { asset_id: { 'total_files': 5, 'types': ['pdf', 'video', 'link'] } }
+        for asset_id in asset_ids:
+             asset_meta[asset_id] = {'total_files': 0, 'types': set()}
+
+        for aid, ftype, count in file_stats:
+            if aid in asset_meta:
+                asset_meta[aid]['total_files'] += count
+                # Clean up file type strings
+                if ftype:
+                    clean_type = ftype.lower()
+                    if clean_type == 'link':
+                        asset_meta[aid]['types'].add('link')
+                    # Clean type if it's like 'application/pdf' -> 'pdf'
+                    elif '/' in clean_type:
+                        clean_type = clean_type.split('/')[-1]
+                    
+                    if clean_type in ['pdf', 'mp4', 'mp3', 'zip', 'doc', 'docx', 'mov', 'wav']:
+                        asset_meta[aid]['types'].add(clean_type)
+                    # Simple fallback logic for common extensions if not full mime
+                    elif clean_type in ['pdf', 'video', 'audio', 'image']:
+                         asset_meta[aid]['types'].add(clean_type)
+
     # Check for "New" items (e.g., created in the last 7 days)
     # For now, we'll just mark the top 3 newest unpurchased items as "New" if we don't have created_at
     # If you have created_at, use: asset.created_at > datetime.now() - timedelta(days=7)
@@ -1380,6 +1430,7 @@ def landing_page():
         store_name=creator.store_name,
         assets=sorted_assets,
         user_purchases=user_purchases,
+        asset_meta=asset_meta, # Pass the metadata to template
         new_asset_ids=new_asset_ids,
         search_query=search_query,
         filter_type=filter_type,

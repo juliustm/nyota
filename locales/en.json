@@ -119,5 +119,12 @@
     "check_status_now": "Check Status Now",
     "refresh_page": "Refresh Page",
     "already_paid_question": "Already paid on your phone?",
-    "click_check_status_or_refresh": "Click 'Check Status' below or refresh this page to access your content."
+    "click_check_status_or_refresh": "Click 'Check Status' below or refresh this page to access your content.",
+    "label_files": "Files",
+    "label_file": "File",
+    "label_links": "Links",
+    "label_link": "Link",
+    "type_course": "COURSE",
+    "type_ticket": "TICKET",
+    "type_newsletter": "NEWSLETTER"
 }

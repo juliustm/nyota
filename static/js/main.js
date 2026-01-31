@@ -38,7 +38,12 @@ document.addEventListener('alpine:init', () => {
         updateCountdown() { const eventDate = new Date(this.asset.event_date).getTime(); const now = new Date().getTime(); const distance = eventDate - now; if (distance < 0) { this.countdown = "EVENT HAS PASSED"; if (this.countdownInterval) clearInterval(this.countdownInterval); return; } const d = Math.floor(distance / (1000 * 60 * 60 * 24)); const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)); const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)); const s = Math.floor((distance % (1000 * 60)) / 1000); this.countdown = `${d}d ${h}h ${m}m ${s}s`; },
         get averageRating() { if (!this.asset.reviews || this.asset.reviews.length === 0) return 'N/A'; const total = this.asset.reviews.reduce((sum, review) => sum + review.rating, 0); return (total / this.asset.reviews.length).toFixed(1); },
         showMoreReviews() { this.visibleReviews += 5; },
-        renderMarkdown(text) { if (window.marked) return window.marked.parse(text || ''); return text || ''; },
+        renderMarkdown(text) {
+            if (!text) return '';
+            if (window.marked) return window.marked.parse(text);
+            // Fallback: simple newline to break conversion
+            return text.replace(/\n/g, '<br>');
+        },
         formatCurrency(amount) { return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0); }
     }));
 

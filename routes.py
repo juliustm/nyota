@@ -1545,6 +1545,37 @@ def asset_detail(slug):
                 asset_id=asset_obj.id
             ).order_by(Purchase.purchase_date.desc()).first()
 
+    # --- Construct Asset Metadata (Files & Types) ---
+    asset_meta = {'total_files': 0, 'types': set()}
+    
+    # Query files to determine types and count
+    # Re-use logical from landing_page but for single asset
+    type_column = case(
+        (or_(AssetFile.storage_path.like('http%'), AssetFile.storage_path.like('https%')), 'link'),
+        else_=AssetFile.file_type
+    ).label('effective_type')
+
+    files_info = db.session.query(
+        type_column
+    ).filter(
+        AssetFile.asset_id == asset_obj.id
+    ).all()
+    
+    asset_meta['total_files'] = len(files_info)
+    for row in files_info:
+        ftype = row.effective_type
+        if ftype:
+            clean_type = ftype.lower()
+            if clean_type == 'link':
+                asset_meta['types'].add('link')
+            elif '/' in clean_type:
+                clean_type = clean_type.split('/')[-1]
+            
+            if clean_type in ['pdf', 'mp4', 'mp3', 'zip', 'doc', 'docx', 'mov', 'wav']:
+                asset_meta['types'].add(clean_type)
+            elif clean_type in ['pdf', 'video', 'audio', 'image']:
+                asset_meta['types'].add(clean_type)
+
     # Metadata Generation
     store_name = creator.store_name if creator else "Creator Store"
     meta_title = f"{asset_obj.title} | {store_name}"
@@ -1582,6 +1613,7 @@ def asset_detail(slug):
         'user/asset_detail.html',
         asset=asset_obj,
         asset_obj=asset_obj,
+        asset_meta=asset_meta, # Pass metadata
         asset_json=asset_json,
         latest_purchase=latest_purchase, 
         store_name=store_name,

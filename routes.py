@@ -697,6 +697,11 @@ def save_asset_from_form(asset, req):
     asset.is_subscription = pricing_data.get('type') == 'recurring'
     asset.subscription_interval = SubscriptionInterval[pricing_data.get('billingCycle', 'monthly').upper()] if asset.is_subscription else None
     
+    # Handle allow_download setting (default to True if not explicitly set)
+    allow_download = form_data.get('allow_download')
+    if allow_download is not None:
+        asset.allow_download = bool(allow_download)
+    
     # Ensure details is a dictionary and create a copy to modify
     asset.details = dict(asset.details or {})
     

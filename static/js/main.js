@@ -434,7 +434,7 @@ document.addEventListener('alpine:init', () => {
             }
 
             if (!this.editableAsset.details) {
-                this.editableAsset.details = { welcomeContent: '', benefits: '' };
+                this.editableAsset.details = { welcomeContent: '', benefits: '', subscription_tiers: [] };
             }
 
             // Initialize UZA Product ID
@@ -444,7 +444,25 @@ document.addEventListener('alpine:init', () => {
 
             // Initialize pricing tiers
             if (!this.editableAsset.details.subscription_tiers) {
-                this.editableAsset.details.subscription_tiers = [];
+                this.editableAsset.details.subscription_tiers = this.asset.details?.subscription_tiers || [];
+            }
+
+            // Initialize subscription content fields
+            if (!this.editableAsset.details.welcomeContent) {
+                this.editableAsset.details.welcomeContent = this.asset.details?.welcomeContent || '';
+            }
+            if (!this.editableAsset.details.benefits) {
+                this.editableAsset.details.benefits = this.asset.details?.benefits || '';
+            }
+
+            // Initialize allow_download (default to true if not set)
+            if (this.editableAsset.allow_download === undefined || this.editableAsset.allow_download === null) {
+                this.editableAsset.allow_download = this.asset.allow_download !== false;
+            }
+
+            // Initialize custom fields for tickets
+            if (!this.editableAsset.customFields) {
+                this.editableAsset.customFields = this.asset.custom_fields || [];
             }
 
             // Initialize content items date from description
@@ -465,6 +483,7 @@ document.addEventListener('alpine:init', () => {
 
             this.applyUtilityClasses();
         },
+
 
         handleCoverSelect(event) {
             const file = event.target.files[0];
@@ -538,6 +557,15 @@ document.addEventListener('alpine:init', () => {
             this.editableAsset.details.subscription_tiers.splice(index, 1);
         },
 
+        addCustomField() {
+            if (!this.editableAsset.customFields) this.editableAsset.customFields = [];
+            this.editableAsset.customFields.push({ type: 'text', question: '', required: false });
+        },
+
+        removeCustomField(index) {
+            this.editableAsset.customFields.splice(index, 1);
+        },
+
         handleFileSelect(event, index) {
             const file = event.target.files[0];
             if (file) {
@@ -582,12 +610,20 @@ document.addEventListener('alpine:init', () => {
                     story_snippet: this.editableAsset.story,
                     uza_product_id: this.editableAsset.uza_product_id || ''
                 },
+                allow_download: this.editableAsset.allow_download,
                 assetTypeEnum: this.asset.asset_type,
                 contentItems: contentItems,
                 customFields: this.editableAsset.customFields || [],
                 eventDetails: this.editableAsset.eventDetails || {},
-                subscriptionDetails: this.editableAsset.details || {},
-                newsletterDetails: this.editableAsset.details || {},
+                subscriptionDetails: {
+                    welcomeContent: this.editableAsset.details?.welcomeContent || '',
+                    benefits: this.editableAsset.details?.benefits || '',
+                    subscription_tiers: this.editableAsset.details?.subscription_tiers || []
+                },
+                newsletterDetails: {
+                    welcomeContent: this.editableAsset.details?.welcomeContent || '',
+                    benefits: this.editableAsset.details?.benefits || ''
+                },
                 pricing: {
                     amount: this.editableAsset.price,
                     type: this.editableAsset.is_subscription ? 'recurring' : 'one-time',
@@ -595,6 +631,7 @@ document.addEventListener('alpine:init', () => {
                     tiers: this.editableAsset.details?.subscription_tiers || []
                 }
             };
+
 
             formData.append('asset_data', JSON.stringify(assetData));
 

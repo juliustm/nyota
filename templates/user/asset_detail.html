@@ -47,8 +47,9 @@
         if (!url) return 'other';
         const ext = url.split('.').pop().toLowerCase().split('?')[0];
         if (['pdf'].includes(ext)) return 'pdf';
-        if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) return 'audio';
-        if (['mp4', 'webm', 'mov'].includes(ext)) return 'video';
+        if (['mp3', 'wav', 'ogg', 'm4a', 'aac'].includes(ext)) return 'audio';
+        if (['mp4', 'webm', 'mov', 'avi'].includes(ext)) return 'video';
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
         return 'other';
     }
 </script>
@@ -249,7 +250,7 @@
                             <div class="divide-y divide-gray-200 dark:divide-gray-700">
                                 <template x-for="(file, index) in asset.files" :key="file.id">
                                     <div class="py-6 sm:p-8"
-                                        x-data="{ type: file.file_type || getFileType(file.link) }">
+                                        x-data="{ type: file.file_type || getFileType(file.storage_path || file.link) }">
 
                                         <div class="mb-4 px-4 sm:px-0">
                                             <h3 class="text-lg font-bold text-gray-900 dark:text-white"
@@ -340,7 +341,7 @@
 
                                         <!-- VIDEO VIEWER -->
                                         <template x-if="type === 'video'">
-                                            <div x-data="mediaPlayer(file.link, 'video')"
+                                            <div x-data="mediaPlayer(file.link, 'video')" x-ref="videoContainer"
                                                 class="mx-4 sm:mx-0 relative bg-black rounded-xl overflow-hidden shadow-lg group select-none"
                                                 @contextmenu.prevent @mouseleave="showControls = false"
                                                 @mouseenter="showControls = true">
@@ -390,6 +391,53 @@
                                                                     d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                                                             </svg></button>
                                                     </div>
+                                                </div>
+                                            </div>
+                                        </template>
+
+                                        <!-- IMAGE VIEWER -->
+                                        <template x-if="type === 'image'">
+                                            <div x-data="{ lightboxOpen: false }" class="px-4 sm:px-0">
+                                                <!-- Image Thumbnail -->
+                                                <div @click="lightboxOpen = true"
+                                                    class="relative rounded-xl overflow-hidden shadow-lg cursor-pointer group">
+                                                    <img :src="file.link" :alt="file.title || 'Image'"
+                                                        class="w-full max-h-[500px] object-contain bg-gray-100 dark:bg-gray-900"
+                                                        loading="lazy">
+                                                    <div
+                                                        class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                        <div
+                                                            class="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <svg class="w-6 h-6 text-white" fill="none"
+                                                                viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                                    stroke-width="2"
+                                                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                                                            </svg>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Lightbox Modal -->
+                                                <div x-show="lightboxOpen" x-cloak
+                                                    x-transition:enter="transition ease-out duration-300"
+                                                    x-transition:enter-start="opacity-0"
+                                                    x-transition:enter-end="opacity-100"
+                                                    x-transition:leave="transition ease-in duration-200"
+                                                    x-transition:leave-start="opacity-100"
+                                                    x-transition:leave-end="opacity-0" @click="lightboxOpen = false"
+                                                    @keydown.escape.window="lightboxOpen = false"
+                                                    class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+                                                    <button @click.stop="lightboxOpen = false"
+                                                        class="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors">
+                                                        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24"
+                                                            stroke="currentColor">
+                                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                                stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                        </svg>
+                                                    </button>
+                                                    <img @click.stop :src="file.link" :alt="file.title || 'Image'"
+                                                        class="max-w-full max-h-full object-contain rounded-lg shadow-2xl">
                                                 </div>
                                             </div>
                                         </template>
@@ -1420,7 +1468,7 @@
             updateProgress() { const el = this.$refs.media; this.currentTime = el.currentTime; },
             seek(e) { const el = this.$refs.media; const rect = e.currentTarget.getBoundingClientRect(); const pos = (e.clientX - rect.left) / rect.width; el.currentTime = pos * el.duration; },
             toggleMute() { const el = this.$refs.media; el.muted = !el.muted; this.muted = el.muted; },
-            toggleFullscreen() { const el = this.$el; if (!document.fullscreenElement) { el.requestFullscreen().catch(err => console.log(err)); } else { document.exitFullscreen(); } },
+            toggleFullscreen() { const el = this.$refs.videoContainer || this.$el; if (!document.fullscreenElement) { el.requestFullscreen().catch(err => console.log(err)); } else { document.exitFullscreen(); } },
             formatTime(seconds) { if (!seconds || isNaN(seconds)) return '0:00'; const m = Math.floor(seconds / 60); const s = Math.floor(seconds % 60); return `${m}:${s < 10 ? '0' : ''}${s}`; }
         }));
 

@@ -101,8 +101,8 @@ The core philosophy of Nyota is to eliminate friction for both the creator and t
     ```
 
 5.  **Access the Application**
-    *   **Storefront:** [http://localhost:5000](http://localhost:5000)
-    *   **Creator Hub:** [http://localhost:5000/admin](http://localhost:5000/admin)
+    *   **Storefront:** [http://localhost](http://localhost)
+    *   **Creator Hub:** [http://localhost/admin](http://localhost/admin)
 
 ### Common Commands
 

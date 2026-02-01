@@ -379,13 +379,33 @@ class AssetFile(db.Model):
         link = self.storage_path
         if link and link.startswith('secure_uploads/'):
             link = f"/content/{self.id}"
+        
+        # Compute file_type if not set (for legacy files)
+        file_type = self.file_type
+        if not file_type and self.storage_path:
+            # Extract extension from storage_path
+            ext = self.storage_path.split('.')[-1].lower().split('?')[0] if '.' in self.storage_path else ''
+            if ext in ['pdf']:
+                file_type = 'pdf'
+            elif ext in ['mp3', 'wav', 'ogg', 'm4a', 'aac']:
+                file_type = 'audio'
+            elif ext in ['mp4', 'webm', 'mov', 'avi']:
+                file_type = 'video'
+            elif ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']:
+                file_type = 'image'
+            else:
+                file_type = 'other'
+        
+        # DEBUG: Print what we're returning
+        # print(f"[DEBUG] AssetFile {self.id}: storage_path={self.storage_path}, db_file_type={self.file_type}, computed_file_type={file_type}")
             
         return { 
             'id': self.id, 
             'title': self.title, 
             'description': self.description, 
             'link': link,
-            'file_type': self.file_type
+            'file_type': file_type or 'other',
+            'storage_path': self.storage_path
         }
 
 class Purchase(db.Model):

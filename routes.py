@@ -796,7 +796,7 @@ def save_asset_from_form(asset, req):
             description=item.get('description'), 
             storage_path=storage_path,
             file_type=file_type,
-            order_index=i
+            position=i
         ))
 
     asset.status = AssetStatus.DRAFT if form_data.get('action') == 'draft' else AssetStatus.PUBLISHED
@@ -855,7 +855,7 @@ def duplicate_asset(asset_id):
                 description=file.description,
                 storage_path=file.storage_path,
                 file_type=file.file_type,
-                order_index=file.order_index
+                position=file.position
             ))
             
         db.session.commit()

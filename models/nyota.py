@@ -373,7 +373,7 @@ class AssetFile(db.Model):
     description = db.Column(db.Text, nullable=True)
     storage_path = db.Column(db.String(1024), nullable=False)
     file_type = db.Column(db.String(50), nullable=True)
-    order_index = db.Column(db.Integer, default=0)
+    position = db.Column(db.Integer, default=0)
     asset = db.relationship('DigitalAsset', back_populates='files')
     def to_dict(self):
         link = self.storage_path

@@ -14,6 +14,26 @@
                         d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
             </a>
+
+            <!-- Dynamic Avatar -->
+            {% set avatar = resolve_avatar(supporter) %}
+            <div class="relative">
+                {% if avatar.type == 'image' %}
+                <img src="{{ avatar.content }}" alt="{{ supporter.whatsapp_number }}"
+                    class="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-700 object-cover shadow-sm">
+                {% elif avatar.type == 'flag' %}
+                <div
+                    class="w-16 h-16 rounded-full {{ avatar.color }} flex items-center justify-center text-4xl bg-gray-50 border border-gray-100 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                    {{ avatar.content }}
+                </div>
+                {% else %}
+                <div
+                    class="w-16 h-16 rounded-full {{ avatar.color }} flex items-center justify-center text-2xl font-bold shadow-sm">
+                    {{ avatar.content }}
+                </div>
+                {% endif %}
+            </div>
+
             <div>
                 <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ supporter.whatsapp_number }}</h1>
                 <p class="text-sm text-gray-500 dark:text-gray-400">Customer since {{ supporter.created_at.strftime('%B

@@ -22,7 +22,7 @@ from flask import (
     Response
 )
 from werkzeug.utils import secure_filename
-from sqlalchemy import or_, func, distinct
+from sqlalchemy import or_, func, distinct, case
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
@@ -68,6 +68,14 @@ def before_admin_request():
         if not g.creator:
             session.clear()
             return redirect(url_for('admin.creator_login'))
+
+@admin_bp.context_processor
+def utility_processor():
+    def resolve_avatar(supporter):
+        from utils.avatar_helper import get_avatar_data
+        return get_avatar_data(supporter)
+    return dict(resolve_avatar=resolve_avatar)
+
 
 # --- AUTH & SETUP ROUTES ---
 
@@ -689,6 +697,11 @@ def save_asset_from_form(asset, req):
     asset.is_subscription = pricing_data.get('type') == 'recurring'
     asset.subscription_interval = SubscriptionInterval[pricing_data.get('billingCycle', 'monthly').upper()] if asset.is_subscription else None
     
+    # Handle allow_download setting (default to True if not explicitly set)
+    allow_download = form_data.get('allow_download')
+    if allow_download is not None:
+        asset.allow_download = bool(allow_download)
+    
     # Ensure details is a dictionary and create a copy to modify
     asset.details = dict(asset.details or {})
     
@@ -788,7 +801,7 @@ def save_asset_from_form(asset, req):
             description=item.get('description'), 
             storage_path=storage_path,
             file_type=file_type,
-            order_index=i
+            position=i
         ))
 
     asset.status = AssetStatus.DRAFT if form_data.get('action') == 'draft' else AssetStatus.PUBLISHED
@@ -847,7 +860,7 @@ def duplicate_asset(asset_id):
                 description=file.description,
                 storage_path=file.storage_path,
                 file_type=file.file_type,
-                order_index=file.order_index
+                position=file.position
             ))
             
         db.session.commit()
@@ -1328,6 +1341,56 @@ def landing_page():
 
     sorted_assets = sorted(all_assets, key=sort_key, reverse=True)
 
+    # --- Pre-fetch Asset File Metadata (Count & Types) ---
+    # Avoid N+1 queries by fetching all file info for these assets in one go
+    asset_meta = {}
+    if sorted_assets:
+        asset_ids = [a.id for a in sorted_assets]
+        
+        # Query to get file counts and types per asset
+        # We detect links: if storage_path starts with http/https, it's a link
+        
+        # Define a case statement for the effective type
+        # Check for 'link' based on storage_path URL pattern
+        type_column = case(
+            (or_(AssetFile.storage_path.like('http%'), AssetFile.storage_path.like('https%')), 'link'),
+            else_=AssetFile.file_type
+        ).label('effective_type')
+
+        file_stats = db.session.query(
+            AssetFile.asset_id,
+            type_column,
+            db.func.count(AssetFile.id)
+        ).filter(
+            AssetFile.asset_id.in_(asset_ids)
+        ).group_by(
+            AssetFile.asset_id,
+            type_column
+        ).all()
+
+        # Process results into a usable dictionary
+        # Structure: { asset_id: { 'total_files': 5, 'types': ['pdf', 'video', 'link'] } }
+        for asset_id in asset_ids:
+             asset_meta[asset_id] = {'total_files': 0, 'types': set()}
+
+        for aid, ftype, count in file_stats:
+            if aid in asset_meta:
+                asset_meta[aid]['total_files'] += count
+                # Clean up file type strings
+                if ftype:
+                    clean_type = ftype.lower()
+                    if clean_type == 'link':
+                        asset_meta[aid]['types'].add('link')
+                    # Clean type if it's like 'application/pdf' -> 'pdf'
+                    elif '/' in clean_type:
+                        clean_type = clean_type.split('/')[-1]
+                    
+                    if clean_type in ['pdf', 'mp4', 'mp3', 'zip', 'doc', 'docx', 'mov', 'wav']:
+                        asset_meta[aid]['types'].add(clean_type)
+                    # Simple fallback logic for common extensions if not full mime
+                    elif clean_type in ['pdf', 'video', 'audio', 'image']:
+                         asset_meta[aid]['types'].add(clean_type)
+
     # Check for "New" items (e.g., created in the last 7 days)
     # For now, we'll just mark the top 3 newest unpurchased items as "New" if we don't have created_at
     # If you have created_at, use: asset.created_at > datetime.now() - timedelta(days=7)
@@ -1372,6 +1435,7 @@ def landing_page():
         store_name=creator.store_name,
         assets=sorted_assets,
         user_purchases=user_purchases,
+        asset_meta=asset_meta, # Pass the metadata to template
         new_asset_ids=new_asset_ids,
         search_query=search_query,
         filter_type=filter_type,
@@ -1486,6 +1550,37 @@ def asset_detail(slug):
                 asset_id=asset_obj.id
             ).order_by(Purchase.purchase_date.desc()).first()
 
+    # --- Construct Asset Metadata (Files & Types) ---
+    asset_meta = {'total_files': 0, 'types': set()}
+    
+    # Query files to determine types and count
+    # Re-use logical from landing_page but for single asset
+    type_column = case(
+        (or_(AssetFile.storage_path.like('http%'), AssetFile.storage_path.like('https%')), 'link'),
+        else_=AssetFile.file_type
+    ).label('effective_type')
+
+    files_info = db.session.query(
+        type_column
+    ).filter(
+        AssetFile.asset_id == asset_obj.id
+    ).all()
+    
+    asset_meta['total_files'] = len(files_info)
+    for row in files_info:
+        ftype = row.effective_type
+        if ftype:
+            clean_type = ftype.lower()
+            if clean_type == 'link':
+                asset_meta['types'].add('link')
+            elif '/' in clean_type:
+                clean_type = clean_type.split('/')[-1]
+            
+            if clean_type in ['pdf', 'mp4', 'mp3', 'zip', 'doc', 'docx', 'mov', 'wav']:
+                asset_meta['types'].add(clean_type)
+            elif clean_type in ['pdf', 'video', 'audio', 'image']:
+                asset_meta['types'].add(clean_type)
+
     # Metadata Generation
     store_name = creator.store_name if creator else "Creator Store"
     meta_title = f"{asset_obj.title} | {store_name}"
@@ -1523,6 +1618,7 @@ def asset_detail(slug):
         'user/asset_detail.html',
         asset=asset_obj,
         asset_obj=asset_obj,
+        asset_meta=asset_meta, # Pass metadata
         asset_json=asset_json,
         latest_purchase=latest_purchase, 
         store_name=store_name,

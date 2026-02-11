@@ -230,9 +230,21 @@
                             <td class="px-6 py-4">
                                 <div class="flex items-center gap-3 min-w-0">
                                     <div class="flex-shrink-0">
-                                        <img src="{{ supporter.avatar or '/static/images/default-avatar.png' }}"
-                                            alt="{{ supporter.name }}"
-                                            class="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700">
+                                        {% set avatar = resolve_avatar(supporter) %}
+                                        {% if avatar.type == 'image' %}
+                                        <img src="{{ avatar.content }}" alt="{{ supporter.name }}"
+                                            class="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-700 object-cover">
+                                        {% elif avatar.type == 'flag' %}
+                                        <div
+                                            class="w-10 h-10 rounded-full {{ avatar.color }} flex items-center justify-center text-xl bg-gray-50 border border-gray-100 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                                            {{ avatar.content }}
+                                        </div>
+                                        {% else %}
+                                        <div
+                                            class="w-10 h-10 rounded-full {{ avatar.color }} flex items-center justify-center text-sm font-bold shadow-sm">
+                                            {{ avatar.content }}
+                                        </div>
+                                        {% endif %}
                                     </div>
                                     <div class="min-w-0 flex-1">
                                         <p class="font-semibold text-gray-900 dark:text-white truncate">{{
@@ -305,8 +317,21 @@
         <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-start justify-between mb-4">
                 <div class="flex items-center gap-3">
-                    <img src="{{ supporter.avatar or '/static/images/default-avatar.png' }}" alt="{{ supporter.name }}"
-                        class="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-700">
+                    {% set avatar = resolve_avatar(supporter) %}
+                    {% if avatar.type == 'image' %}
+                    <img src="{{ avatar.content }}" alt="{{ supporter.name }}"
+                        class="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-700 object-cover">
+                    {% elif avatar.type == 'flag' %}
+                    <div
+                        class="w-12 h-12 rounded-full {{ avatar.color }} flex items-center justify-center text-2xl bg-gray-50 border border-gray-100 dark:border-gray-600 dark:bg-gray-700 shadow-sm">
+                        {{ avatar.content }}
+                    </div>
+                    {% else %}
+                    <div
+                        class="w-12 h-12 rounded-full {{ avatar.color }} flex items-center justify-center text-base font-bold shadow-sm">
+                        {{ avatar.content }}
+                    </div>
+                    {% endif %}
                     <div>
                         <h3 class="font-semibold text-gray-900 dark:text-white">{{ supporter.name }}</h3>
                         <p class="text-sm text-gray-600 dark:text-gray-400">{{ supporter.email }}</p>
@@ -398,7 +423,8 @@
         <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
             <div>
                 <p class="text-sm text-gray-700 dark:text-gray-300">
-                    Showing <span class="font-medium">{{ (pagination.page - 1) * pagination.per_page + 1 }}</span> to
+                    Showing <span class="font-medium">{{ (pagination.page - 1) * pagination.per_page + 1 }}</span>
+                    to
                     <span class="font-medium">{{ (pagination.page - 1) * pagination.per_page + supporters|length
                         }}</span> of <span class="font-medium">{{ pagination.total }}</span> results
                 </p>
@@ -420,7 +446,8 @@
 
                     <!-- Numbers -->
                     {% if pagination.iter_pages %}
-                    {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=1)
+                    {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=1,
+                    right_current=1)
                     %}
                     {% if page_num %}
                     {% if pagination.page == page_num %}

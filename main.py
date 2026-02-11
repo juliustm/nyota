@@ -58,6 +58,14 @@ def create_app(config_class=Config):
 
     # --- Register Jinja2 Filters ---
     app.jinja_env.filters['format_currency'] = format_currency
+
+    def nl2br(value):
+        from markupsafe import Markup, escape
+        if not value:
+            return ""
+        return Markup(str(escape(value)).replace('\n', '<br>\n'))
+    
+    app.jinja_env.filters['nl2br'] = nl2br
     
     # This lambda function takes text, processes it with mistune, and returns HTML.
     app.jinja_env.filters['markdown'] = lambda text: mistune.html(text)

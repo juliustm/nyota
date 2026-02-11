@@ -38,7 +38,12 @@ document.addEventListener('alpine:init', () => {
         updateCountdown() { const eventDate = new Date(this.asset.event_date).getTime(); const now = new Date().getTime(); const distance = eventDate - now; if (distance < 0) { this.countdown = "EVENT HAS PASSED"; if (this.countdownInterval) clearInterval(this.countdownInterval); return; } const d = Math.floor(distance / (1000 * 60 * 60 * 24)); const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)); const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)); const s = Math.floor((distance % (1000 * 60)) / 1000); this.countdown = `${d}d ${h}h ${m}m ${s}s`; },
         get averageRating() { if (!this.asset.reviews || this.asset.reviews.length === 0) return 'N/A'; const total = this.asset.reviews.reduce((sum, review) => sum + review.rating, 0); return (total / this.asset.reviews.length).toFixed(1); },
         showMoreReviews() { this.visibleReviews += 5; },
-        renderMarkdown(text) { if (window.marked) return window.marked.parse(text || ''); return text || ''; },
+        renderMarkdown(text) {
+            if (!text) return '';
+            if (window.marked) return window.marked.parse(text);
+            // Fallback: simple newline to break conversion
+            return text.replace(/\n/g, '<br>');
+        },
         formatCurrency(amount) { return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0); }
     }));
 
@@ -429,7 +434,7 @@ document.addEventListener('alpine:init', () => {
             }
 
             if (!this.editableAsset.details) {
-                this.editableAsset.details = { welcomeContent: '', benefits: '' };
+                this.editableAsset.details = { welcomeContent: '', benefits: '', subscription_tiers: [] };
             }
 
             // Initialize UZA Product ID
@@ -439,7 +444,25 @@ document.addEventListener('alpine:init', () => {
 
             // Initialize pricing tiers
             if (!this.editableAsset.details.subscription_tiers) {
-                this.editableAsset.details.subscription_tiers = [];
+                this.editableAsset.details.subscription_tiers = this.asset.details?.subscription_tiers || [];
+            }
+
+            // Initialize subscription content fields
+            if (!this.editableAsset.details.welcomeContent) {
+                this.editableAsset.details.welcomeContent = this.asset.details?.welcomeContent || '';
+            }
+            if (!this.editableAsset.details.benefits) {
+                this.editableAsset.details.benefits = this.asset.details?.benefits || '';
+            }
+
+            // Initialize allow_download (default to true if not set)
+            if (this.editableAsset.allow_download === undefined || this.editableAsset.allow_download === null) {
+                this.editableAsset.allow_download = this.asset.allow_download !== false;
+            }
+
+            // Initialize custom fields for tickets
+            if (!this.editableAsset.customFields) {
+                this.editableAsset.customFields = this.asset.custom_fields || [];
             }
 
             // Initialize content items date from description
@@ -460,6 +483,7 @@ document.addEventListener('alpine:init', () => {
 
             this.applyUtilityClasses();
         },
+
 
         handleCoverSelect(event) {
             const file = event.target.files[0];
@@ -483,12 +507,63 @@ document.addEventListener('alpine:init', () => {
             this.editableAsset.files.splice(index, 1);
         },
 
+        // Initialize SortableJS for drag-and-drop reordering
+        initSortable() {
+            if (typeof Sortable === 'undefined') {
+                console.warn('SortableJS not loaded, drag-and-drop disabled');
+                return;
+            }
+
+            this.$nextTick(() => {
+                const el = this.$refs.contentList;
+                if (!el) return;
+
+                new Sortable(el, {
+                    animation: 150,
+                    handle: '.drag-handle',
+                    ghostClass: 'opacity-50',
+                    chosenClass: 'ring-2 ring-indigo-500',
+                    dragClass: 'shadow-lg',
+                    onEnd: (evt) => {
+                        const oldIndex = evt.oldIndex;
+                        const newIndex = evt.newIndex;
+                        if (oldIndex !== newIndex && this.editableAsset.files) {
+                            // Move item in array
+                            const item = this.editableAsset.files.splice(oldIndex, 1)[0];
+                            this.editableAsset.files.splice(newIndex, 0, item);
+                        }
+                    }
+                });
+            });
+        },
+
+        moveItemUp(index) {
+            if (index <= 0 || !this.editableAsset.files) return;
+            const files = this.editableAsset.files;
+            [files[index - 1], files[index]] = [files[index], files[index - 1]];
+        },
+
+        moveItemDown(index) {
+            if (!this.editableAsset.files || index >= this.editableAsset.files.length - 1) return;
+            const files = this.editableAsset.files;
+            [files[index], files[index + 1]] = [files[index + 1], files[index]];
+        },
+
         addPricingTier() {
             this.editableAsset.details.subscription_tiers.push({ name: '', price: null, interval: 'monthly', description: '' });
         },
 
         removePricingTier(index) {
             this.editableAsset.details.subscription_tiers.splice(index, 1);
+        },
+
+        addCustomField() {
+            if (!this.editableAsset.customFields) this.editableAsset.customFields = [];
+            this.editableAsset.customFields.push({ type: 'text', question: '', required: false });
+        },
+
+        removeCustomField(index) {
+            this.editableAsset.customFields.splice(index, 1);
         },
 
         handleFileSelect(event, index) {
@@ -535,12 +610,20 @@ document.addEventListener('alpine:init', () => {
                     story_snippet: this.editableAsset.story,
                     uza_product_id: this.editableAsset.uza_product_id || ''
                 },
+                allow_download: this.editableAsset.allow_download,
                 assetTypeEnum: this.asset.asset_type,
                 contentItems: contentItems,
                 customFields: this.editableAsset.customFields || [],
                 eventDetails: this.editableAsset.eventDetails || {},
-                subscriptionDetails: this.editableAsset.details || {},
-                newsletterDetails: this.editableAsset.details || {},
+                subscriptionDetails: {
+                    welcomeContent: this.editableAsset.details?.welcomeContent || '',
+                    benefits: this.editableAsset.details?.benefits || '',
+                    subscription_tiers: this.editableAsset.details?.subscription_tiers || []
+                },
+                newsletterDetails: {
+                    welcomeContent: this.editableAsset.details?.welcomeContent || '',
+                    benefits: this.editableAsset.details?.benefits || ''
+                },
                 pricing: {
                     amount: this.editableAsset.price,
                     type: this.editableAsset.is_subscription ? 'recurring' : 'one-time',
@@ -548,6 +631,7 @@ document.addEventListener('alpine:init', () => {
                     tiers: this.editableAsset.details?.subscription_tiers || []
                 }
             };
+
 
             formData.append('asset_data', JSON.stringify(assetData));
 

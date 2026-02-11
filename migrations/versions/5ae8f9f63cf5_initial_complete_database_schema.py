@@ -103,7 +103,7 @@ def upgrade():
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('storage_path', sa.String(length=1024), nullable=False),
     sa.Column('file_type', sa.String(length=50), nullable=True),
-    sa.Column('order_index', sa.Integer(), nullable=True),
+    sa.Column('position', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['asset_id'], ['digital_asset.id'], ),
     sa.PrimaryKeyConstraint('id')
     )

@@ -373,19 +373,36 @@ class AssetFile(db.Model):
     description = db.Column(db.Text, nullable=True)
     storage_path = db.Column(db.String(1024), nullable=False)
     file_type = db.Column(db.String(50), nullable=True)
-    order_index = db.Column(db.Integer, default=0)
+    position = db.Column(db.Integer, default=0)
     asset = db.relationship('DigitalAsset', back_populates='files')
     def to_dict(self):
         link = self.storage_path
         if link and link.startswith('secure_uploads/'):
             link = f"/content/{self.id}"
+        
+        # Compute file_type if not set (for legacy files)
+        file_type = self.file_type
+        if not file_type and self.storage_path:
+            # Extract extension from storage_path
+            ext = self.storage_path.split('.')[-1].lower().split('?')[0] if '.' in self.storage_path else ''
+            if ext in ['pdf']:
+                file_type = 'pdf'
+            elif ext in ['mp3', 'wav', 'ogg', 'm4a', 'aac']:
+                file_type = 'audio'
+            elif ext in ['mp4', 'webm', 'mov', 'avi']:
+                file_type = 'video'
+            elif ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']:
+                file_type = 'image'
+            else:
+                file_type = 'other'
             
         return { 
             'id': self.id, 
             'title': self.title, 
             'description': self.description, 
             'link': link,
-            'file_type': self.file_type
+            'file_type': file_type or 'other',
+            'storage_path': self.storage_path
         }
 
 class Purchase(db.Model):

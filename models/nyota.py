@@ -395,9 +395,6 @@ class AssetFile(db.Model):
                 file_type = 'image'
             else:
                 file_type = 'other'
-        
-        # DEBUG: Print what we're returning
-        # print(f"[DEBUG] AssetFile {self.id}: storage_path={self.storage_path}, db_file_type={self.file_type}, computed_file_type={file_type}")
             
         return { 
             'id': self.id, 

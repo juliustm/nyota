@@ -9,8 +9,15 @@
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(15px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .pulse-glow {
@@ -18,16 +25,21 @@
 }
 
 @keyframes pulseGlow {
-    0%, 100% {
-        box-shadow: 0 0 8px rgba(99, 102, 241, 0.4); /* indigo-500 */
+
+    0%,
+    100% {
+        box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+        /* indigo-500 */
     }
+
     50% {
         box-shadow: 0 0 25px rgba(99, 102, 241, 0.7);
     }
 }
 
 /* --- Global Styles for Native App Feel --- */
-html, body {
+html,
+body {
     overflow-x: hidden;
     overscroll-behavior-x: none;
     scroll-behavior: smooth;
@@ -42,7 +54,8 @@ body {
     user-select: none;
 }
 
-input, textarea {
+input,
+textarea {
     -webkit-user-select: auto;
     -moz-user-select: auto;
     -ms-user-select: auto;

@@ -434,7 +434,10 @@ document.addEventListener('alpine:init', () => {
             }
 
             if (!this.editableAsset.details) {
-                this.editableAsset.details = { welcomeContent: '', benefits: '', subscription_tiers: [] };
+                this.editableAsset.details = { welcomeContent: '', benefits: '', subscription_tiers: [], labels: { en: '', sw: '' } };
+            }
+            if (!this.editableAsset.details.labels) {
+                this.editableAsset.details.labels = this.asset.details?.labels || { en: '', sw: '' };
             }
 
             // Initialize UZA Product ID
@@ -624,6 +627,7 @@ document.addEventListener('alpine:init', () => {
                     welcomeContent: this.editableAsset.details?.welcomeContent || '',
                     benefits: this.editableAsset.details?.benefits || ''
                 },
+                labels: this.editableAsset.details?.labels || {},
                 pricing: {
                     amount: this.editableAsset.price,
                     type: this.editableAsset.is_subscription ? 'recurring' : 'one-time',

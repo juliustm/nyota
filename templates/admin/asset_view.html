@@ -175,6 +175,22 @@
                                 placeholder="Briefly describe what this is..."></textarea>
                         </div>
 
+                        <!-- Custom Labels -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="input-label">Custom Label (English)</label>
+                                <p class="text-xs text-gray-500 mb-2">Override default label (e.g., "Course").</p>
+                                <input type="text" x-model="editableAsset.details.labels.en" class="input-field"
+                                    placeholder="e.g., Masterclass">
+                            </div>
+                            <div>
+                                <label class="input-label">Custom Label (Swahili)</label>
+                                <p class="text-xs text-gray-500 mb-2">Override default label (e.g., "Kozi").</p>
+                                <input type="text" x-model="editableAsset.details.labels.sw" class="input-field"
+                                    placeholder="e.g., Darasa Kuu">
+                            </div>
+                        </div>
+
                         <div>
                             <label for="story" class="input-label">Full Story / Landing Page</label>
                             <p class="text-xs text-gray-500 mb-2">The main content shown to users before they purchase.

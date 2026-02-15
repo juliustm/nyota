@@ -154,5 +154,8 @@
     "thumbnails": "Picha ndogo",
     "contents": "Yaliyomo",
     "next": "Ijayo",
-    "full_screen": "Skrini Nzima"
+    "full_screen": "Skrini Nzima",
+    "enter_phone_details": "Weka namba yako ya simu ili kukamilisha malipo salama.",
+    "secure_payment_trust": "Malipo Salama na Rahisi kwa M-Pesa, Airtel Money, Tigo Pesa, na HaloPesa.",
+    "supported_wallets": "Inapokea mitandao yote ya simu."
 }

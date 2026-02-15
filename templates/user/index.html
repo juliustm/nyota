@@ -21,13 +21,107 @@ store_name }}{% endblock %}
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12" x-data="{ filtersOpen: false }">
 
-    <!-- HERO SECTION: Mobile-First Profile -->
-    <header class="text-center py-2 md:py-2 fade-in">
+    <!-- HERO SECTION: Dynamic Profile & Bio -->
+    {% if creator.get_setting('store_profile_enabled') %}
+    <header id="profile-hero" x-data x-init="$nextTick(() => { $dispatch('toggle-brand-progress', { value: 0 }); })"
+        @scroll.window="
+                const rect = $el.getBoundingClientRect();
+                const progress = Math.max(0, Math.min(1, 1 - (rect.bottom - 80) / 150));
+                $dispatch('toggle-brand-progress', { value: progress });
+            " class="text-center pt-8 pb-4 fade-in relative mb-4">
+        <!-- Optional: Cover/Banner Background could go here in future -->
 
+        <div class="max-w-lg mx-auto flex flex-col items-center">
+
+            <div class="flex items-center gap-4 mb-3">
+                <!-- Profile Photo -->
+                {% if creator.get_setting('store_photo_url') %}
+                <div class="relative group shrink-0">
+                    <div
+                        class="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-sm">
+                        <div
+                            class="w-full h-full rounded-full border border-white dark:border-gray-900 overflow-hidden bg-white dark:bg-gray-800">
+                            <img src="{{ creator.get_setting('store_photo_url') }}" alt="{{ store_name }}"
+                                class="w-full h-full object-cover">
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="text-left">
+                    <!-- Store Name / Creator Name -->
+                    <h1 class="text-2xl font-bold text-gray-900 dark:text-white tracking-tight leading-none mb-1">
+                        {{ creator.get_setting('store_name', store_name) }}
+                    </h1>
+
+                    <!-- Signature / Tagline -->
+                    {% if creator.get_setting('store_signature') %}
+                    <p class="text-indigo-600 dark:text-indigo-400 font-medium text-xs tracking-wide uppercase">
+                        {{ creator.get_setting('store_signature') }}
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Extended Bio -->
+            <div
+                class="prose prose-sm dark:prose-invert text-gray-600 dark:text-gray-400 leading-snug mb-3 max-w-md mx-auto text-center">
+                {{ creator.get_setting('store_bio_long') or creator.get_setting('store_bio') or 'Welcome to my digital
+                store.' }}
+            </div>
+
+            <!-- Social Links -->
+            <div class="flex items-center justify-center gap-4 mt-2">
+                {% if creator.get_setting('social_instagram') %}
+                <a href="{{ creator.get_setting('social_instagram') }}" target="_blank" rel="noopener noreferrer"
+                    class="p-2.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-full hover:bg-pink-50 dark:hover:bg-pink-900/20 hover:text-pink-600 dark:hover:text-pink-400 transition-all hover:-translate-y-1">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path
+                            d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                    </svg>
+                </a>
+                {% endif %}
+
+                {% if creator.get_setting('social_twitter') %}
+                <a href="{{ creator.get_setting('social_twitter') }}" target="_blank" rel="noopener noreferrer"
+                    class="p-2.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-black dark:hover:text-white transition-all hover:-translate-y-1">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path
+                            d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                </a>
+                {% endif %}
+
+                {% if creator.get_setting('social_tiktok') %}
+                <a href="{{ creator.get_setting('social_tiktok') }}" target="_blank" rel="noopener noreferrer"
+                    class="p-2.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-black dark:hover:text-white transition-all hover:-translate-y-1">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path
+                            d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.03 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.35-1.17.82-1.51 1.45-.49.91-.46 1.98.02 2.89.54 1.05 1.67 1.83 2.87 1.93.9.08 1.82-.12 2.59-.62.9-.59 1.34-1.73 1.33-2.82.01-5.28.01-10.56.01-15.85-2.08 0-4.16 0-6.24.01z" />
+                    </svg>
+                </a>
+                {% endif %}
+
+                {% if creator.get_setting('social_youtube') %}
+                <a href="{{ creator.get_setting('social_youtube') }}" target="_blank" rel="noopener noreferrer"
+                    class="p-2.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-all hover:-translate-y-1">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path
+                            d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
+                    </svg>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+    {% else %}
+    <!-- Legacy Hero (for when Profile is Disabled) -->
+    <header class="text-center py-2 md:py-2 fade-in">
         <p class="text-base md:text-lg text-gray-600 dark:text-gray-300 max-w-xl mx-auto leading-relaxed">
             {{ creator.get_setting('store_bio', 'Premium digital products to elevate your workflow.') }}
         </p>
     </header>
+    {% endif %}
 
     <div
         class="sticky top-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 py-3 mb-8 transition-all duration-300 shadow-sm">
@@ -46,7 +140,7 @@ store_name }}{% endblock %}
                 </div>
                 <input type="text" name="q" value="{{ search_query }}"
                     placeholder="{{ translate('search_placeholder') or 'Search content...' }}"
-                    class="w-full pl-10 pr-4 py-2.5 bg-gray-100 dark:bg-gray-800 border-none rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-indigo-500/50 transition-all">
+                    class="w-full pl-10 pr-4 py-3 bg-gray-50 hover:bg-white focus:bg-white dark:bg-gray-800 dark:hover:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-full text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm">
 
                 <!-- Use hidden input to preserve filter type if searching -->
                 {% if filter_type %}
@@ -56,7 +150,7 @@ store_name }}{% endblock %}
 
             <!-- Filter Toggle Button -->
             <button type="button" @click="filtersOpen = true"
-                class="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all {{ 'bg-gray-900 text-white dark:bg-white dark:text-gray-900' if filter_type else 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700' }}">
+                class="flex-shrink-0 flex items-center gap-2 px-5 py-3 rounded-full text-sm font-semibold transition-all shadow-sm border {{ 'bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-gray-900 dark:border-white' if filter_type else 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700' }}">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -126,6 +220,13 @@ store_name }}{% endblock %}
                             {% endif %}
 
                             <!-- Asset Type Badge (if not generic) -->
+                            {% set current_lang = session.get('language', 'en') %}
+                            {% set custom_labels = asset.details.get('labels', {}) if asset.details else {} %}
+                            {% set custom_label = custom_labels.get(current_lang) %}
+                            {% if not custom_label %}
+                            {% set custom_label = custom_labels.get('en') or custom_labels.get('sw') %}
+                            {% endif %}
+
                             {% if asset.asset_type.name == 'VIDEO_SERIES' %}
                             <div
                                 class="bg-indigo-600/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm border border-white/20 flex items-center gap-1">
@@ -133,7 +234,7 @@ store_name }}{% endblock %}
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                 </svg>
-                                {{ translate('type_course') }}
+                                {{ custom_label or translate('type_course') }}
                             </div>
                             {% elif asset.asset_type.name == 'TICKET' %}
                             <div
@@ -142,7 +243,7 @@ store_name }}{% endblock %}
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
                                 </svg>
-                                {{ translate('type_ticket') }}
+                                {{ custom_label or translate('type_ticket') }}
                             </div>
                             {% elif asset.asset_type.name == 'NEWSLETTER' %}
                             <div
@@ -151,7 +252,16 @@ store_name }}{% endblock %}
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
                                 </svg>
-                                {{ translate('type_newsletter') }}
+                                {{ custom_label or translate('type_newsletter') }}
+                            </div>
+                            {% elif asset.asset_type.name == 'DIGITAL_PRODUCT' %}
+                            <div
+                                class="bg-blue-500/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm border border-white/20 flex items-center gap-1">
+                                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                                {{ custom_label or 'Digital Product' }}
                             </div>
                             {% endif %}
                         </div>

@@ -14,9 +14,9 @@ init:
 	@docker-compose down -v
 	
 	@echo "--- Deleting old migration history and local database files... ---"
-	@rm -rf migrations
-	@rm -rf instance
-	@rm -f *.db *.sqlite
+# 	@rm -rf migrations
+# 	@rm -rf instance
+# 	@rm -f *.db *.sqlite
 	
 	@echo "--- Building and starting new containers... ---"
 	@docker-compose up --build

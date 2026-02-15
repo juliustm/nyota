@@ -80,9 +80,15 @@ class CreatorSetting(db.Model):
 #
 # --- Store Profile ---
 # 'store_logo_url': (string) URL to the store's logo
-# 'store_bio': (string) The creator's public biography
-# 'social_twitter': (string) Full URL to Twitter profile
+# 'store_profile_enabled': (boolean) Toggle for public profile section
+# 'store_photo_url': (string) URL to the creator's photo
+# 'store_bio': (string) Short bio (meta description)
+# 'store_bio_long': (string) Extended fun/engaging bio
+# 'store_signature': (string) Creator's signature/tagline
+# 'social_twitter': (string) Full URL to Twitter/X profile
 # 'social_instagram': (string) Full URL to Instagram profile
+# 'social_tiktok': (string) Full URL to TikTok profile
+# 'social_youtube': (string) Full URL to YouTube profile
 # 'contact_email': (string) Public contact email
 # 'contact_phone': (string) Public contact phone number
 #

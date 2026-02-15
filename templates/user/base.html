@@ -95,8 +95,16 @@
     <header
         class="sticky top-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700/50">
         <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <a href="{{ url_for('main.landing_page') }}" class="flex items-center space-x-2">
+            <div class="flex items-center justify-between h-16" x-data="{ brandOpacity: 1, brandY: 0 }"
+                @toggle-brand.window="brandOpacity = $event.detail.value ? 1 : 0; brandY = $event.detail.value ? 0 : -10"
+                @toggle-brand-progress.window="brandOpacity = $event.detail.value; brandY = (1 - $event.detail.value) * -10">
+                <a href="{{ url_for('main.landing_page') }}" class="flex items-center space-x-2 will-change-transform"
+                    :style="`opacity: ${brandOpacity}; transform: translateY(${brandY}px); pointer-events: ${brandOpacity < 0.5 ? 'none' : 'auto'}`">
+                    {% if creator and (creator.get_setting('store_logo_url') or creator.get_setting('store_photo_url'))
+                    %}
+                    <img src="{{ creator.get_setting('store_logo_url') or creator.get_setting('store_photo_url') }}"
+                        alt="{{ store_name }}" class="w-8 h-8 rounded-lg object-cover shadow-md">
+                    {% else %}
                     <div
                         class="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none"
@@ -105,6 +113,7 @@
                                 d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                         </svg>
                     </div>
+                    {% endif %}
                     <span class="text-xl font-bold text-gray-900 dark:text-white">{{ store_name }}</span>
                 </a>
 

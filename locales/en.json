@@ -151,5 +151,8 @@
     "thumbnails": "Thumbnails",
     "contents": "Contents",
     "next": "Next",
-    "full_screen": "Full Screen"
+    "full_screen": "Full Screen",
+    "enter_phone_details": "Enter your phone number to complete the secure payment.",
+    "secure_payment_trust": "Secure & Easy payment with M-Pesa, Airtel Money, Tigo Pesa, and HaloPesa.",
+    "supported_wallets": "Supports all mobile money wallets."
 }

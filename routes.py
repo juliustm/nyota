@@ -709,6 +709,10 @@ def save_asset_from_form(asset, req):
     uza_product_id = asset_details.get('uza_product_id', '').strip()
     if uza_product_id:
         asset.details['uza_product_id'] = uza_product_id
+        
+    # Handle Custom Labels
+    if 'labels' in form_data:
+        asset.details['labels'] = form_data['labels']
     
     # Handle Subscription Tiers (which may also have UZA Product IDs)
     if asset.is_subscription:
@@ -1090,7 +1094,9 @@ def manage_settings():
         
         # --- A DEFINITIVE LIST OF ALL POSSIBLE SETTING KEYS FROM THE TEMPLATE ---
         setting_keys = [
-            'store_bio', 'social_twitter', 'social_instagram', 'contact_email', 'contact_phone',
+            'store_bio', 'store_bio_long', 'store_signature', 'store_profile_enabled',
+            'social_twitter', 'social_instagram', 'social_tiktok', 'social_youtube',
+            'contact_email', 'contact_phone',
             'appearance_storefront_theme', 'admin_theme',
             
             # Notifications
@@ -1143,6 +1149,19 @@ def manage_settings():
                 # os.makedirs(upload_path, exist_ok=True)
                 file.save(os.path.join(upload_path, filename))
                 g.creator.set_setting('store_logo_url', f'/media/logos/{filename}')
+
+        # Handle file upload for store profile photo
+        if 'store_photo' in request.files:
+            file = request.files['store_photo']
+            if file and file.filename:
+                # Reuse LOGOS_DIR or maybe create a PROFILES_DIR? 
+                # For simplicity and given standard storage structure, let's use LOGOS_DIR or COVERS_DIR.
+                # Actually, in 'Storage Structure Restructure' plan, we have 'uploads' dir.
+                # Let's stick to LOGOS_DIR as it's for public branding assets.
+                filename = f"profile_{g.creator.id}_{int(time.time())}_{secure_filename(file.filename)}"
+                upload_path = current_app.config['LOGOS_DIR']
+                file.save(os.path.join(upload_path, filename))
+                g.creator.set_setting('store_photo_url', f'/media/logos/{filename}')
 
         db.session.commit()
         flash("Settings saved successfully!", "success")
@@ -1622,6 +1641,7 @@ def asset_detail(slug):
         asset_json=asset_json,
         latest_purchase=latest_purchase, 
         store_name=store_name,
+        creator=creator, # Pass creator for base.html branding
         meta_title=meta_title,
         meta_description=meta_description,
         meta_image=meta_image

@@ -60,14 +60,14 @@
             </div>
         </header>
 
-        <main class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 animate-fade-in">
+        <main class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-6 py-6 pb-12 animate-fade-in">
             {% block content %}{% endblock %}
         </main>
 
         {% if 'creator_id' in session %}
         <nav class="fixed bottom-0 left-0 right-0 z-40 animate-slide-up">
             <div
-                class="max-w-md mx-auto bg-white/95 dark:bg-gray-800/95 glass-effect border-t border-gray-200/60 dark:border-gray-700/60 md:rounded-t-2xl md:border-x md:shadow-2xl">
+                class="max-w-md mx-auto dark:bg-gray-800/95 glass-effect border-t border-gray-200/60 dark:border-gray-700/60 md:rounded-t-2xl md:border-x md:shadow-2xl">
                 <div class="flex justify-around h-16">
 
                     <!-- Dashboard Link -->

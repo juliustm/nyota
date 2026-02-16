@@ -11,7 +11,7 @@
             <p class="text-gray-600 dark:text-gray-400 mt-1">Overview of your store's performance.</p>
         </div>
         <div class="flex items-center gap-3">
-            <button type="submit" form="dashboardFilterForm" formaction="{{ url_for('admin.export_dashboard_data') }}"
+            <button type="button" onclick="document.getElementById('exportSubmitBtn').click()"
                 class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
                 <svg class="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24"
                     stroke="currentColor">
@@ -25,16 +25,19 @@
 
     <!-- Filter Toolbar -->
     <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
-        <form id="dashboardFilterForm" method="get"
+        <form id="dashboardFilterForm" action="{{ url_for('admin.creator_dashboard') }}" method="get"
             class="flex flex-col lg:flex-row gap-4 lg:items-center justify-between">
             <!-- Search -->
             <div class="relative w-full lg:max-w-md">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <button type="submit"
+                    class="absolute inset-y-0 left-0 pl-3 flex items-center cursor-pointer bg-transparent border-0 focus:outline-none group"
+                    title="Search">
+                    <svg class="h-4 w-4 text-gray-400 group-hover:text-blue-500 transition-colors" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
-                </div>
+                </button>
                 <input type="text" name="search" value="{{ current_filters.search }}"
                     placeholder="Search by name, phone or asset..."
                     class="block w-full pl-10 pr-3 py-2 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500 dark:placeholder-gray-400 active:ring-2 transition-shadow">
@@ -96,6 +99,9 @@
                         asset_title }}</option>
                     {% endfor %}
                 </select>
+                <!-- Hidden Export Submit Button -->
+                <button type="submit" id="exportSubmitBtn" formaction="{{ url_for('admin.export_dashboard_data') }}"
+                    class="hidden"></button>
             </div>
         </form>
     </div>

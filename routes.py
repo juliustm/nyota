@@ -1738,7 +1738,8 @@ def initiate_payment():
         # Update language if provided and different
         if language and customer.language != language:
             customer.language = language
-        db.session.flush() # Flush to get customer.id if it's a new customer
+    
+    db.session.flush() # Flush to ensure customer.id is available
 
     purchase = Purchase(
         customer_id=customer.id,

@@ -36,6 +36,7 @@ from models.nyota import (
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
 from extensions import limiter
+from services.sms_service import get_sms_provider
 
 # --- Helper for JSON serialization ---
 def json_serial(obj):
@@ -1105,6 +1106,8 @@ def manage_settings():
             'whatsapp_enabled', 'whatsapp_phone_id', 'whatsapp_access_token',
             'sms_provider', 'twilio_sid', 'twilio_token', 'twilio_phone',
             'beem_api_key', 'beem_secret_key', 'beem_sender_name',
+            'sms_onsms_api_key', 'sms_onsms_api_secret', 'sms_onsms_sender_id', 'sms_enabled',
+            'sms_notify_purchase', 'sms_notify_subscription',
 
             # Payments
             'payment_uza_enabled', 'payment_uza_pk', 'payment_uza_secret', 'payment_uza_refcode', 'payment_uza_source', 'payment_uza_currency',
@@ -1148,7 +1151,7 @@ def manage_settings():
                 upload_path = current_app.config['LOGOS_DIR']
                 # os.makedirs(upload_path, exist_ok=True)
                 file.save(os.path.join(upload_path, filename))
-                g.creator.set_setting('store_logo_url', f'/media/logos/{filename}')
+                g.creator.store_logo_url = f'/media/logos/{filename}'
 
         # Handle file upload for store profile photo
         if 'store_photo' in request.files:
@@ -1164,7 +1167,7 @@ def manage_settings():
                 g.creator.set_setting('store_photo_url', f'/media/logos/{filename}')
 
         db.session.commit()
-        flash("Settings saved successfully!", "success")
+        flash('Settings updated successfully.', 'success')
         return redirect(url_for('admin.manage_settings'))
 
     # --- DISPLAY SETTINGS LOGIC (GET request) ---
@@ -1176,6 +1179,24 @@ def manage_settings():
     settings_json = json.dumps(settings_dict, default=json_serial)
 
     return render_template('admin/settings.html', settings_json=settings_json)
+
+@admin_bp.route('/settings/sms/test', methods=['POST'])
+@creator_login_required
+def test_sms():
+    phone = request.form.get('phone')
+    if not phone:
+        return jsonify({'success': False, 'message': 'Phone number is required'}), 400
+
+    provider = get_sms_provider(g.creator)
+    if not provider:
+        return jsonify({'success': False, 'message': 'SMS provider not configured properly'}), 400
+
+    success, response = provider.send_sms(phone, "Test message from Nyota")
+    
+    if success:
+        return jsonify({'success': True, 'message': 'Test SMS sent successfully!'})
+    else:
+        return jsonify({'success': False, 'message': f'Failed to send SMS: {response}'}), 500
 
 # ==============================================================================
 # == MAIN (PUBLIC) BLUEPRINT
@@ -1663,6 +1684,22 @@ def initiate_payment():
     phone_number = str(data.get('phone_number', '')).strip() # Cast to string and strip
     asset_id = data.get('asset_id')
     channel_id = data.get('channel_id') # The unique ID for the user's browser tab
+    channel_id = data.get('channel_id') # The unique ID for the user's browser tab
+    language = data.get('language')
+    
+    # Logic to detect language if not explicitly 'sw'
+    # If payload is missing or generic 'en', check IP location
+    if not language or language.startswith('en'):
+        country = request.headers.get('CF-IPCountry') or \
+                  request.headers.get('X-AppEngine-Country') or \
+                  request.headers.get('X-Country-Code')
+        if country and country.upper() != 'TZ':
+            language = 'en'
+        else:
+            # Default to Swahili for TZ or unknown
+            language = 'sw'
+    
+    language = language[:5] # Limit length
 
     # 1. Validate incoming data
     if not all([phone_number, asset_id, channel_id]):
@@ -1695,8 +1732,12 @@ def initiate_payment():
     # Create a pending purchase
     customer = Customer.query.filter_by(whatsapp_number=phone_number).first()
     if not customer:
-        customer = Customer(whatsapp_number=phone_number)
+        customer = Customer(whatsapp_number=phone_number, language=language)
         db.session.add(customer)
+    else:
+        # Update language if provided and different
+        if language and customer.language != language:
+            customer.language = language
         db.session.flush() # Flush to get customer.id if it's a new customer
 
     purchase = Purchase(
@@ -1963,6 +2004,21 @@ def uza_payment_callback():
         asset.total_revenue = (asset.total_revenue or 0) + purchase.amount_paid
         
         db.session.commit()
+        
+        # --- SMS NOTIFICATION ---
+        try:
+            sms_provider = get_sms_provider(asset.creator)
+            if sms_provider:
+                # Run in a separate thread to not block the response?
+                # For now, run synchronously as it's critical and fast enough (requests)
+                # But better to catch exceptions to not fail the callback response
+                base_url = request.url_root.rstrip('/')
+                sms_provider.send_purchase_confirmation(purchase, base_url=base_url)
+                current_app.logger.info(f"SMS confirmation sent to {purchase.customer.whatsapp_number}")
+        except Exception as e:
+            current_app.logger.error(f"Failed to send SMS confirmation for deal {uza_deal_id}: {e}")
+        # ------------------------
+
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"DB Error processing UZA callback for deal_id {uza_deal_id}: {e}")

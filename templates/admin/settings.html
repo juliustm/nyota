@@ -411,6 +411,120 @@
                         </div>
                     </div>
 
+                    <!-- SMS (OnSMS) -->
+                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 transition-all duration-200"
+                        :class="smsEnabled ? 'ring-1 ring-indigo-500 border-indigo-500' : ''">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                                    <svg class="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24"
+                                        stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">SMS Notifications
+                                    </h3>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">Via OnSMS Gateways</p>
+                                </div>
+                            </div>
+                            <button type="button"
+                                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                                :class="smsEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'" role="switch"
+                                aria-checked="false" @click="smsEnabled = !smsEnabled">
+                                <input type="checkbox" name="sms_enabled" class="hidden" x-model="smsEnabled">
+                                <span
+                                    class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                    :class="smsEnabled ? 'translate-x-5' : 'translate-x-0'"></span>
+                            </button>
+                        </div>
+
+                        <div x-show="smsEnabled" x-collapse
+                            class="mt-6 border-t border-gray-100 dark:border-gray-700 pt-6 space-y-4">
+
+                            <!-- Hidden Provider Field (Defaulting to onsms for now) -->
+                            <input type="hidden" name="sms_provider" value="onsms">
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API
+                                        Key</label>
+                                    <input type="text" name="sms_onsms_api_key" :value="settings.sms_onsms_api_key"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API
+                                        Secret</label>
+                                    <input type="password" name="sms_onsms_api_secret"
+                                        :value="settings.sms_onsms_api_secret"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sender
+                                        ID</label>
+                                    <input type="text" name="sms_onsms_sender_id" :value="settings.sms_onsms_sender_id"
+                                        placeholder="e.g. INFO, COMPANY"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+
+                                <div class="md:col-span-2 space-y-3 pt-2">
+                                    <h4 class="text-sm font-medium text-gray-900 dark:text-gray-200">Notification Events
+                                    </h4>
+                                    <div class="flex items-start">
+                                        <div class="flex items-center h-5">
+                                            <input id="sms_notify_purchase" name="sms_notify_purchase" type="checkbox"
+                                                :checked="settings.sms_notify_purchase" value="true"
+                                                class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded">
+                                        </div>
+                                        <div class="ml-3 text-sm">
+                                            <label for="sms_notify_purchase"
+                                                class="font-medium text-gray-700 dark:text-gray-300">Purchase
+                                                Confirmation</label>
+                                            <p class="text-gray-500 dark:text-gray-400">Send an SMS receipt immediately
+                                                after a successful payment.</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-start">
+                                        <div class="flex items-center h-5">
+                                            <input id="sms_notify_subscription" name="sms_notify_subscription"
+                                                type="checkbox" :checked="settings.sms_notify_subscription" value="true"
+                                                class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded">
+                                        </div>
+                                        <div class="ml-3 text-sm">
+                                            <label for="sms_notify_subscription"
+                                                class="font-medium text-gray-700 dark:text-gray-300">Subscription
+                                                Reminders</label>
+                                            <p class="text-gray-500 dark:text-gray-400">Send reminders 5 days, 1 day,
+                                                and on the day of expiry.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-end gap-3">
+                                <div class="flex-1">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Test
+                                        SMS Recipient</label>
+                                    <input type="tel" x-model="testSMSNumber" placeholder="2557XXXXXXXX"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+                                <button type="button" @click="testSMS()" :disabled="smsTesting"
+                                    class="h-10 inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                    <span x-show="!smsTesting">Send Test</span>
+                                    <span x-show="smsTesting">Sending...</span>
+                                </button>
+                            </div>
+                            <p x-show="smsTested" x-transition
+                                :class="smsTestSuccess ? 'text-green-600' : 'text-red-500'"
+                                class="text-sm font-medium mt-2">
+                                <span
+                                    x-text="smsTestSuccess ? '✓ SMS sent successfully' : ('✗ Failed: ' + smsTestMessage)"></span>
+                            </p>
+                        </div>
+                    </div>
+
                     <!-- SMTP -->
                     <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 transition-all duration-200"
                         :class="smtpEnabled ? 'ring-1 ring-indigo-500 border-indigo-500' : ''">

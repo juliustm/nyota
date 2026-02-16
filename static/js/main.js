@@ -347,6 +347,12 @@ document.addEventListener('alpine:init', () => {
         emailTested: false,
         emailTestSuccess: false,
         testEmailAddress: '',
+        testSMSNumber: '',
+        smsEnabled: false,
+        smsTesting: false,
+        smsTested: false,
+        smsTestSuccess: false,
+        smsTestMessage: '',
 
         init() {
             // Populate state from the initial settings object
@@ -354,6 +360,7 @@ document.addEventListener('alpine:init', () => {
             this.telegramEnabled = this.settings.telegram_enabled || false;
             this.whatsappEnabled = this.settings.whatsapp_enabled || false;
             this.smtpEnabled = this.settings.email_smtp_enabled || false;
+            this.smsEnabled = this.settings.sms_enabled || false;
             this.aiEnabled = this.settings.ai_enabled || false;
 
             // This is just for the local theme picker, separate from saved settings
@@ -395,7 +402,37 @@ document.addEventListener('alpine:init', () => {
             }, 2500);
         },
         testWhatsApp() { alert('Testing WhatsApp...'); },
-        testSMS() { alert('Testing SMS...'); },
+        testWhatsApp() { alert('Testing WhatsApp...'); },
+        testSMS() {
+            if (!this.testSMSNumber || !this.testSMSNumber.trim()) {
+                alert('Please enter a phone number to send a test SMS to.');
+                return;
+            }
+            this.smsTesting = true;
+            this.smsTested = false;
+
+            const formData = new FormData();
+            formData.append('phone', this.testSMSNumber);
+
+            fetch('/admin/settings/sms/test', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    this.smsTesting = false;
+                    this.smsTested = true;
+                    this.smsTestSuccess = data.success;
+                    this.smsTestMessage = data.message;
+                })
+                .catch(error => {
+                    this.smsTesting = false;
+                    this.smsTested = true;
+                    this.smsTestSuccess = false;
+                    this.smsTestMessage = 'Network error occurred.';
+                    console.error('Error:', error);
+                });
+        },
         testAI() { alert('Testing AI...'); },
         testInstagram() { alert('Testing Instagram...'); },
         connectInstagram() { alert('Connecting to Instagram...'); },
@@ -845,7 +882,8 @@ document.addEventListener('alpine:init', () => {
                         phone_number: this.phoneNumber.replace(/\D/g, ''),
                         asset_id: this.asset.id,
                         channel_id: this.channelId,
-                        tier: this.selectedTier
+                        tier: this.selectedTier,
+                        language: navigator.language || 'en'
                     })
                 });
 

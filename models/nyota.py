@@ -211,6 +211,7 @@ class Customer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     whatsapp_number = db.Column(db.String(25), unique=True, nullable=False, index=True)
     xp_points = db.Column(db.Integer, default=0)
+    language = db.Column(db.String(5), default='en') # 'en' or 'sw'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     purchases = db.relationship('Purchase', back_populates='customer')
     subscriptions = db.relationship('Subscription', back_populates='customer')

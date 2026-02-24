@@ -40,9 +40,15 @@ document.addEventListener('alpine:init', () => {
         showMoreReviews() { this.visibleReviews += 5; },
         renderMarkdown(text) {
             if (!text) return '';
-            if (window.marked) return window.marked.parse(text);
-            // Fallback: simple newline to break conversion
-            return text.replace(/\n/g, '<br>');
+            // Smart detection: check if text contains markdown syntax
+            const mdPattern = /(?:^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|\*\*.+\*\*|__.+__|`.+`|\[.+\]\(.+\)|^>\s|^```|!\[)/m;
+            const hasMarkdown = mdPattern.test(text);
+            if (hasMarkdown && window.marked) {
+                try { return window.marked.parse(text); } catch (e) { /* fall through */ }
+            }
+            // Plain text: escape HTML and preserve newlines
+            const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+            return escaped.replace(/\n/g, '<br>');
         },
         formatCurrency(amount) { return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0); }
     }));

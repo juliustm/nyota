@@ -1665,7 +1665,8 @@ def asset_detail(slug):
         creator=creator, # Pass creator for base.html branding
         meta_title=meta_title,
         meta_description=meta_description,
-        meta_image=meta_image
+        meta_image=meta_image,
+        hide_navbar_search=True
     )
 
 @main_bp.route('/checkout/<slug>')

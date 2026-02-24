@@ -86,7 +86,7 @@
 <div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()" @retry-started.window="isRetrying = true"
     @retry-completed.window="isRetrying = false"
     @show-toast.window="showToast($event.detail.message, $event.detail.type)"
-    class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pb-32 md:pb-24">
+    class="max-w-7xl mx-auto px-2 sm:px-2 lg:px-8 pb-32 md:pb-24">
 
     <!-- Toast Notification System -->
     <template x-if="toast.show">
@@ -101,7 +101,7 @@
                 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800': toast.type === 'success',
                 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800': toast.type === 'error',
                 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800': toast.type === 'info'
-            }" class="rounded-xl border-2 shadow-lg backdrop-blur-sm p-4 flex items-start gap-3">
+            }" class="rounded-xl border-2 shadow-lg backdrop-blur-sm p-2 flex items-start gap-1">
                 <!-- Icon -->
                 <div :class="{
                     'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400': toast.type === 'success',

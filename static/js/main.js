@@ -321,7 +321,47 @@ document.addEventListener('alpine:init', () => {
             this.$refs.assetForm.appendChild(hidden);
             this.$refs.assetForm.submit();
         },
-        getAssetTypeDetails() { const details = { 'video-series': { title: 'Video Course', contentDescription: 'Add your videos, lessons, or modules below.' }, 'ticket': { title: 'Event & Webinar', contentDescription: 'Provide event details and ask for attendee information.' }, 'digital-file': { title: 'Digital Product', contentDescription: 'Upload the files your customers will receive.' }, 'subscription': { title: 'Subscription', contentDescription: 'Describe the benefits and welcome content for new subscribers.' }, 'newsletter': { title: 'Newsletter', contentDescription: 'Set up your welcome content and publishing frequency.' } }; return details[this.assetType] || { title: 'Asset', contentDescription: '' }; },
+
+        // Asset Type Details — descriptions, examples, and guide tips
+        assetTypeDetails: {
+            'video-series': {
+                title: 'Video Course',
+                description: 'A structured series of video lessons your audience can purchase and watch at their own pace. Ideal for teaching skills, sharing knowledge, or building a curriculum.',
+                contentDescription: 'Add your course videos — upload files or paste links from YouTube, Vimeo, etc.',
+                examples: ['Online cooking class', 'Photography masterclass', 'Fitness workout series'],
+                guide: ['Give each lesson a clear, numbered title (e.g. "Lesson 1: Getting Started")', 'Add a short description so students know what each video covers', 'You can mix uploaded videos and external links']
+            },
+            'ticket': {
+                title: 'Event & Webinar',
+                description: 'Sell access to a live or virtual event. Attendees register and purchase a ticket, then receive instructions on how to join.',
+                contentDescription: 'Configure your event — set the date, time, location/link, and any custom registration questions.',
+                examples: ['Zoom workshop', 'In-person seminar', 'Live Q&A session'],
+                guide: ['Set a clear date & time so attendees can plan ahead', 'Add a Zoom/Meet link or physical address', 'Use custom questions to collect info like T-shirt size or dietary needs']
+            },
+            'digital-file': {
+                title: 'Digital Product',
+                description: 'Sell downloadable files — e-books, templates, presets, design assets, music, or any digital file your audience can download after purchase.',
+                contentDescription: 'Upload your files. You can add multiple files, each with optional release and expiration dates.',
+                examples: ['E-book (PDF)', 'Lightroom presets pack', 'Canva templates bundle'],
+                guide: ['Bundle related files into a single zip for a cleaner experience', 'Use descriptive file names so buyers know what they\'re getting', 'Test your downloads before publishing']
+            },
+            'subscription': {
+                title: 'Subscription',
+                description: 'Offer recurring paid access to exclusive content, community, or services. Subscribers are billed on a regular cycle and retain access as long as they\'re subscribed.',
+                contentDescription: 'Describe what subscribers will receive — welcome content and ongoing benefits.',
+                examples: ['Monthly exclusive articles', 'Private community membership', 'Weekly coaching calls'],
+                guide: ['Clearly list what subscribers get so they understand the value', 'Create pricing tiers (e.g. Monthly, Quarterly, Annual) with different prices', 'Write a warm welcome message for new subscribers']
+            },
+            'newsletter': {
+                title: 'Newsletter',
+                description: 'Build a paid newsletter — subscribers pay for regular, exclusive written content delivered on a schedule you define.',
+                contentDescription: 'Set up your welcome content and choose how often you\'ll send new editions.',
+                examples: ['Weekly industry insights', 'Monthly market analysis', 'Bi-weekly creative writing'],
+                guide: ['Include a high-value welcome PDF or message so new subscribers feel it\'s worth it', 'Pick a frequency you can consistently maintain', 'Set clear expectations about what each edition will cover']
+            }
+        },
+
+        getAssetTypeDetails() { return this.assetTypeDetails[this.assetType] || { title: 'Asset', contentDescription: '', description: '', examples: [], guide: [] }; },
         mapEnumTypeToFormType(enumType) { const map = { 'VIDEO_SERIES': 'video-series', 'TICKET': 'ticket', 'DIGITAL_PRODUCT': 'digital-file', 'SUBSCRIPTION': 'subscription', 'NEWSLETTER': 'newsletter' }; return map[enumType]; },
         mapFormTypeToEnumType(formType) { const map = { 'video-series': 'VIDEO_SERIES', 'ticket': 'TICKET', 'digital-file': 'DIGITAL_PRODUCT', 'subscription': 'SUBSCRIPTION', 'newsletter': 'NEWSLETTER' }; return map[formType]; },
     }));

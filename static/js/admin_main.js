@@ -627,33 +627,38 @@ document.addEventListener('alpine:init', () => {
         assetTypeDetails: {
             'video-series': {
                 title: 'Video Course',
-                description: 'Multi-lesson video content with progress tracking',
-                contentDescription: 'Upload videos or add video links',
-                guide: ['Use clear titles for each video', 'Add descriptions to help students']
+                description: 'A structured series of video lessons your audience can purchase and watch at their own pace. Ideal for teaching skills, sharing knowledge, or building a curriculum.',
+                contentDescription: 'Add your course videos — upload files or paste links from YouTube, Vimeo, etc.',
+                examples: ['Online cooking class', 'Photography masterclass', 'Fitness workout series'],
+                guide: ['Give each lesson a clear, numbered title (e.g. "Lesson 1: Getting Started")', 'Add a short description so students know what each video covers', 'You can mix uploaded videos and external links']
             },
             'ticket': {
                 title: 'Event & Webinar',
-                description: 'Live events, workshops, or scheduled webinars',
-                contentDescription: 'Add event details and attendee questions',
-                guide: ['Provide clear joining instructions', 'Set the correct date and time']
+                description: 'Sell access to a live or virtual event. Attendees register and purchase a ticket, then receive instructions on how to join.',
+                contentDescription: 'Configure your event — set the date, time, location/link, and any custom registration questions.',
+                examples: ['Zoom workshop', 'In-person seminar', 'Live Q&A session'],
+                guide: ['Set a clear date & time so attendees can plan ahead', 'Add a Zoom/Meet link or physical address', 'Use custom questions to collect info like T-shirt size or dietary needs']
             },
             'digital-file': {
                 title: 'Digital Product',
-                description: 'Templates, presets, e-books, or file packs',
-                contentDescription: 'Upload files with release/expiration dates',
-                guide: ['Zip multiple files together', 'Test downloads before publishing']
+                description: 'Sell downloadable files — e-books, templates, presets, design assets, music, or any digital file your audience can download after purchase.',
+                contentDescription: 'Upload your files. You can add multiple files, each with optional release and expiration dates.',
+                examples: ['E-book (PDF)', 'Lightroom presets pack', 'Canva templates bundle'],
+                guide: ['Bundle related files into a single zip for a cleaner experience', 'Use descriptive file names so buyers know what they\'re getting', 'Test your downloads before publishing']
             },
             'subscription': {
                 title: 'Subscription',
-                description: 'Recurring content with membership access',
-                contentDescription: 'Describe what subscribers receive',
-                guide: ['Clearly state subscription benefits', 'Set appropriate pricing']
+                description: 'Offer recurring paid access to exclusive content, community, or services. Subscribers are billed on a regular cycle and retain access as long as they\'re subscribed.',
+                contentDescription: 'Describe what subscribers will receive — welcome content and ongoing benefits.',
+                examples: ['Monthly exclusive articles', 'Private community membership', 'Weekly coaching calls'],
+                guide: ['Clearly list what subscribers get so they understand the value', 'Create pricing tiers (e.g. Monthly, Quarterly, Annual) with different prices', 'Write a warm welcome message for new subscribers']
             },
             'newsletter': {
                 title: 'Newsletter',
-                description: 'Regular updates and exclusive content',
-                contentDescription: 'Set up welcome content and frequency',
-                guide: ['Provide valuable welcome content', 'Set clear expectations for frequency']
+                description: 'Build a paid newsletter — subscribers pay for regular, exclusive written content delivered on a schedule you define.',
+                contentDescription: 'Set up your welcome content and choose how often you\'ll send new editions.',
+                examples: ['Weekly industry insights', 'Monthly market analysis', 'Bi-weekly creative writing'],
+                guide: ['Include a high-value welcome PDF or message so new subscribers feel it\'s worth it', 'Pick a frequency you can consistently maintain', 'Set clear expectations about what each edition will cover']
             }
         },
 

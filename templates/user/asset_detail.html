@@ -86,7 +86,7 @@
 <div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()" @retry-started.window="isRetrying = true"
     @retry-completed.window="isRetrying = false"
     @show-toast.window="showToast($event.detail.message, $event.detail.type)"
-    class="max-w-7xl mx-auto px-0 sm:px-6 lg:px-8 pb-32 md:pb-24">
+    class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pb-32 md:pb-24">
 
     <!-- Toast Notification System -->
     <template x-if="toast.show">
@@ -147,16 +147,16 @@
 
     <div x-data="assetPageController" x-init="init()">
 
-        <!-- Back Nav (Padding restored for mobile) -->
-        <nav class="py-4 md:py-8 fade-in px-4 sm:px-0">
+        <!-- Back Nav -->
+        <nav class="py-2 md:py-3 fade-in">
             <a href="{{ url_for('main.landing_page') }}"
-                class="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors group">
-                <svg class="w-5 h-5 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-all group">
+                <svg class="w-4 h-4 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24"
                     stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
                         d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                {{ translate('back_to_store') }}
+                {{ translate('return_home') }}
             </a>
         </nav>
 
@@ -165,8 +165,8 @@
             <!-- LEFT COLUMN: Content -->
             <div class="lg:col-span-7 space-y-8 md:space-y-12">
 
-                <!-- Hero Section (Padding restored for mobile) -->
-                <section class="fade-in px-4 sm:px-0" style="animation-delay: 100ms;">
+                <!-- Hero Section -->
+                <section class="fade-in" style="animation-delay: 100ms;">
                     <div class="flex flex-wrap gap-3 mb-4">
                         {% set current_lang = session.get('language', 'en') %}
                         {% set custom_labels = asset_obj.details.get('labels', {}) if asset_obj.details else {} %}
@@ -267,7 +267,7 @@
                                     <div class="py-6 sm:p-8"
                                         x-data="{ type: file.file_type || getFileType(file.storage_path || file.link) }">
 
-                                        <div class="mb-4 px-4 sm:px-0">
+                                        <div class="mb-4">
                                             <h3 class="text-lg font-bold text-gray-900 dark:text-white"
                                                 x-text="file.title">
                                             </h3>
@@ -278,7 +278,7 @@
 
                                         <!-- PDF VIEWER OVERLAY & TRIGGER (dFlip Integration) -->
                                         <template x-if="type === 'pdf'">
-                                            <div class="px-4 sm:px-0">
+                                            <div>
                                                 <div class="_df_button group relative block w-full aspect-[3/4] sm:aspect-[4/3] md:aspect-[3/1] bg-gray-900 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 cursor-pointer"
                                                     :source="'/content/' + file.id" :id="'df_book_' + file.id">
 
@@ -306,11 +306,10 @@
                                                 </div>
                                             </div>
                                         </template>
-
                                         <!-- AUDIO VIEWER -->
                                         <template x-if="type === 'audio'">
                                             <div x-data="mediaPlayer(file.link, 'audio')"
-                                                class="mx-4 sm:mx-0 bg-gray-100 dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 select-none"
+                                                class="bg-gray-100 dark:bg-gray-900 rounded-xl p-4 border border-gray-200 dark:border-gray-700 select-none"
                                                 @contextmenu.prevent>
                                                 <audio x-ref="media" :src="file.link" class="hidden"
                                                     @timeupdate="updateProgress" @loadedmetadata="initMedia"
@@ -353,11 +352,10 @@
                                                 </div>
                                             </div>
                                         </template>
-
                                         <!-- VIDEO VIEWER -->
                                         <template x-if="type === 'video'">
                                             <div x-data="mediaPlayer(file.link, 'video')" x-ref="videoContainer"
-                                                class="mx-4 sm:mx-0 relative bg-black rounded-xl overflow-hidden shadow-lg group select-none"
+                                                class="relative bg-black rounded-xl overflow-hidden shadow-lg group select-none"
                                                 @contextmenu.prevent @mouseleave="showControls = false"
                                                 @mouseenter="showControls = true">
                                                 <video x-ref="media" :src="file.link"
@@ -384,27 +382,33 @@
                                                             :style="`width: ${(currentTime/duration)*100}%`"></div>
                                                     </div>
                                                     <div class="flex items-center justify-between text-white">
-                                                        <div class="flex items-center gap-3"><button
-                                                                @click="togglePlay"><svg x-show="!playing"
-                                                                    class="w-6 h-6" fill="currentColor"
-                                                                    viewBox="0 0 20 20">
+                                                        <div class="flex items-center gap-3">
+                                                            <button @click="togglePlay">
+                                                                <svg x-show="!playing" class="w-6 h-6"
+                                                                    fill="currentColor" viewBox="0 0 20 20">
                                                                     <path fill-rule="evenodd"
                                                                         d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
                                                                         clip-rule="evenodd" />
-                                                                </svg><svg x-show="playing" class="w-6 h-6"
+                                                                </svg>
+                                                                <svg x-show="playing" class="w-6 h-6"
                                                                     fill="currentColor" viewBox="0 0 20 20">
                                                                     <path fill-rule="evenodd"
                                                                         d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
                                                                         clip-rule="evenodd" />
-                                                                </svg></button><span class="text-xs font-mono"><span
+                                                                </svg>
+                                                            </button>
+                                                            <span class="text-xs font-mono"><span
                                                                     x-text="formatTime(currentTime)"></span> / <span
-                                                                    x-text="formatTime(duration)"></span></span></div>
-                                                        <button @click="toggleFullscreen"><svg class="w-5 h-5"
-                                                                fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    x-text="formatTime(duration)"></span></span>
+                                                        </div>
+                                                        <button @click="toggleFullscreen">
+                                                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                                stroke="currentColor">
                                                                 <path stroke-linecap="round" stroke-linejoin="round"
                                                                     stroke-width="2"
                                                                     d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                                                            </svg></button>
+                                                            </svg>
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -412,7 +416,7 @@
 
                                         <!-- IMAGE VIEWER -->
                                         <template x-if="type === 'image'">
-                                            <div x-data="{ lightboxOpen: false }" class="px-4 sm:px-0">
+                                            <div x-data="{ lightboxOpen: false }">
                                                 <!-- Image Thumbnail -->
                                                 <div @click="lightboxOpen = true"
                                                     class="relative rounded-xl overflow-hidden shadow-lg cursor-pointer group">
@@ -459,7 +463,7 @@
 
                                         <!-- FALLBACK -->
                                         <template x-if="type === 'other'">
-                                            <div class="px-4 sm:px-0">
+                                            <div>
                                                 <a :href="file.link" target="_blank"
                                                     class="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                                                     <div
@@ -475,7 +479,8 @@
                                                         <p class="font-bold text-sm text-gray-900 dark:text-white">{{
                                                             translate('download_file') }}</p>
                                                         <p class="text-xs text-gray-500"
-                                                            x-text="file.link.split('/').pop()"></p>
+                                                            x-text="file.link.split('/').pop()">
+                                                        </p>
                                                     </div>
                                                 </a>
                                             </div>
@@ -483,7 +488,7 @@
 
                                         <!-- Download Button (If Allowed & Not 'other' which is already a download card) -->
                                         <template x-if="asset.allow_download && type !== 'other'">
-                                            <div class="mt-4 px-4 sm:px-0">
+                                            <div class="mt-4">
                                                 <a :href="file.link" download target="_blank"
                                                     class="inline-flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors">
                                                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
@@ -745,8 +750,8 @@
                 </section>
 
                 {% if status != 'COMPLETED' %}
-                <!-- Sales Pitch (Padding restored) -->
-                <div class="space-y-12 px-4 sm:px-0">
+                <!-- Sales Pitch -->
+                <div class="space-y-12">
                     <section x-show="asset.story" class="fade-in">
                         <div class="prose prose-lg dark:prose-invert max-w-none">
                             <h2 class="text-3xl font-bold mb-6">{{ translate('about_this_product') }}</h2>
@@ -769,7 +774,8 @@
                                     </div>
                                     <div class="flex-1 min-w-0 pt-1">
                                         <p class="font-medium text-gray-900 dark:text-white text-sm"
-                                            x-text="file.title"></p>
+                                            x-text="file.title">
+                                        </p>
                                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1"
                                             x-text="file.description || '{{ translate('included_resource') }}'"></p>
                                     </div>

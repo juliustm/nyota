@@ -107,6 +107,7 @@ store_name }}{% endblock %}
                     <!-- Image Container -->
                     <div class="relative aspect-[3/4] overflow-hidden bg-gray-100 dark:bg-gray-900">
                         <img src="{{ asset.cover_image_url }}" alt="{{ asset.title }}" loading="lazy" decoding="async"
+                            width="900" height="1200"
                             class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105">
 
                         <!-- Subtle gradient overlay at bottom for text readability -->
@@ -207,10 +208,11 @@ store_name }}{% endblock %}
                     <!-- Content -->
                     <div class="p-3.5 flex flex-col flex-grow">
                         <h3
-                            class="text-base font-bold text-gray-900 dark:text-white leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1 mb-1">
+                            class="text-lg font-bold text-gray-900 dark:text-white leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1 mb-1">
                             {{ asset.title }}
                         </h3>
-                        <p class="text-gray-500 dark:text-gray-400 text-xs leading-relaxed line-clamp-2 mb-3 flex-grow">
+                        <p
+                            class="text-gray-500 dark:text-gray-400 text-base leading-relaxed line-clamp-2 mb-3 flex-grow">
                             {{ asset.description }}
                         </p>
 
@@ -274,7 +276,7 @@ store_name }}{% endblock %}
 
                         <div
                             class="flex items-center justify-between mt-auto pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                            <div class="text-base font-extrabold text-gray-900 dark:text-white">
+                            <div class="text-lg font-extrabold text-gray-900 dark:text-white">
                                 {% if asset.is_subscription and asset.details and asset.details.subscription_tiers %}
                                 {% set min_price = asset.details.subscription_tiers | map(attribute='price') |
                                 map('float') | min %}
@@ -288,7 +290,7 @@ store_name }}{% endblock %}
                                 {% endif %}
                             </div>
                             <span
-                                class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                                class="text-s font-semibold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                                 {{ translate('view_details') }}
                                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"

@@ -35,6 +35,7 @@ from models.nyota import (
 )
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
+from utils.image_utils import optimize_cover_image
 from extensions import limiter
 from services.sms_service import get_sms_provider
 
@@ -632,8 +633,11 @@ def serve_content(file_id):
 
 @main_bp.route('/media/covers/<path:filename>')
 def serve_cover_image(filename):
-    """Serve cover images from the persistent user data directory."""
-    return send_from_directory(current_app.config['COVERS_DIR'], filename)
+    """Serve cover images from the persistent user data directory with caching."""
+    response = send_from_directory(current_app.config['COVERS_DIR'], filename)
+    # 30-day browser cache — filenames include timestamps so re-uploads bust the cache
+    response.headers['Cache-Control'] = 'public, max-age=2592000, immutable'
+    return response
 
 @main_bp.route('/media/logos/<path:filename>')
 def serve_logo_image(filename):
@@ -687,11 +691,18 @@ def save_asset_from_form(asset, req):
     if 'cover_image' in req.files:
         file = req.files['cover_image']
         if file and file.filename:
-            filename = f"{asset.id or 'new'}_{int(datetime.now().timestamp())}_{secure_filename(file.filename)}"
             upload_path = current_app.config['COVERS_DIR']
-            # os.makedirs(upload_path, exist_ok=True) # Already handled in config
-            file.save(os.path.join(upload_path, filename))
-            asset.cover_image_url = f'/media/covers/{filename}'
+            filename_prefix = f"{asset.id or 'new'}_{int(datetime.now().timestamp())}"
+            try:
+                optimized_filename = optimize_cover_image(file, upload_path, filename_prefix)
+                asset.cover_image_url = f'/media/covers/{optimized_filename}'
+            except Exception as e:
+                # Fallback: save original file if optimization fails
+                current_app.logger.warning(f"Image optimization failed, saving original: {e}")
+                fallback_name = f"{filename_prefix}_{secure_filename(file.filename)}"
+                file.seek(0)
+                file.save(os.path.join(upload_path, fallback_name))
+                asset.cover_image_url = f'/media/covers/{fallback_name}'
 
     pricing_data = form_data.get('pricing', {})
     asset.price = decimal.Decimal(pricing_data.get('amount') or 0.0)

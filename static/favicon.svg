@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="50%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <style>
+      @media (prefers-color-scheme: dark) {
+        .bg { fill: #1f2937; }
+      }
+    </style>
+  </defs>
+  <!-- Rounded background -->
+  <rect class="bg" width="32" height="32" rx="7" fill="#f3f4f6"/>
+  <!-- Main 4-point star -->
+  <path d="M16 4 L18.5 12.5 L27 16 L18.5 19.5 L16 28 L13.5 19.5 L5 16 L13.5 12.5 Z" fill="url(#g)"/>
+  <!-- Small sparkle top-right -->
+  <path d="M24 5 L24.8 7.5 L27 8.5 L24.8 9.5 L24 12 L23.2 9.5 L21 8.5 L23.2 7.5 Z" fill="#c084fc" opacity="0.85"/>
+  <!-- Small sparkle bottom-left -->
+  <path d="M8 20 L8.6 22 L10.5 22.8 L8.6 23.6 L8 25.5 L7.4 23.6 L5.5 22.8 L7.4 22 Z" fill="#c084fc" opacity="0.7"/>
+  <!-- Tiny sparkle accent -->
+  <circle cx="6.5" cy="8" r="1" fill="#a855f7" opacity="0.5"/>
+  <circle cx="25.5" cy="24" r="0.8" fill="#818cf8" opacity="0.5"/>
+</svg>

@@ -8,15 +8,13 @@
 {% block og_title %}{{ store_name }}{% endblock %}
 {% block og_description %}{{ creator.get_setting('store_bio') or 'Discover amazing digital content on ' + store_name
 }}{% endblock %}
-<!-- Use creator profile image if available, else default -->
-{% block og_image %}{{ creator.profile_image or url_for('static', filename='img/default-og.jpg', _external=True) }}{%
-endblock %}
+<!-- Use meta_image from route: profile photo > random asset cover > default -->
+{% block og_image %}{{ meta_image }}{% endblock %}
 
 {% block twitter_title %}{{ store_name }}{% endblock %}
 {% block twitter_description %}{{ creator.get_setting('store_bio') or 'Discover amazing digital content on ' +
 store_name }}{% endblock %}
-{% block twitter_image %}{{ creator.profile_image or url_for('static', filename='img/default-og.jpg', _external=True)
-}}{% endblock %}
+{% block twitter_image %}{{ meta_image }}{% endblock %}
 
 
 
@@ -24,46 +22,18 @@ store_name }}{% endblock %}
 {% block content %}
 <div class="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 pb-8">
 
-    <!-- HERO SECTION: Compact Profile & Bio -->
+    <!-- HERO SECTION: Tagline, Bio & Social Links (Logo/Name is in the top bar) -->
     {% if creator.get_setting('store_profile_enabled') %}
-    <header id="profile-hero" x-data x-init="$nextTick(() => { $dispatch('toggle-brand-progress', { value: 0 }); })"
-        @scroll.window="
-                const rect = $el.getBoundingClientRect();
-                const progress = Math.max(0, Math.min(1, 1 - (rect.bottom - 60) / 120));
-                $dispatch('toggle-brand-progress', { value: progress });
-            " class="text-center pt-4 pb-2 fade-in relative mb-1">
+    <header id="profile-hero" class="text-center pt-2 pb-2 fade-in relative mb-1">
 
         <div class="max-w-md mx-auto flex flex-col items-center">
 
-            <div class="flex items-center gap-3 mb-2">
-                <!-- Profile Photo -->
-                {% if creator.get_setting('store_photo_url') %}
-                <div class="relative group shrink-0">
-                    <div
-                        class="w-14 h-14 rounded-full p-0.5 bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 shadow-sm">
-                        <div
-                            class="w-full h-full rounded-full border border-white dark:border-gray-900 overflow-hidden bg-white dark:bg-gray-800">
-                            <img src="{{ creator.get_setting('store_photo_url') }}" alt="{{ store_name }}"
-                                class="w-full h-full object-cover">
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-
-                <div class="text-left">
-                    <!-- Store Name / Creator Name -->
-                    <h1 class="text-xl font-bold text-gray-900 dark:text-white tracking-tight leading-none mb-0.5">
-                        {{ creator.get_setting('store_name', store_name) }}
-                    </h1>
-
-                    <!-- Signature / Tagline -->
-                    {% if creator.get_setting('store_signature') %}
-                    <p class="text-indigo-600 dark:text-indigo-400 font-medium text-xs tracking-wide uppercase">
-                        {{ creator.get_setting('store_signature') }}
-                    </p>
-                    {% endif %}
-                </div>
-            </div>
+            <!-- Signature / Tagline -->
+            {% if creator.get_setting('store_signature') %}
+            <p class="text-indigo-600 dark:text-indigo-400 font-medium text-xs tracking-wide uppercase mb-1.5">
+                {{ creator.get_setting('store_signature') }}
+            </p>
+            {% endif %}
 
             <!-- Extended Bio -->
             <div

@@ -10,6 +10,7 @@ from datetime import timedelta
 from flask import Flask, g, session, request
 from flask_babel import Babel
 import mistune
+from flask_compress import Compress
 
 from config import Config
 from models.nyota import db, migrate
@@ -55,6 +56,8 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
     babel.init_app(app, locale_selector=get_locale)
+    Compress(app)
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year cache for static files
 
     # --- Register Jinja2 Filters ---
     app.jinja_env.filters['format_currency'] = format_currency
@@ -96,5 +99,13 @@ def create_app(config_class=Config):
         if creator:
             return creator.get_setting('payment_uza_currency', 'TZS')
         return 'TZS'
-        
+
+    # --- Cache Headers for Static Assets ---
+    @app.after_request
+    def add_cache_headers(response):
+        if request.path.startswith('/static/'):
+            response.cache_control.max_age = 31536000
+            response.cache_control.public = True
+        return response
+
     return app

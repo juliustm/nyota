@@ -1444,12 +1444,26 @@ def landing_page():
             if count >= 3: break
 
     # --- Dynamic Metadata for Social Sharing ---
-    # Use a random published asset to make social previews dynamic and engaging
+    # Priority: 1. Profile photo (if set), 2. Random asset cover, 3. Default fallback
     random_asset = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED).order_by(func.random()).first()
     
     meta_title = creator.store_name or "Nyota ✨ Store"
     meta_description = creator.get_setting('store_bio') or f"Discover amazing digital content on {creator.store_name}."
     meta_image = url_for('static', filename='img/default-og.jpg', _external=True)
+    
+    # 1. Try profile photo first
+    profile_photo = creator.get_setting('store_photo_url')
+    if profile_photo:
+        if profile_photo.startswith('http'):
+            meta_image = profile_photo
+        else:
+            meta_image = request.host_url.rstrip('/') + profile_photo
+    elif random_asset and random_asset.cover_image_url:
+        # 2. Fall back to a random published asset's cover image
+        if random_asset.cover_image_url.startswith('http'):
+            meta_image = random_asset.cover_image_url
+        else:
+            meta_image = url_for('static', filename=random_asset.cover_image_url.lstrip('/'), _external=True)
     
     if random_asset:
         # Build persuasive meta from random asset
@@ -1460,14 +1474,6 @@ def landing_page():
         if len(desc_text) > 140:
             desc_text = desc_text[:137] + "..."
         meta_description = f"{desc_text} 🛒 Get instant access at {creator.store_name}!"
-        
-        # Ensure absolute URL for image
-        if random_asset.cover_image_url:
-            if random_asset.cover_image_url.startswith('http'):
-                meta_image = random_asset.cover_image_url
-            else:
-                # Relative URL - make it absolute
-                meta_image = url_for('static', filename=random_asset.cover_image_url.lstrip('/'), _external=True)
 
     return render_template(
         'user/index.html',

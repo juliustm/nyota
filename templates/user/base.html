@@ -8,6 +8,11 @@
     <!-- Canonical URL -->
     <link rel="canonical" href="{{ request.url }}">
 
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='nyota.icon.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='nyota.icon.png') }}">
+
     <title>{% block title %}Nyota ✨ Storefront{% endblock %}</title>
 
     <!-- SEO & Social Metadata -->
@@ -95,76 +100,83 @@
     <header
         class="sticky top-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700/50">
         <nav class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-14"
+            <div class="flex items-center justify-between h-16"
                 x-data="{ brandOpacity: 1, brandY: 0, searchOpen: false }"
                 @toggle-brand.window="brandOpacity = $event.detail.value ? 1 : 0; brandY = $event.detail.value ? 0 : -10"
                 @toggle-brand-progress.window="brandOpacity = $event.detail.value; brandY = (1 - $event.detail.value) * -10"
                 @keydown.escape.window="searchOpen = false">
 
-                <!-- Left: Brand + Search -->
+                <!-- Left: Brand -->
                 <div class="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                     <a href="{{ url_for('main.landing_page') }}"
-                        class="flex items-center space-x-2 will-change-transform shrink-0"
+                        class="flex items-center space-x-2 will-change-transform min-w-0"
                         :style="`opacity: ${brandOpacity}; transform: translateY(${brandY}px); pointer-events: ${brandOpacity < 0.5 ? 'none' : 'auto'}`">
                         {% if creator and (creator.get_setting('store_logo_url') or
                         creator.get_setting('store_photo_url'))
                         %}
                         <img src="{{ creator.get_setting('store_logo_url') or creator.get_setting('store_photo_url') }}"
-                            alt="{{ store_name }}" class="w-8 h-8 rounded-lg object-cover shadow-md">
+                            alt="{{ store_name }}" class="w-9 h-9 rounded-lg object-cover shadow-md shrink-0">
                         {% else %}
                         <div
-                            class="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none"
+                            class="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md shrink-0">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5.5 w-5.5 text-white" fill="none"
                                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round"
                                     d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                             </svg>
                         </div>
                         {% endif %}
-                        <span class="text-lg font-bold text-gray-900 dark:text-white hidden sm:inline">{{ store_name
-                            }}</span>
+                        <span
+                            class="text-base sm:text-xl font-bold text-gray-900 dark:text-white truncate max-w-[12rem] sm:max-w-[14rem] lg:max-w-none">{{
+                            store_name }}</span>
                     </a>
                 </div>
 
                 <!-- Right: Actions -->
-                <div class="flex items-center space-x-1.5 sm:space-x-3 shrink-0">
+                <div class="flex items-center space-x-2 sm:space-x-3 shrink-0 relative">
                     {% if not hide_navbar_search %}
-                    <!-- Search: icon toggles to input -->
+                    <!-- Search: icon toggles to dropdown input -->
                     <button x-show="!searchOpen"
                         @click="searchOpen = true; $nextTick(() => $refs.navSearchInput && $refs.navSearchInput.focus())"
-                        class="p-1.5 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        class="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                         title="{{ translate('search_placeholder') or 'Search...' }}">
-                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg class="w-5.5 h-5.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                     </button>
-                    <form x-show="searchOpen" x-transition:enter="transition ease-out duration-150"
-                        x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                    <!-- Search dropdown (absolutely positioned below the bar) -->
+                    <div x-show="searchOpen" x-transition:enter="transition ease-out duration-150"
+                        x-transition:enter-start="opacity-0 -translate-y-2"
+                        x-transition:enter-end="opacity-100 translate-y-0"
                         x-transition:leave="transition ease-in duration-100"
-                        x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
-                        x-cloak action="{{ url_for('main.landing_page') }}" method="GET"
-                        class="flex items-center gap-1.5">
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
-                                <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24"
-                                    stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                </svg>
+                        x-transition:leave-start="opacity-100 translate-y-0"
+                        x-transition:leave-end="opacity-0 -translate-y-2" @click.away="searchOpen = false" x-cloak
+                        class="absolute top-full right-0 mt-2 z-50">
+                        <form action="{{ url_for('main.landing_page') }}" method="GET"
+                            class="flex items-center gap-1.5 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-2">
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24"
+                                        stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                </div>
+                                <input x-ref="navSearchInput" type="text" name="q"
+                                    value="{{ request.args.get('q', '') }}"
+                                    placeholder="{{ translate('search_placeholder') or 'Search...' }}"
+                                    class="w-48 sm:w-64 pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all">
                             </div>
-                            <input x-ref="navSearchInput" type="text" name="q" value="{{ request.args.get('q', '') }}"
-                                placeholder="{{ translate('search_placeholder') or 'Search...' }}"
-                                class="w-36 sm:w-52 pl-8 pr-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all">
-                        </div>
-                        <button type="button" @click="searchOpen = false"
-                            class="p-1 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
-                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-                    </form>
+                            <button type="button" @click="searchOpen = false"
+                                class="p-1.5 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </form>
+                    </div>
                     {% endif %}
                     {% block navbar_filter_modal %}{% endblock %}
                     {% if 'creator_id' in session %}<a href="{{ url_for('admin.creator_login') }}"

@@ -857,6 +857,15 @@ document.addEventListener('alpine:init', () => {
                     console.error('[Resumption] Error parsing pending purchase:', e);
                 }
             }
+
+            // --- VISIBILITY API HOOK ---
+            // Fixes mobile dropped SSE connections by checking status instantly when browser returns to foreground
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && this.status === 'waiting' && this.purchaseId) {
+                    console.log('👀 [VISIBILITY] User returned to tab. Instantly verifying payment status...');
+                    this.checkPaymentStatus();
+                }
+            });
         },
 
         openModal(prefillNumber = null, autoRetry = false) {
@@ -878,13 +887,10 @@ document.addEventListener('alpine:init', () => {
         },
 
         startTimeoutTimer() {
+            // DEPRECATED: We no longer arbitrarily reload the page after 15 seconds.
+            // This interrupted users who were still entering their mobile money PIN.
+            // Reliability is now handled by robust parallel polling and the visibility API.
             this.clearModalTimeout();
-            this.modalTimeout = setTimeout(() => {
-                if (this.isOpen && this.status === 'waiting') {
-                    // Reload the page to show the "Still Waiting" / "Retry" state (yellow card)
-                    window.location.reload();
-                }
-            }, 15000); // 15 seconds
         },
 
         clearModalTimeout() {
@@ -972,8 +978,11 @@ document.addEventListener('alpine:init', () => {
                     localStorage.setItem(`nyota_purchase_${this.asset.id}`, JSON.stringify(pendingPurchase));
 
                     this.dispatchStatus('PENDING', { phoneNumber: this.phoneNumber });
+
+                    // Belt and suspenders: Listen via SSE, but also poll in parallel
                     this.listenForPaymentResult();
-                    this.startTimeoutTimer();
+                    this.startPolling();
+                    this.startTimeoutTimer(); // (Now deprecated/empty)
                 } else {
                     this.status = 'failed';
                     this.errorMessage = result.message || 'Could not start payment.';
@@ -1012,8 +1021,12 @@ document.addEventListener('alpine:init', () => {
                     this.status = 'waiting';
                     this.statusMessage = result.message || 'New request sent. Check your phone.';
                     this.dispatchStatus('PENDING', { phoneNumber: this.phoneNumber });
-                    this.startTimeoutTimer();
-                    // Ensure listener is active (it might have been closed if we navigated away, though we kept it open on timeout)
+                    this.startTimeoutTimer(); // (Now deprecated/empty)
+
+                    // Re-initiate robust checking
+                    this.startPolling();
+
+                    // Ensure listener is active (it might have been closed)
                     if (!this.eventSource || this.eventSource.readyState === EventSource.CLOSED) {
                         this.listenForPaymentResult();
                     }
@@ -1089,7 +1102,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         startPolling() {
-            console.log('🔄 [POLLING] Starting background payment verification (every 5 seconds)');
+            console.log('🔄 [POLLING] Starting robust background payment verification (every 5 seconds)');
             this.stopPolling(); // Clear any existing interval
             this.pollCount = 0; // Reset counter on fresh start
 

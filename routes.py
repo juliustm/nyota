@@ -22,7 +22,7 @@ from flask import (
     Response
 )
 from werkzeug.utils import secure_filename
-from sqlalchemy import or_, func, distinct, case
+from sqlalchemy import or_, func, distinct, case, text
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
@@ -587,39 +587,59 @@ def save_asset():
 
 @main_bp.route('/content/<int:file_id>')
 def serve_content(file_id):
+    # Get the file and asset first to check if it's free
+    asset_file = AssetFile.query.get_or_404(file_id)
+    is_free = float(asset_file.asset.price) == 0
+
     # Check if user is logged in
     customer_phone = session.get('customer_phone')
-    # STRICT SESSION CHECK: Ensure the session is fully verified
-    if not customer_phone or not session.get('is_verified'):
-        abort(403)
-        
-    # Get the file
-    asset_file = AssetFile.query.get_or_404(file_id)
-    
-    # Check if user purchased the asset
-    customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
-    if not customer:
-        abort(403)
-        
-    purchase = Purchase.query.filter_by(
-        customer_id=customer.id,
-        asset_id=asset_file.asset_id,
-        status=PurchaseStatus.COMPLETED
-    ).order_by(Purchase.purchase_date.desc()).first()
-    
-    # Allow creator to view their own assets
     creator_id = session.get('creator_id')
     is_creator = creator_id and asset_file.asset.creator_id == creator_id
-    
-    if not purchase and not is_creator:
-        abort(403)
+
+    # STRICT SESSION CHECK: Ensure the session is fully verified, UNLESS it's a free asset or creator
+    if not is_creator:
+        if not customer_phone:
+            abort(403)
+        if not is_free and not session.get('is_verified'):
+            abort(403)
+            
+        # For free assets with an unverified session, ensure they just bought THIS specific asset
+        if is_free and not session.get('is_verified'):
+            unverified_ids = session.get('unverified_purchase_ids', [])
+            # We must check if ANY purchase in their unverified list matches this asset
+            has_valid_unverified_purchase = False
+            if unverified_ids:
+                has_valid_unverified_purchase = Purchase.query.filter(
+                    Purchase.id.in_(unverified_ids),
+                    Purchase.asset_id == asset_file.asset_id,
+                    Purchase.status == PurchaseStatus.COMPLETED
+                ).first() is not None
+                
+            if not has_valid_unverified_purchase:
+                abort(403)
         
-    # Check subscription status
-    if purchase and purchase.asset.is_subscription:
-        is_active, expiry_date = check_subscription_status(purchase)
-        if not is_active:
-            flash(f"Your subscription expired on {expiry_date.strftime('%Y-%m-%d')}. Please renew to access this content.", "warning")
-            return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
+    # Check if user purchased the asset (if not creator)
+    purchase = None
+    if not is_creator:
+        customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
+        if not customer:
+            abort(403)
+            
+        purchase = Purchase.query.filter_by(
+            customer_id=customer.id,
+            asset_id=asset_file.asset_id,
+            status=PurchaseStatus.COMPLETED
+        ).order_by(Purchase.purchase_date.desc()).first()
+        
+        if not purchase:
+            abort(403)
+            
+        # Check subscription status
+        if purchase.asset.is_subscription:
+            is_active, expiry_date = check_subscription_status(purchase)
+            if not is_active:
+                flash(f"Your subscription expired on {expiry_date.strftime('%Y-%m-%d')}. Please renew to access this content.", "warning")
+                return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
         
     # Serve the file
     # storage_path is stored as "secure_uploads/filename"
@@ -1574,11 +1594,21 @@ def asset_detail(slug):
         customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
         if customer:
             # Check for completed purchase logic
-            has_purchased = Purchase.query.filter_by(
+            purchase_query = Purchase.query.filter_by(
                 customer_id=customer.id, 
                 asset_id=asset_obj.id, 
                 status=PurchaseStatus.COMPLETED
-            ).first() is not None
+            )
+            
+            # If session is unverified, only allow access if this asset's purchase is in their unverified list
+            if not session.get('is_verified'):
+                unverified_ids = session.get('unverified_purchase_ids', [])
+                if not unverified_ids:
+                    purchase_query = purchase_query.filter(text("1 = 0")) # Force empty result
+                else:
+                    purchase_query = purchase_query.filter(Purchase.id.in_(unverified_ids))
+                    
+            has_purchased = purchase_query.first() is not None
 
     # Visibility Rules
     if asset_obj.status == AssetStatus.PUBLISHED:
@@ -1802,10 +1832,17 @@ def initiate_payment():
                 session.pop('customer_phone', None)
                 session.pop('is_verified', None)
                 session.pop('free_purchase_only', None)
+                session.pop('unverified_purchase_ids', None)
             
             session['customer_phone'] = str(phone_number).strip()
             session['is_verified'] = False
             session['free_purchase_only'] = True
+            
+            # Track this specific purchase so they can only access it, not all assets for this phone
+            unverified_ids = session.get('unverified_purchase_ids', [])
+            if purchase.id not in unverified_ids:
+                unverified_ids.append(purchase.id)
+            session['unverified_purchase_ids'] = unverified_ids
         
         session.permanent = True
         session.modified = True
@@ -1891,9 +1928,17 @@ def initiate_payment():
         session.pop('customer_phone', None)
         session.pop('is_verified', None)
         session.pop('free_purchase_only', None)
+        session.pop('unverified_purchase_ids', None) # Clear out previous unverified purchases
         
     session['customer_phone'] = str(phone_number).strip()
     session['is_verified'] = False
+    
+    # Track pending purchase to scope unverified access if they visit /library
+    unverified_ids = session.get('unverified_purchase_ids', [])
+    if purchase.id not in unverified_ids:
+        unverified_ids.append(purchase.id)
+    session['unverified_purchase_ids'] = unverified_ids
+    
     session.permanent = True # Ensure cookie persists across requests
     session.modified = True
 
@@ -2403,6 +2448,8 @@ def library():
         session['customer_phone'] = form_phone
         session['customer_id'] = matching_purchases[0].customer_id
         session['is_verified'] = True # Grant full access
+        # Clear unverified constraints since session is now fully verified
+        session.pop('unverified_purchase_ids', None) 
         db.session.commit()
         
         flash('Access granted! Welcome to your library.', 'success')
@@ -2413,7 +2460,19 @@ def library():
     if customer_phone:
         customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
         if customer:
-            purchases = Purchase.query.filter_by(customer_id=customer.id).order_by(Purchase.purchase_date.desc()).all()
+            purchase_query = Purchase.query.filter_by(customer_id=customer.id)
+            
+            # Privacy/Security Check: Restrict library visibility for unverified sessions
+            if not session.get('is_verified'):
+                unverified_ids = session.get('unverified_purchase_ids', [])
+                if not unverified_ids:
+                    # If they somehow have a phone in session but no tracked IDs and aren't verified, show nothing
+                    purchase_query = purchase_query.filter(text("1 = 0"))
+                else:
+                    purchase_query = purchase_query.filter(Purchase.id.in_(unverified_ids))
+            
+            purchases = purchase_query.order_by(Purchase.purchase_date.desc()).all()
+            
             # Serialize purchases with asset data
             for purchase in purchases:
                 # Skip purchases with deleted/orphaned assets
@@ -2477,6 +2536,7 @@ def finalize_session(purchase_id):
     if purchase.status == PurchaseStatus.COMPLETED:
         session['is_verified'] = True
         session.permanent = True
+        session.pop('unverified_purchase_ids', None) # Clear constraint since verified
         flash("Payment successful! Welcome to your library.", "success")
         return redirect(url_for('main.library'))
     else:

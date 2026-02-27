@@ -1771,6 +1771,111 @@ def initiate_payment():
     db.session.commit()
 
     creator = asset.creator
+
+    # =========================================================================
+    # == FREE ASSET CHECKOUT (price == 0)
+    # =========================================================================
+    if float(amount) == 0:
+        current_app.logger.info(f"Free checkout for asset '{asset.title}' (ID: {asset.id}) by phone {phone_number}")
+        
+        # Complete the purchase immediately — no payment needed
+        purchase.status = PurchaseStatus.COMPLETED
+        purchase.payment_gateway_ref = 'FREE'
+        
+        # Update asset's performance statistics
+        asset.total_sales = (asset.total_sales or 0) + 1
+        # total_revenue stays unchanged (it's a free purchase)
+        
+        db.session.commit()
+        
+        # --- Session management: preserve existing verified sessions ---
+        existing_phone = session.get('customer_phone')
+        existing_verified = session.get('is_verified', False)
+        phone_matches = existing_phone and str(existing_phone).strip() == str(phone_number).strip()
+        
+        if phone_matches and existing_verified:
+            # User already has a verified session for this phone — don't downgrade
+            current_app.logger.info(f"Free checkout: Preserving existing verified session for {phone_number}")
+        else:
+            # New visitor or different phone — set scoped session
+            if existing_phone and not phone_matches:
+                session.pop('customer_phone', None)
+                session.pop('is_verified', None)
+                session.pop('free_purchase_only', None)
+            
+            session['customer_phone'] = str(phone_number).strip()
+            session['is_verified'] = False
+            session['free_purchase_only'] = True
+        
+        session.permanent = True
+        session.modified = True
+        
+        # --- Optionally call UZA API to create a record (if configured) ---
+        uza_pk = creator.get_setting('payment_uza_pk')
+        uza_product_id = None
+        
+        if tier and tier.get('uza_product_id'):
+            uza_product_id_str = str(tier.get('uza_product_id')).strip()
+            if uza_product_id_str:
+                try:
+                    uza_product_id = int(uza_product_id_str)
+                except (ValueError, TypeError):
+                    pass
+        
+        if not uza_product_id and asset.details and asset.details.get('uza_product_id'):
+            uza_product_id_str = str(asset.details.get('uza_product_id')).strip()
+            if uza_product_id_str:
+                try:
+                    uza_product_id = int(uza_product_id_str)
+                except (ValueError, TypeError):
+                    pass
+        
+        # Only call UZA if both PK and product ID are configured
+        if uza_pk and uza_product_id:
+            try:
+                uza_payload = {
+                    "products": [{"id": uza_product_id, "name": asset.title, "quantity": 1, "price": 0}],
+                    "payment": {"type": "payby.selcom", "walletid": phone_number},
+                    "reference": purchase.transaction_token,
+                    "pk": uza_pk,
+                    "totalAmount": "0",
+                    "currency": creator.get_setting('payment_uza_currency', 'TZS'),
+                    "meta": {
+                        "refcode": creator.get_setting('payment_uza_refcode', '#web'),
+                        "source": creator.get_setting('payment_uza_source', '#nyota')
+                    }
+                }
+                current_app.logger.info(f"UZA API (Free) Request Payload: {json.dumps(uza_payload, indent=2)}")
+                response = requests.post("https://uza.co.tz/api/interface/embeddable/order", json=uza_payload, timeout=30)
+                current_app.logger.info(f"UZA API (Free) Response: {response.status_code} - {response.text[:500]}")
+            except Exception as e:
+                # UZA failure for free assets is non-fatal — the purchase is already completed
+                current_app.logger.warning(f"UZA API call for free asset failed (non-fatal): {e}")
+        else:
+            current_app.logger.info(f"Free checkout: No UZA integration configured, skipping API call.")
+        
+        # --- SMS Notification ---
+        try:
+            sms_provider = get_sms_provider(creator)
+            if sms_provider:
+                base_url = request.url_root.rstrip('/')
+                sms_provider.send_purchase_confirmation(purchase, base_url=base_url)
+                current_app.logger.info(f"SMS confirmation sent for free purchase to {phone_number}")
+        except Exception as e:
+            current_app.logger.error(f"Failed to send SMS for free purchase: {e}")
+        
+        # Return success with redirect to the asset detail page
+        return jsonify({
+            'success': True,
+            'is_free': True,
+            'message': 'Access granted!',
+            'purchase_id': purchase.id,
+            'redirect_url': url_for('main.finalize_free_session', purchase_id=purchase.id)
+        })
+    
+    # =========================================================================
+    # == PAID ASSET CHECKOUT (price > 0) — existing flow
+    # =========================================================================
     uza_pk = creator.get_setting('payment_uza_pk')
     if not uza_pk:
         current_app.logger.error(f"UZA Payment for creator {creator.id} failed: Public Key (PK) not configured.")
@@ -1785,6 +1890,7 @@ def initiate_payment():
     if session.get('customer_phone') and str(session.get('customer_phone')).strip() != str(phone_number).strip():
         session.pop('customer_phone', None)
         session.pop('is_verified', None)
+        session.pop('free_purchase_only', None)
         
     session['customer_phone'] = str(phone_number).strip()
     session['is_verified'] = False
@@ -2270,10 +2376,13 @@ def library():
             return redirect(url_for('main.library'))
         
         # Search for matching customer and purchase
+        # Exclude free purchases (amount_paid == 0) from authentication to prevent
+        # someone from using a free purchase to impersonate another phone number's library
         matching_purchases = Purchase.query.join(Customer).filter(
             Customer.whatsapp_number == form_phone,
             func.date(Purchase.purchase_date) == purchase_date,
-            Purchase.status == PurchaseStatus.COMPLETED
+            Purchase.status == PurchaseStatus.COMPLETED,
+            Purchase.amount_paid > 0
         ).all()
         
         if not matching_purchases:
@@ -2372,6 +2481,30 @@ def finalize_session(purchase_id):
         return redirect(url_for('main.library'))
     else:
         flash("Payment not yet confirmed. Please wait or check your phone.", "warning")
+        return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
+
+@main_bp.route('/auth/finalize-free-session/<int:purchase_id>')
+def finalize_free_session(purchase_id):
+    """
+    Route hit after a free asset acquisition to set up the session.
+    Unlike finalize_session, this does NOT grant full library access
+    unless the user already had a verified session.
+    """
+    purchase = Purchase.query.get_or_404(purchase_id)
+    
+    # Security: Ensure the session phone matches the purchase phone
+    session_phone = session.get('customer_phone')
+    if not session_phone or not purchase.customer or purchase.customer.whatsapp_number != session_phone:
+        flash("Session mismatch. Please try again.", "error")
+        return redirect(url_for('main.landing_page'))
+    
+    if purchase.status == PurchaseStatus.COMPLETED and float(purchase.amount_paid) == 0:
+        # Don't upgrade to verified — the free purchase session was already set in initiate_payment
+        # Just redirect to the asset detail page where they can see their content
+        session.permanent = True
+        return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
+    else:
+        # Shouldn't happen, but handle gracefully
         return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
 
 @main_bp.route('/api/cancel-payment', methods=['POST'])

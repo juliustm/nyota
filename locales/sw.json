@@ -158,5 +158,9 @@
     "full_screen": "Skrini Nzima",
     "enter_phone_details": "Weka namba yako ya simu ili kukamilisha malipo salama.",
     "secure_payment_trust": "Malipo Salama na Rahisi kwa M-Pesa, Airtel Money, Tigo Pesa, na HaloPesa.",
-    "supported_wallets": "Inapokea mitandao yote ya simu."
+    "supported_wallets": "Inapokea mitandao yote ya simu.",
+    "get_free_access": "Pata Bure",
+    "enter_phone_free": "Tafadhali weka namba ya simu sahihi. Tutatumia namba hii kukupatia ufikiaji wa kudumu wa maudhui haya ya bure.",
+    "granting_access": "Inatoa Ufikiaji",
+    "free": "Bure"
 }

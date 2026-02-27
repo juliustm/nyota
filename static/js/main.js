@@ -807,6 +807,14 @@ document.addEventListener('alpine:init', () => {
         maxPolls: 120, // 10 minutes at 5s interval
         modalTimeout: null, // Timeout for modal auto-refresh
 
+        get isFree() {
+            // Check if this is a free asset (no tier selected or tier price is 0)
+            if (this.selectedTier && this.selectedTier.price) {
+                return parseFloat(this.selectedTier.price) === 0;
+            }
+            return parseFloat(this.asset.price || 0) === 0;
+        },
+
         init() {
             this.$watch('isOpen', value => {
                 if (!value) {
@@ -936,6 +944,20 @@ document.addEventListener('alpine:init', () => {
                 const result = await response.json();
 
                 if (response.ok && result.success) {
+                    // --- FREE ASSET: instant success, no payment verification ---
+                    if (result.is_free) {
+                        this.status = 'success';
+                        this.statusMessage = result.message || 'Access granted!';
+                        this.dispatchStatus('COMPLETED');
+                        localStorage.setItem('nyota_phone', this.phoneNumber);
+
+                        setTimeout(() => {
+                            window.location.href = result.redirect_url || '/library';
+                        }, 800);
+                        return;
+                    }
+
+                    // --- PAID ASSET: wait for payment verification ---
                     this.status = 'waiting';
                     this.statusMessage = result.message || 'Check your phone...';
                     this.purchaseId = result.purchase_id;

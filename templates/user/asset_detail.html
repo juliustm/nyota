@@ -1,4 +1,6 @@
 {% extends "user/base.html" %}
+{% set asset_type_key = asset_obj.asset_type.name.lower() if asset_obj.asset_type and asset_obj.asset_type.name is
+defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'digital_product') %}
 
 {% block title %}{{ asset_obj.title }} | {{ store_name }}{% endblock %}
 
@@ -148,7 +150,7 @@
     <div x-data="assetPageController" x-init="init()">
 
         <!-- Back Nav + Label Row -->
-        {% set current_lang = session.get('language', 'en') %}
+        {% set current_lang = g.language %}
         {% set custom_labels = asset_obj.details.get('labels', {}) if asset_obj.details else {} %}
         {% set custom_label = custom_labels.get(current_lang) %}
         {% if not custom_label %}
@@ -994,10 +996,9 @@
                                             class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:scale-[1.02] transition-transform disabled:opacity-70 shadow-xl flex items-center justify-center gap-2">
                                             <span x-show="!isProcessing">
                                                 {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
-                                                <span>{{ translate('get_free_access') or 'Get Free Access' }}</span>
+                                                <span>{{ translate('cta_free_' ~ asset_type_key) }}</span>
                                                 {% else %}
-                                                <span
-                                                    x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>
+                                                <span>{{ translate('cta_paid_' ~ asset_type_key) }}</span>
                                                 {% endif %}
                                             </span>
                                             <span x-show="isProcessing" class="flex items-center gap-2">
@@ -1206,10 +1207,9 @@
                             class="px-8 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 disabled:opacity-70 disabled:shadow-none min-w-[140px]">
                             <span x-show="!isProcessing">
                                 {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
-                                <span>{{ translate('get_free_access') or 'Get Free Access' }}</span>
+                                <span>{{ translate('cta_free_' ~ asset_type_key) }}</span>
                                 {% else %}
-                                <span
-                                    x-text="asset.is_subscription ? '{{ translate('subscribe_now') }}' : '{{ translate('purchase_now') }}'"></span>
+                                <span>{{ translate('cta_paid_' ~ asset_type_key) }}</span>
                                 {% endif %}
                             </span>
                             <span x-show="isProcessing" class="flex items-center justify-center">
@@ -1253,8 +1253,8 @@
                     <div class="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-6 sm:hidden"></div>
                     <div x-show="status === 'ready' || status === 'failed'">
                         <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                            <span x-show="isFree">{{ translate('get_free_access') or 'Get Free Access' }}</span>
-                            <span x-show="!isFree">{{ translate('complete_purchase') }}</span>
+                            <span x-show="isFree">{{ translate('cta_free_' ~ asset_type_key) }}</span>
+                            <span x-show="!isFree">{{ translate('cta_paid_' ~ asset_type_key) }}</span>
                         </h3>
 
                         <!-- Tier Selection -->
@@ -1279,9 +1279,8 @@
                         </div>
 
                         <p class="text-gray-600 dark:text-gray-400 mb-6">
-                            <span x-show="isFree">{{ translate('enter_phone_free') or 'Enter your phone number to claim
-                                this free content.' }}</span>
-                            <span x-show="!isFree">{{ translate('enter_phone_details') }}</span>
+                            <span x-show="isFree">{{ translate('inst_free_' ~ asset_type_key) }}</span>
+                            <span x-show="!isFree">{{ translate('inst_paid_' ~ asset_type_key) }}</span>
                         </p>
                         <form @submit.prevent="initiatePayment()">
                             <div class="mb-6"><input type="tel" x-ref="phoneInput" x-model="phoneNumber"
@@ -1291,9 +1290,9 @@
                                 class="p-3 mb-6 bg-red-50 text-red-600 rounded-lg text-sm text-center"></p>
                             <button type="submit"
                                 class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl text-lg hover:scale-[1.01] transition-transform">
-                                <span x-show="isFree">{{ translate('get_free_access') or 'Get Free Access' }}</span>
+                                <span x-show="isFree">{{ translate('cta_free_' ~ asset_type_key) }}</span>
                                 <span x-show="!isFree"
-                                    x-text="selectedTier ? '{{ translate('pay_verb') }} ' + currency + formatCurrency(selectedTier.price) : '{{ translate('pay_verb') }} ' + currency + formatCurrency(asset.price)"></span>
+                                    x-text="selectedTier ? '{{ translate('cta_paid_' ~ asset_type_key) }} • ' + currency + formatCurrency(selectedTier.price) : '{{ translate('cta_paid_' ~ asset_type_key) }} • ' + currency + formatCurrency(asset.price)"></span>
                             </button>
                         </form>
                     </div>

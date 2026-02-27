@@ -158,7 +158,7 @@ store_name }}{% endblock %}
                             {% endif %}
 
                             <!-- Asset Type Badge -->
-                            {% set current_lang = session.get('language', 'en') %}
+                            {% set current_lang = g.language %}
                             {% set custom_labels = asset.details.get('labels', {}) if asset.details else {} %}
                             {% set custom_label = custom_labels.get(current_lang) %}
                             {% if not custom_label %}

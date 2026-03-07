@@ -350,15 +350,14 @@ store_name }}{% endblock %}
 <script>
     setTimeout(function () {
         try {
-            var items = [
-                {% for asset in assets %}
-            { item_id: '{{asset.id}}', item_name: '{{asset.title|e}}', item_category: '{{asset.asset_type.name}}', price: { { asset.price | float } }, index: { { loop.index0 } } } { { ',' if not loop.last } }
-        {% endfor %}
-        ];
-        window.nyotaTrack('view_item_list',
-            { item_list_id: 'storefront', item_list_name: '{{store_name|e}}', items: items },
-            { event: 'ViewContent', params: { content_type: 'product_group', content_name: '{{store_name|e}}' } }
-        );
+            var items = {{ assets | map(attribute = 'id') | list | tojson
+        }}.map(function (id, i) {
+            return { item_id: String(id), index: i };
+        });
+    window.nyotaTrack('view_item_list',
+        { item_list_id: 'storefront', item_list_name: {{ store_name | tojson }}, items: items},
+        { event: 'ViewContent', params: { content_type: 'product_group', content_name: {{ store_name | tojson }}}}
+    );
     } catch (e) { }
 }, 0);
 </script>

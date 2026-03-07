@@ -345,6 +345,11 @@
                         class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors">
                         <span class="truncate">Payments</span>
                     </button>
+                    <button @click.prevent="integrationTab = 'marketing'"
+                        :class="integrationTab === 'marketing' ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'"
+                        class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors">
+                        <span class="truncate">Marketing & Analytics</span>
+                    </button>
                 </nav>
             </div>
 
@@ -651,6 +656,97 @@
                             </div>
                         </div>
 
+                    </div>
+                </div>
+
+                <!-- Marketing & Analytics Tab -->
+                <div x-show="integrationTab === 'marketing'" class="space-y-6">
+                    <!-- Meta Pixel -->
+                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 transition-all duration-200"
+                        :class="metaPixelEnabled ? 'ring-1 ring-indigo-500 border-indigo-500' : ''">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                    <svg class="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+                                        <path
+                                            d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">Meta Pixel</h3>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">Track conversions & build
+                                        audiences for Facebook/Instagram Ads</p>
+                                </div>
+                            </div>
+                            <button type="button"
+                                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                                :class="metaPixelEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'"
+                                role="switch" aria-checked="false" @click="metaPixelEnabled = !metaPixelEnabled">
+                                <input type="checkbox" name="marketing_meta_pixel_enabled" class="hidden"
+                                    x-model="metaPixelEnabled">
+                                <span
+                                    class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                    :class="metaPixelEnabled ? 'translate-x-5' : 'translate-x-0'"></span>
+                            </button>
+                        </div>
+                        <div x-show="metaPixelEnabled" x-collapse
+                            class="mt-6 border-t border-gray-100 dark:border-gray-700 pt-6 space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pixel
+                                    ID</label>
+                                <input type="text" name="marketing_meta_pixel_id"
+                                    :value="settings.marketing_meta_pixel_id" placeholder="e.g. 1234567890"
+                                    class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Find your Pixel ID in <a
+                                        href="https://business.facebook.com/events_manager" target="_blank"
+                                        class="text-indigo-500 hover:underline">Meta Events Manager</a>.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Google Analytics 4 -->
+                    <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 transition-all duration-200"
+                        :class="gaEnabled ? 'ring-1 ring-indigo-500 border-indigo-500' : ''">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                                    <svg class="w-6 h-6 text-yellow-600" fill="currentColor" viewBox="0 0 24 24">
+                                        <path
+                                            d="M22.84 2.998v18.004c0 .55-.446.998-.997.998h-4.472a.998.998 0 01-.997-.998v-4.472a2.494 2.494 0 10-4.988 0v4.472c0 .55-.447.998-.997.998H6.917a.997.997 0 01-.664-.253l-.048-.046a.998.998 0 01-.285-.699V12.46L2.556 16.3a.998.998 0 01-1.442.068l-.049-.048a.998.998 0 01-.068-1.344l.048-.055 9.977-11.93a1.496 1.496 0 012.253-.086l.064.066 9.977 11.95a.997.997 0 01-.021 1.33l-.049.05a.997.997 0 01-1.392.02l-3.434-3.861v8.532h3.478V2.998c0-.55.447-.998.997-.998h.48c.55 0 .997.448.997.998z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">Google Analytics 4
+                                    </h3>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400">Track page views, traffic
+                                        sources & user behavior</p>
+                                </div>
+                            </div>
+                            <button type="button"
+                                class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                                :class="gaEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'" role="switch"
+                                aria-checked="false" @click="gaEnabled = !gaEnabled">
+                                <input type="checkbox" name="marketing_ga_enabled" class="hidden" x-model="gaEnabled">
+                                <span
+                                    class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                    :class="gaEnabled ? 'translate-x-5' : 'translate-x-0'"></span>
+                            </button>
+                        </div>
+                        <div x-show="gaEnabled" x-collapse
+                            class="mt-6 border-t border-gray-100 dark:border-gray-700 pt-6 space-y-4">
+                            <div>
+                                <label
+                                    class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Measurement
+                                    ID</label>
+                                <input type="text" name="marketing_ga_measurement_id"
+                                    :value="settings.marketing_ga_measurement_id" placeholder="e.g. G-XXXXXXXXXX"
+                                    class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Find your Measurement ID in
+                                    <a href="https://analytics.google.com" target="_blank"
+                                        class="text-indigo-500 hover:underline">Google Analytics</a> → Admin → Data
+                                    Streams.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

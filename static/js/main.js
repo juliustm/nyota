@@ -810,6 +810,7 @@ document.addEventListener('alpine:init', () => {
         pollCount: 0,
         maxPolls: 120, // 10 minutes at 5s interval
         modalTimeout: null, // Timeout for modal auto-refresh
+        _trackPurchaseOnce: false, // Prevent duplicate purchase events from SSE+polling
 
         get isFree() {
             // Check if this is a free asset (no tier selected or tier price is 0)
@@ -877,6 +878,18 @@ document.addEventListener('alpine:init', () => {
             this.errorMessage = ''; this.statusMessage = '';
             this.phoneNumber = prefillNumber || localStorage.getItem('nyota_phone') || '';
             this.channelId = crypto.randomUUID();
+            this._trackPurchaseOnce = false;
+
+            // Analytics: begin_checkout
+            try {
+                var price = parseFloat(this.asset.price || 0);
+                if (typeof window.nyotaTrack === 'function') {
+                    window.nyotaTrack('begin_checkout',
+                        { currency: currencySymbol, value: price, items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: price, quantity: 1 }] },
+                        { event: 'InitiateCheckout', params: { content_ids: [String(this.asset.id)], content_type: 'product', value: price, currency: currencySymbol, num_items: 1 } }
+                    );
+                }
+            } catch (e) { }
 
             // Initialize tiers if available
             this.tiers = this.asset.details?.subscription_tiers || [];
@@ -908,6 +921,21 @@ document.addEventListener('alpine:init', () => {
             window.dispatchEvent(new CustomEvent('payment-status-change', {
                 detail: { status: status, ...data }
             }));
+        },
+
+        // Analytics: fire purchase event exactly once (SSE+polling may both detect success)
+        _firePurchaseEvent() {
+            if (this._trackPurchaseOnce) return;
+            this._trackPurchaseOnce = true;
+            try {
+                var price = this.selectedTier ? parseFloat(this.selectedTier.price || 0) : parseFloat(this.asset.price || 0);
+                if (typeof window.nyotaTrack === 'function') {
+                    window.nyotaTrack('purchase',
+                        { transaction_id: String(this.purchaseId || ''), currency: currencySymbol, value: price, items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: price, quantity: 1 }] },
+                        { event: 'Purchase', params: { content_ids: [String(this.asset.id)], content_type: 'product', content_name: this.asset.title, value: price, currency: currencySymbol } }
+                    );
+                }
+            } catch (e) { }
         },
 
         closeModal() {
@@ -961,11 +989,32 @@ document.addEventListener('alpine:init', () => {
                         this.dispatchStatus('COMPLETED');
                         localStorage.setItem('nyota_phone', this.phoneNumber);
 
+                        // Analytics: generate_lead (free asset acquisition)
+                        try {
+                            if (typeof window.nyotaTrack === 'function') {
+                                window.nyotaTrack('generate_lead',
+                                    { currency: currencySymbol, value: 0, items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: 0, quantity: 1 }] },
+                                    { event: 'Lead', params: { content_ids: [String(this.asset.id)], content_type: 'product', content_name: this.asset.title, value: 0, currency: currencySymbol } }
+                                );
+                            }
+                        } catch (e) { }
+
                         setTimeout(() => {
                             window.location.href = result.redirect_url || '/library';
                         }, 800);
                         return;
                     }
+
+                    // Analytics: add_payment_info (phone submitted successfully)
+                    try {
+                        var payPrice = this.selectedTier ? parseFloat(this.selectedTier.price || 0) : parseFloat(this.asset.price || 0);
+                        if (typeof window.nyotaTrack === 'function') {
+                            window.nyotaTrack('add_payment_info',
+                                { currency: currencySymbol, value: payPrice, payment_type: 'mobile_money', items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: payPrice, quantity: 1 }] },
+                                { event: 'AddPaymentInfo', params: { content_ids: [String(this.asset.id)], content_type: 'product', value: payPrice, currency: currencySymbol } }
+                            );
+                        }
+                    } catch (e) { }
 
                     // --- PAID ASSET: wait for payment verification ---
                     this.status = 'waiting';
@@ -1080,6 +1129,9 @@ document.addEventListener('alpine:init', () => {
                         // Clear localStorage
                         localStorage.removeItem(`nyota_purchase_${this.asset.id}`);
 
+                        // Analytics: purchase (via polling)
+                        this._firePurchaseEvent();
+
                         // Redirect regardless of modal state
                         setTimeout(() => {
                             window.location.href = data.redirect_url || '/library';
@@ -1177,6 +1229,9 @@ document.addEventListener('alpine:init', () => {
 
                     // Clear localStorage
                     localStorage.removeItem(`nyota_purchase_${this.asset.id}`);
+
+                    // Analytics: purchase (via SSE)
+                    this._firePurchaseEvent();
 
                     setTimeout(() => { window.location.href = data.redirect_url || '/library'; }, 1500);
                 } else if (data.status === 'FAILED') {

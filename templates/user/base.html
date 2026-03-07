@@ -118,6 +118,11 @@
     </script>
     {% endif %}
     {% endif %}
+
+    {# --- Unified Analytics Helper (fires GA4 + Meta Pixel in one call) --- #}
+    <script>
+        window.nyotaTrack = function (e, g, m) { try { if (typeof gtag === 'function' && g) { gtag('event', e, g) } } catch (x) { console.error('[Nyota] GA4 event error:', x) } try { if (typeof fbq === 'function' && m) { fbq('track', m.event || e, m.params || {}) } } catch (x) { console.error('[Nyota] Meta Pixel event error:', x) } };
+    </script>
 </head>
 
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300 font-sans">

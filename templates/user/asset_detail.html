@@ -1741,6 +1741,19 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
         display: none !important;
     }
 </style>
+
+{# --- Analytics: view_item event --- #}
+<script>
+    setTimeout(function () {
+        try {
+            var a = JSON.parse(document.getElementById('asset-data').textContent);
+            window.nyotaTrack('view_item',
+                { currency: '{{ currency_symbol }}', value: parseFloat(a.price || 0), items: [{ item_id: String(a.id), item_name: a.title, item_category: a.asset_type, price: parseFloat(a.price || 0), quantity: 1 }] },
+                { event: 'ViewContent', params: { content_ids: [String(a.id)], content_type: 'product', content_name: a.title, value: parseFloat(a.price || 0), currency: '{{ currency_symbol }}' } }
+            );
+        } catch (e) { }
+    }, 0);
+</script>
 {% endblock %}
 
 {% block scripts_extra %}

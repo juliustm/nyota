@@ -158,6 +158,12 @@ class CreatorSetting(db.Model):
 # 'email_smtp_encryption': (string) "tls", "ssl", "none"
 # 'email_smtp_sender_email': (string)
 # 'email_smtp_sender_name': (string)
+#
+# --- Integrations: Marketing & Analytics ---
+# 'marketing_meta_pixel_enabled': (boolean)
+# 'marketing_meta_pixel_id': (string) Facebook/Meta Pixel ID (e.g. "1234567890")
+# 'marketing_ga_enabled': (boolean)
+# 'marketing_ga_measurement_id': (string) Google Analytics 4 Measurement ID (e.g. "G-XXXXXXXXXX")
 # ==============================================================================
 
 # --- Core Models ---

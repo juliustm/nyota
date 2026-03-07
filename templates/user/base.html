@@ -93,6 +93,31 @@
         }
     </style>
     {% block head_extra %}{% endblock %}
+
+    {# --- Marketing & Analytics Scripts (injected only on public pages) --- #}
+    {% if creator %}
+    {% set meta_pixel_enabled = creator.get_setting('marketing_meta_pixel_enabled') %}
+    {% set meta_pixel_id = creator.get_setting('marketing_meta_pixel_id') %}
+    {% set ga_enabled = creator.get_setting('marketing_ga_enabled') %}
+    {% set ga_measurement_id = creator.get_setting('marketing_ga_measurement_id') %}
+
+    {% if meta_pixel_enabled and meta_pixel_id %}
+    <!-- Meta Pixel -->
+    <script>
+        try { !function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments) }; if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = '2.0'; n.queue = []; t = b.createElement(e); t.async = !0; t.src = v; s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s) }(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js'); fbq('init', '{{ meta_pixel_id }}'); fbq('track', 'PageView'); } catch (e) { console.error('[Nyota] Meta Pixel failed to load:', e); }
+    </script>
+    <noscript><img height="1" width="1" style="display:none"
+            src="https://www.facebook.com/tr?id={{ meta_pixel_id }}&ev=PageView&noscript=1" /></noscript>
+    {% endif %}
+
+    {% if ga_enabled and ga_measurement_id %}
+    <!-- Google Analytics 4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ ga_measurement_id }}"></script>
+    <script>
+        try { window.dataLayer = window.dataLayer || []; function gtag() { dataLayer.push(arguments); } gtag('js', new Date()); gtag('config', '{{ ga_measurement_id }}'); } catch (e) { console.error('[Nyota] Google Analytics failed to load:', e); }
+    </script>
+    {% endif %}
+    {% endif %}
 </head>
 
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300 font-sans">

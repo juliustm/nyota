@@ -1157,7 +1157,11 @@ def manage_settings():
             
             # Email Delivery
             'email_smtp_enabled', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 
-            'smtp_encryption', 'smtp_sender_email', 'smtp_sender_name'
+            'smtp_encryption', 'smtp_sender_email', 'smtp_sender_name',
+
+            # Marketing & Analytics
+            'marketing_meta_pixel_enabled', 'marketing_meta_pixel_id',
+            'marketing_ga_enabled', 'marketing_ga_measurement_id'
         ]
 
         # Iterate and save each setting
@@ -1719,7 +1723,8 @@ def asset_detail(slug):
 @main_bp.route('/checkout/<slug>')
 def checkout(slug):
     asset = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
-    return render_template('user/checkout.html', asset=asset.to_dict(), channel_id=str(uuid.uuid4()))
+    creator = Creator.query.first()
+    return render_template('user/checkout.html', asset=asset.to_dict(), channel_id=str(uuid.uuid4()), creator=creator, store_name=creator.store_name if creator else 'Nyota')
 
 @main_bp.route('/api/initiate-payment', methods=['POST'])
 @limiter.limit("10 per minute")
@@ -2395,12 +2400,14 @@ def library():
             flash('Too many failed attempts. Please wait 15 minutes.', 'error')
             return render_template('user/library.html', customer_phone=None, purchases=[], 
                                  store_name=Creator.query.first().store_name if Creator.query.first() else "Nyota",
+                                 creator=Creator.query.first(),
                                  currency_symbol='TZS', throttled=True), 429
         
         if hourly_failures >= 10:
             flash('Too many failed attempts. Please wait 1 hour.', 'error')
             return render_template('user/library.html', customer_phone=None, purchases=[],
                                  store_name=Creator.query.first().store_name if Creator.query.first() else "Nyota",
+                                 creator=Creator.query.first(),
                                  currency_symbol='TZS', throttled=True), 429
         
         # Validate both fields are provided
@@ -2506,6 +2513,7 @@ def library():
         'user/library.html',
         customer_phone=customer_phone,
         purchases=purchases_data,
+        creator=creator,
         store_name=creator.store_name if creator else "Nyota Store",
         currency_symbol=creator.get_setting('currency_symbol', 'TZS') if creator else "TZS",
         today_date=datetime.utcnow().strftime('%Y-%m-%d')

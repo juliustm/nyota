@@ -399,6 +399,8 @@ document.addEventListener('alpine:init', () => {
         smsTested: false,
         smsTestSuccess: false,
         smsTestMessage: '',
+        metaPixelEnabled: false,
+        gaEnabled: false,
 
         init() {
             // Populate state from the initial settings object
@@ -408,6 +410,8 @@ document.addEventListener('alpine:init', () => {
             this.smtpEnabled = this.settings.email_smtp_enabled || false;
             this.smsEnabled = this.settings.sms_enabled || false;
             this.aiEnabled = this.settings.ai_enabled || false;
+            this.metaPixelEnabled = this.settings.marketing_meta_pixel_enabled || false;
+            this.gaEnabled = this.settings.marketing_ga_enabled || false;
 
             // This is just for the local theme picker, separate from saved settings
             const theme = localStorage.getItem('theme') || 'system';

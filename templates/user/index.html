@@ -26,21 +26,18 @@ store_name }}{% endblock %}
     {% if creator.get_setting('store_profile_enabled') %}
     <header id="profile-hero" class="text-center pt-2 pb-2 fade-in relative mb-1">
 
-        <div class="max-w-md mx-auto flex flex-col items-center">
+        <div class="max-w-md mx-auto flex flex-col items-center text-center">
 
-            <!-- Signature / Tagline -->
             {% if creator.get_setting('store_signature') %}
-            <p class="text-indigo-600 dark:text-indigo-400 font-medium text-xs tracking-wide uppercase mb-1.5">
-                {{ creator.get_setting('store_signature') }}
+            <p class="text-indigo-600 dark:text-indigo-400 font-medium text-xs tracking-wide mb-1.5 text-center">
+                {{- creator.get_setting('store_signature') | trim -}}
             </p>
             {% endif %}
 
             <!-- Extended Bio -->
-            <div
-                class="prose prose-sm dark:prose-invert text-gray-600 dark:text-gray-400 leading-snug mb-2 max-w-sm mx-auto text-center text-sm">
-                {{ creator.get_setting('store_bio_long') or creator.get_setting('store_bio') or 'Welcome to my digital
-                store.' }}
-            </div>
+            <div class="text-gray-600 dark:text-gray-400 leading-snug mb-2 text-base whitespace-pre-wrap text-center">
+                {{- creator.get_setting('store_bio_long') or creator.get_setting('store_bio') or 'Welcome to my digital
+                store.' -}}</div>
 
             <!-- Social Links -->
             <div class="flex items-center justify-center gap-3 mt-1">

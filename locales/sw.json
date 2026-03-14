@@ -185,5 +185,12 @@
     "inst_free_newsletter": "Tafadhali weka namba ya simu sahihi kupokea machapisho haya.",
     "asset_not_found_title": "Maudhui Hayapatikani",
     "asset_not_found_message": "Maudhui unayotafuta huenda yamehamishwa, kuondolewa, au hayapatikani tena.",
-    "asset_not_found_explore": "Tazama Maudhui Mengine"
+    "asset_not_found_explore": "Tazama Maudhui Mengine",
+    "save_to_calendar": "Weka kwenye Kalenda",
+    "scan_to_add": "Skani Kuhifadhi",
+    "calendar_reminders_note": "Utakumbushwa siku 1, saa 1, na dakika 5 kabla.",
+    "close": "Funga",
+    "important_instructions": "Maelekezo Muhimu",
+    "open_link": "Fungua Kiungo",
+    "link_instructions": "Bofya kufungua kiungo"
 }

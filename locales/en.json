@@ -182,5 +182,12 @@
     "inst_free_newsletter": "Please enter a valid phone number to get this content for free.",
     "asset_not_found_title": "Content Not Available",
     "asset_not_found_message": "The content you're looking for may have been moved, removed, or is no longer available.",
-    "asset_not_found_explore": "Explore Other Content"
+    "asset_not_found_explore": "Explore Other Content",
+    "save_to_calendar": "Save to Calendar",
+    "scan_to_add": "Scan to Save",
+    "calendar_reminders_note": "Reminders set for 1 day, 1 hour, and 5 minutes before.",
+    "close": "Close",
+    "important_instructions": "Important Instructions",
+    "open_link": "Access Link",
+    "link_instructions": "Click to open the external link"
 }

@@ -182,5 +182,8 @@
     "cta_paid_newsletter": "Jiunge Sasa!",
     "cta_free_newsletter": "Jiunge Bure!",
     "inst_paid_newsletter": "Weka namba yako ya simu kujisajili na kupokea machapisho.",
-    "inst_free_newsletter": "Tafadhali weka namba ya simu sahihi kupokea machapisho haya."
+    "inst_free_newsletter": "Tafadhali weka namba ya simu sahihi kupokea machapisho haya.",
+    "asset_not_found_title": "Maudhui Hayapatikani",
+    "asset_not_found_message": "Maudhui unayotafuta huenda yamehamishwa, kuondolewa, au hayapatikani tena.",
+    "asset_not_found_explore": "Tazama Maudhui Mengine"
 }

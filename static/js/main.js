@@ -555,15 +555,24 @@ document.addEventListener('alpine:init', () => {
                 this.editableAsset.customFields = this.asset.custom_fields || [];
             }
 
-            // Initialize content items date from description
+            // Initialize content items date/expiry from description
             if (this.editableAsset.files) {
                 this.editableAsset.files.forEach(f => {
                     f.newFile = null; // Initialize for UI binding
-                    const dateMatch = f.description ? f.description.match(/^\[Date:(\d{4}-\d{2}-\d{2})\]\s*/) : null;
+                    // Parse [Date:YYYY-MM-DD] from description
+                    const dateMatch = f.description ? f.description.match(/\[Date:(\d{4}-\d{2}-\d{2})\]\s*/) : null;
                     if (dateMatch) {
                         f.date = dateMatch[1];
                         f.description = f.description.replace(dateMatch[0], '');
                     }
+                    // Parse [Expiry:YYYY-MM-DD] from description
+                    const expiryMatch = f.description ? f.description.match(/\[Expiry:(\d{4}-\d{2}-\d{2})\]\s*/) : null;
+                    if (expiryMatch) {
+                        f.expiry = expiryMatch[1];
+                        f.description = f.description.replace(expiryMatch[0], '');
+                    }
+                    if (!f.expiry) f.expiry = '';
+                    if (!f.date) f.date = '';
                     // Initialize type if missing
                     if (!f.type) {
                         f.type = f.link && !f.link.startsWith('/content/') ? 'link' : 'upload';
@@ -585,7 +594,7 @@ document.addEventListener('alpine:init', () => {
 
         get publicUrl() {
             // Guard against a null asset object here as well.
-            return `${window.location.origin}/asset/${this.asset.slug || ''}`;
+            return `${window.location.origin}/${this.editableAsset.slug || this.asset.slug || ''}`;
         },
 
         addContentItem() {
@@ -612,7 +621,7 @@ document.addEventListener('alpine:init', () => {
                     animation: 150,
                     handle: '.drag-handle',
                     ghostClass: 'opacity-50',
-                    chosenClass: 'ring-2 ring-indigo-500',
+                    chosenClass: 'ring-indigo-500',
                     dragClass: 'shadow-lg',
                     onEnd: (evt) => {
                         const oldIndex = evt.oldIndex;
@@ -680,6 +689,9 @@ document.addEventListener('alpine:init', () => {
             // Construct the asset_data JSON structure expected by save_asset_from_form
             const contentItems = (this.editableAsset.files || []).map(f => {
                 let desc = f.description || '';
+                if (f.expiry) {
+                    desc = `[Expiry:${f.expiry}] ${desc}`;
+                }
                 if (f.date) {
                     desc = `[Date:${f.date}] ${desc}`;
                 }
@@ -698,7 +710,8 @@ document.addEventListener('alpine:init', () => {
                     title: this.editableAsset.title,
                     description: this.editableAsset.description,
                     story_snippet: this.editableAsset.story,
-                    uza_product_id: this.editableAsset.uza_product_id || ''
+                    uza_product_id: this.editableAsset.uza_product_id || '',
+                    slug: this.editableAsset.slug || ''
                 },
                 allow_download: this.editableAsset.allow_download,
                 assetTypeEnum: this.asset.asset_type,

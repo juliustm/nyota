@@ -124,7 +124,7 @@
                 class="group bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col">
 
                 <!-- Image -->
-                <a :href="'/asset/' + purchase.asset.slug"
+                <a :href="'/' + purchase.asset.slug"
                     class="relative aspect-[3/4] overflow-hidden bg-gray-100 dark:bg-gray-900 block">
                     <img :src="purchase.asset.cover_image_url" :alt="purchase.asset.title" loading="lazy"
                         decoding="async"
@@ -150,7 +150,7 @@
                     <div class="flex justify-between items-start mb-2">
                         <div class="flex flex-col">
                             <h3 class="text-lg font-bold text-gray-900 dark:text-white line-clamp-1">
-                                <a :href="'/asset/' + purchase.asset.slug"
+                                <a :href="'/' + purchase.asset.slug"
                                     class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                                     x-text="purchase.asset.title"></a>
                             </h3>
@@ -179,13 +179,13 @@
                         <template x-if="purchase.status === 'COMPLETED'">
                             <div>
                                 <template x-if="purchase.subscription && !purchase.subscription.is_active">
-                                    <a :href="'/asset/' + purchase.asset.slug"
+                                    <a :href="'/' + purchase.asset.slug"
                                         class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors">
                                         {{ translate('renew_subscription') or 'Renew Subscription' }}
                                     </a>
                                 </template>
                                 <template x-if="!purchase.subscription || purchase.subscription.is_active">
-                                    <a :href="'/asset/' + purchase.asset.slug"
+                                    <a :href="'/' + purchase.asset.slug"
                                         class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition-colors">
                                         {{ translate('access_content') or 'Access Content' }}
                                     </a>
@@ -195,7 +195,7 @@
 
                         <!-- PENDING -->
                         <template x-if="purchase.status === 'PENDING'">
-                            <a :href="'/asset/' + purchase.asset.slug"
+                            <a :href="'/' + purchase.asset.slug"
                                 class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 font-semibold rounded-xl border border-yellow-300 dark:border-yellow-800">
                                 <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
@@ -209,7 +209,7 @@
 
                         <!-- FAILED -->
                         <template x-if="purchase.status === 'FAILED'">
-                            <a :href="'/asset/' + purchase.asset.slug"
+                            <a :href="'/' + purchase.asset.slug"
                                 class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors">
                                 {{ translate('retry_payment') or 'Retry Payment' }}
                             </a>

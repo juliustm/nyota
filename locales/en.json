@@ -179,5 +179,8 @@
     "cta_paid_newsletter": "Subscribe",
     "cta_free_newsletter": "Subscribe for Free",
     "inst_paid_newsletter": "Enter your phone number to subscribe to this content.",
-    "inst_free_newsletter": "Please enter a valid phone number to get this content for free."
+    "inst_free_newsletter": "Please enter a valid phone number to get this content for free.",
+    "asset_not_found_title": "Content Not Available",
+    "asset_not_found_message": "The content you're looking for may have been moved, removed, or is no longer available.",
+    "asset_not_found_explore": "Explore Other Content"
 }

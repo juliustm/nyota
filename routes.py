@@ -511,6 +511,28 @@ def update_asset_details(asset_id):
         if new_status_str in [s.value for s in AssetStatus]:
             asset.status = AssetStatus(new_status_str)
         
+        # --- Slug Editing ---
+        new_slug = data.get('slug', '').strip()
+        if new_slug:
+            from slugify import slugify as _slugify
+            new_slug = _slugify(new_slug)
+            if len(new_slug) < 2:
+                return jsonify({'success': False, 'message': 'URL slug must be at least 2 characters.'}), 422
+            # Only process if slug is actually changing
+            if new_slug != asset.slug:
+                # Check uniqueness
+                existing = DigitalAsset.query.filter(DigitalAsset.slug == new_slug, DigitalAsset.id != asset.id).first()
+                if existing:
+                    return jsonify({'success': False, 'message': f"The URL '{new_slug}' is already in use by another asset."}), 422
+                # Store old slug in details for redirect support
+                asset.details = dict(asset.details or {})
+                old_slugs = asset.details.get('old_slugs', [])
+                if asset.slug not in old_slugs:
+                    old_slugs.append(asset.slug)
+                asset.details['old_slugs'] = old_slugs
+                flag_modified(asset, 'details')
+                asset.slug = new_slug
+        
         # Update type-specific fields
         if asset.asset_type == AssetType.TICKET:
             event_details = data.get('eventDetails', {})
@@ -522,7 +544,7 @@ def update_asset_details(asset_id):
             asset.details = data.get('details', asset.details)
 
         db.session.commit()
-        return jsonify({'success': True, 'message': f"'{asset.title}' updated successfully."})
+        return jsonify({'success': True, 'message': f"'{asset.title}' updated successfully.", 'slug': asset.slug})
 
     except Exception as e:
         db.session.rollback()
@@ -641,6 +663,28 @@ def serve_content(file_id):
                 flash(f"Your subscription expired on {expiry_date.strftime('%Y-%m-%d')}. Please renew to access this content.", "warning")
                 return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
         
+    # --- Content Date Enforcement ---
+    # Check publish date and expiry date encoded in the file's description
+    if not is_creator and asset_file.description:
+        import re
+        now = datetime.utcnow()
+        
+        # Check publish date: content not yet available
+        date_match = re.search(r'\[Date:(\d{4}-\d{2}-\d{2})\]', asset_file.description)
+        if date_match:
+            publish_date = datetime.strptime(date_match.group(1), '%Y-%m-%d')
+            if now < publish_date:
+                flash("This content is not yet available.", "info")
+                return redirect(url_for('main.asset_detail', slug=asset_file.asset.slug))
+        
+        # Check expiry date: content no longer available
+        expiry_match = re.search(r'\[Expiry:(\d{4}-\d{2}-\d{2})\]', asset_file.description)
+        if expiry_match:
+            expiry_date = datetime.strptime(expiry_match.group(1), '%Y-%m-%d')
+            if now > expiry_date:
+                flash("This content has expired and is no longer available.", "warning")
+                return redirect(url_for('main.asset_detail', slug=asset_file.asset.slug))
+
     # Serve the file
     # storage_path is stored as "secure_uploads/filename"
     if asset_file.storage_path.startswith('secure_uploads/'):
@@ -741,6 +785,20 @@ def save_asset_from_form(asset, req):
     uza_product_id = asset_details.get('uza_product_id', '').strip()
     if uza_product_id:
         asset.details['uza_product_id'] = uza_product_id
+
+    # --- Slug Editing ---
+    new_slug = asset_details.get('slug', '').strip()
+    if new_slug and asset.id:
+        from slugify import slugify as _slugify
+        new_slug = _slugify(new_slug)
+        if len(new_slug) >= 2 and new_slug != asset.slug:
+            existing = DigitalAsset.query.filter(DigitalAsset.slug == new_slug, DigitalAsset.id != asset.id).first()
+            if not existing:
+                old_slugs = asset.details.get('old_slugs', [])
+                if asset.slug and asset.slug not in old_slugs:
+                    old_slugs.append(asset.slug)
+                asset.details['old_slugs'] = old_slugs
+                asset.slug = new_slug
         
     # Handle Custom Labels
     if 'labels' in form_data:
@@ -1585,9 +1643,40 @@ def robots():
 
 @main_bp.route('/asset/<slug>')
 @limiter.limit("60 per minute")
+def asset_detail_legacy(slug):
+    """Legacy route — 301 redirect to the new short URL."""
+    return redirect(url_for('main.asset_detail', slug=slug), code=301)
+
+@main_bp.route('/<slug>')
+@limiter.limit("60 per minute")
 def asset_detail(slug):
+    # --- Helper: render asset-not-found page ---
+    def render_not_found():
+        creator = Creator.query.first()
+        alternatives = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED).order_by(
+            DigitalAsset.total_sales.desc()
+        ).limit(4).all()
+        return render_template(
+            'user/asset_not_found.html',
+            creator=creator,
+            store_name=creator.store_name if creator else "Store",
+            alternatives=alternatives,
+            currency_symbol=creator.get_setting('currency_symbol', 'TZS') if creator else 'TZS'
+        ), 404
+
     # Fetch asset without status filter first
-    asset_obj = DigitalAsset.query.filter_by(slug=slug).first_or_404()
+    asset_obj = DigitalAsset.query.filter_by(slug=slug).first()
+    
+    # If not found by current slug, check old slugs for redirect
+    if not asset_obj:
+        # Search for an asset that has this slug in its old_slugs list
+        all_assets = DigitalAsset.query.all()
+        for a in all_assets:
+            old_slugs = (a.details or {}).get('old_slugs', [])
+            if slug in old_slugs:
+                return redirect(url_for('main.asset_detail', slug=a.slug), code=301)
+        # No match found
+        return render_not_found()
     
     # Permission Logic
     is_creator = 'creator_id' in session and session['creator_id'] == asset_obj.creator_id
@@ -1620,11 +1709,11 @@ def asset_detail(slug):
     elif asset_obj.status == AssetStatus.ARCHIVED:
         # Visible only to Owners (Purchasers) and Creator
         if not (has_purchased or is_creator):
-            abort(404)
+            return render_not_found()
     else: # DRAFT or others
         # Visible only to Creator
         if not is_creator:
-            abort(404)
+            return render_not_found()
             
     asset_json = json.dumps(asset_obj.to_dict(), default=json_serial)
     creator = Creator.query.get(asset_obj.creator_id)

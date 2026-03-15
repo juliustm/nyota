@@ -88,7 +88,7 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
 <div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()" @retry-started.window="isRetrying = true"
     @retry-completed.window="isRetrying = false"
     @show-toast.window="showToast($event.detail.message, $event.detail.type)"
-    class="max-w-7xl mx-auto px-2 sm:px-2 lg:px-8 pb-32 md:pb-24">
+    class="max-w-7xl mx-auto px-1 sm:px-1 lg:px-8 pb-32 md:pb-24">
 
     <!-- Toast Notification System -->
     <template x-if="toast.show">
@@ -230,32 +230,32 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                     {% if status == 'COMPLETED' %}
 
                     <div
-                        class="bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-800 rounded-xl p-4 mb-8 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-700">
+                        class="bg-green-50 dark:bg-green-900/10 border border-green-100 dark:border-green-800 rounded-xl p-3 mb-4 flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-700">
                         <div
-                            class="w-10 h-10 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center text-green-600 dark:text-green-400 shrink-0">
-                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center text-green-600 dark:text-green-400 shrink-0">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M5 13l4 4L19 7" />
                             </svg>
                         </div>
                         <div>
-                            <h3 class="font-bold text-green-900 dark:text-green-100">{{ translate('you_own_this') }}
-                            </h3>
-                            <p class="text-sm text-green-700 dark:text-green-300">{{ translate('thank_you_purchase') }}
+                            <h3 class="font-bold text-sm text-green-900 dark:text-green-100">{{
+                                translate('you_own_this') }}</h3>
+                            <p class="text-xs text-green-700 dark:text-green-300">{{ translate('thank_you_purchase') }}
                             </p>
                         </div>
                     </div>
 
                     <!-- Content Access -->
-                    <section id="content-access-section" class="fade-in mb-8" style="animation-delay: 200ms;">
+                    <section id="content-access-section" class="fade-in mb-4" style="animation-delay: 100ms;">
                         <div
                             class="bg-white dark:bg-gray-800 sm:border border-gray-200 dark:border-gray-700 sm:rounded-2xl overflow-hidden shadow-sm">
 
                             <div
-                                class="p-4 md:p-8 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                                class="p-3 md:p-6 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                                 <h2
-                                    class="text-xl md:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                                    <svg class="w-6 h-6 md:w-8 md:h-8 text-green-500" fill="none" viewBox="0 0 24 24"
+                                    class="text-lg md:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                    <svg class="w-5 h-5 md:w-6 md:h-6 text-green-500" fill="none" viewBox="0 0 24 24"
                                         stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                             d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -266,7 +266,7 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
 
                             <div class="divide-y divide-gray-200 dark:divide-gray-700">
                                 <template x-for="(file, index) in asset.files" :key="file.id">
-                                    <div class="py-6 sm:p-8"
+                                    <div class="p-4 sm:p-8"
                                         x-data="{ type: file.file_type || getFileType(file.storage_path || file.link) }">
 
                                         <div class="mb-4">
@@ -299,7 +299,9 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                                                                     d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                                                             </svg>
                                                         </div>
-                                                        <h3 class="text-2xl font-bold mb-2">Read {{ asset.title }}</h3>
+                                                        <h3
+                                                            class="text-xl md:text-2xl font-bold mb-2 w-full break-words whitespace-normal px-2 line-clamp-3">
+                                                            Read {{ asset.title }}</h3>
                                                         <p
                                                             class="text-gray-300 text-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                                             Tap to Read Fullscreen (dFlip)
@@ -463,25 +465,45 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                                             </div>
                                         </template>
 
-                                        <!-- FALLBACK -->
-                                        <template x-if="type === 'other'">
-                                            <div>
+                                        <!-- FALLBACK / LINK -->
+                                        <template x-if="type === 'other' || type === 'link'">
+                                            <div
+                                                x-data="{ isLink: (file.link && !file.link.startsWith('/content/') && file.link.startsWith('http')) || (file.storage_path && !file.storage_path.startsWith('secure_uploads/')) }">
                                                 <a :href="file.link" target="_blank"
                                                     class="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                                    <div
-                                                        class="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                                                        <svg class="w-5 h-5 text-gray-500" fill="none"
-                                                            viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path stroke-linecap="round" stroke-linejoin="round"
-                                                                stroke-width="2"
-                                                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                                        </svg>
-                                                    </div>
-                                                    <div class="flex-1">
-                                                        <p class="font-bold text-sm text-gray-900 dark:text-white">{{
-                                                            translate('download_file') }}</p>
-                                                        <p class="text-xs text-gray-500"
-                                                            x-text="file.link.split('/').pop()">
+
+                                                    <!-- Icon for Link -->
+                                                    <template x-if="isLink">
+                                                        <div
+                                                            class="w-10 h-10 shrink-0 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+                                                            <svg class="w-5 h-5 text-blue-600 dark:text-blue-400"
+                                                                fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                                    stroke-width="2"
+                                                                    d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                                            </svg>
+                                                        </div>
+                                                    </template>
+
+                                                    <!-- Icon for File -->
+                                                    <template x-if="!isLink">
+                                                        <div
+                                                            class="w-10 h-10 shrink-0 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                                                            <svg class="w-5 h-5 text-gray-500" fill="none"
+                                                                viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                                    stroke-width="2"
+                                                                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                            </svg>
+                                                        </div>
+                                                    </template>
+
+                                                    <div class="flex-1 min-w-0">
+                                                        <p class="font-bold text-sm text-gray-900 dark:text-white"
+                                                            x-text="isLink ? '{{ translate('open_link') }}' : '{{ translate('download_file') }}'">
+                                                        </p>
+                                                        <p class="text-xs text-gray-500 truncate"
+                                                            x-text="isLink ? '{{ translate('link_instructions') }}' : file.link.split('/').pop()">
                                                         </p>
                                                     </div>
                                                 </a>
@@ -587,19 +609,102 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                     </section>
                     {% endif %}
 
+                    <!-- Save to Calendar Section -->
+                    {% if asset_obj.asset_type.name == 'TICKET' %}
+                    <section class="fade-in mb-4" style="animation-delay: 100ms;">
+                        <div
+                            class="bg-indigo-600 rounded-2xl p-4 md:p-6 text-white shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 relative">
+                            <!-- Background Decor -->
+                            <div
+                                class="absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none">
+                            </div>
+
+                            <div class="flex-1 text-center sm:text-left">
+                                <h3
+                                    class="text-lg font-extrabold mb-0.5 flex items-center justify-center sm:justify-start gap-2">
+                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    {{ translate('save_to_calendar') }}
+                                </h3>
+                                <p class="text-indigo-100 text-xs opacity-90 flex items-center justify-center sm:justify-start gap-1"
+                                    x-show="asset.eventDetails?.date">
+                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span
+                                        x-text="asset.eventDetails?.date + (asset.eventDetails?.time ? ' at ' + asset.eventDetails.time : '')"></span>
+                                </p>
+                            </div>
+
+                            <div
+                                class="flex flex-row flex-wrap items-center justify-center sm:justify-start gap-2 relative z-10 mt-2 sm:mt-0">
+                                <!-- Smart Button -->
+                                <button @click="smartCalendarSave()"
+                                    class="flex-1 sm:flex-none justify-center px-4 py-2.5 bg-white text-indigo-600 font-bold rounded-xl hover:bg-indigo-50 transition-all shadow-md flex items-center gap-1.5 active:scale-95 whitespace-nowrap text-sm">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    {{ translate('save_to_calendar') }}
+                                </button>
+
+                                <!-- QR Code Toggle -->
+                                <button @click="toggleQRCode()"
+                                    class="px-3 py-2.5 bg-white/20 hover:bg-white/30 text-white rounded-xl transition-all flex items-center gap-1.5"
+                                    title="{{ translate('scan_to_add') }}">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h3m-3 3h3m7 4V4a2 2 0 00-2-2H4a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2zM9 9h.01M9 15h.01M15 9h.01M15 15h.01" />
+                                    </svg>
+                                    <span class="text-xs font-semibold whitespace-nowrap">{{ translate('scan_to_add')
+                                        }}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- QR Code Modal (placed at document root level, outside overflow containers) -->
+                    <template x-if="showQRCode">
+                        <div @click="showQRCode = false" x-transition
+                            class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6">
+                            <div @click.stop
+                                class="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-2xl max-w-xs w-full text-center flex flex-col max-h-[85vh]">
+                                <h4 class="text-gray-900 dark:text-white font-bold mb-3 flex-shrink-0 text-lg">{{
+                                    translate('scan_to_add') }}</h4>
+                                <div class="bg-white p-3 rounded-xl shadow-inner mb-3 flex items-center justify-center">
+                                    <img :src="qrCodeUrl" alt="QR Code" class="w-56 h-56 object-contain">
+                                </div>
+                                <div class="flex-shrink-0">
+                                    <p class="text-xs text-gray-500 mb-3">{{
+                                        translate('calendar_reminders_note') }}</p>
+                                    <button @click="showQRCode = false"
+                                        class="w-full py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm">
+                                        {{ translate('close') }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    {% endif %}
+
                     <!-- Instructions -->
                     {% if asset_obj.details and asset_obj.details.postPurchaseInstructions %}
-                    <section class="fade-in mb-8" style="animation-delay: 150ms;">
+                    <section class="fade-in mb-4" style="animation-delay: 100ms;">
                         <div
-                            class="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-2xl p-6 md:p-8">
-                            <h3 class="text-lg font-bold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
-                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            class="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-2xl p-4 md:p-6">
+                            <h3
+                                class="text-base font-bold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                                 {{ translate('important_instructions') }}
                             </h3>
-                            <div class="prose prose-blue dark:prose-invert max-w-none text-sm">
+                            <div class="prose prose-blue dark:prose-invert max-w-none text-sm auto-link-text" x-data
+                                x-init="if (!$el.dataset.linked) { $el.innerHTML = $el.innerHTML.replace(/(https?:\/\/[^\s<]+)/g, '<a href=&quot;$1&quot; target=&quot;_blank&quot; class=&quot;text-blue-600 dark:text-blue-400 underline break-all&quot;>$1</a>').replace(/(\+?\d[\d\s\-]{7,}\d)/g, '<a href=&quot;tel:$1&quot; class=&quot;text-blue-600 dark:text-blue-400 underline&quot;>$1</a>').replace(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/g, '<a href=&quot;mailto:$1&quot; class=&quot;text-blue-600 dark:text-blue-400 underline&quot;>$1</a>'); $el.dataset.linked = 'true'; }">
                                 {{ asset_obj.details.postPurchaseInstructions|nl2br }}
                             </div>
                         </div>

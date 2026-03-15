@@ -25,6 +25,7 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('assetDetail', (currencySymbol) => ({
         asset: {}, countdown: 'Loading...', currency: currencySymbol, visibleReviews: 3,
         toast: { show: false, message: '', type: 'success' },
+        qrCodeUrl: '', showQRCode: false,
 
         init() { try { const dataElement = document.getElementById('asset-data'); if (dataElement) this.asset = JSON.parse(dataElement.textContent); } catch (e) { console.error('Error parsing asset detail data:', e); } if (this.asset.asset_type === 'TICKET' && this.asset.event_date) { this.countdownInterval = setInterval(() => this.updateCountdown(), 1000); this.updateCountdown(); } },
 
@@ -40,17 +41,166 @@ document.addEventListener('alpine:init', () => {
         showMoreReviews() { this.visibleReviews += 5; },
         renderMarkdown(text) {
             if (!text) return '';
-            // Smart detection: check if text contains markdown syntax
             const mdPattern = /(?:^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|\*\*.+\*\*|__.+__|`.+`|\[.+\]\(.+\)|^>\s|^```|!\[)/m;
             const hasMarkdown = mdPattern.test(text);
             if (hasMarkdown && window.marked) {
                 try { return window.marked.parse(text); } catch (e) { /* fall through */ }
             }
-            // Plain text: escape HTML and preserve newlines
             const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
             return escaped.replace(/\n/g, '<br>');
         },
-        formatCurrency(amount) { return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0); }
+        formatCurrency(amount) { return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0); },
+
+        toggleQRCode() {
+            try {
+                if (!this.qrCodeUrl) {
+                    const icsString = this.generateICSString(true);
+                    this.qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&ecc=L&margin=1&format=svg&data=${encodeURIComponent(icsString)}`;
+                }
+                this.showQRCode = !this.showQRCode;
+            } catch (err) {
+                console.error("Error generating QR code:", err);
+                this.showToast("Could not generate calendar code. Invalid event details.", "error");
+            }
+        },
+
+        getEventDates() {
+            let startDt = new Date();
+            let endDt = new Date(startDt.getTime() + 60 * 60 * 1000); // default +1 hour
+
+            const evtDate = this.asset.eventDetails?.date;
+            const evtTime = this.asset.eventDetails?.time;
+
+            if (evtDate) {
+                // Try parsing as-is first
+                let parsed = new Date(evtDate);
+
+                // If we also have a time, try to compose them safely
+                if (evtTime) {
+                    // Make sure date is in YYYY-MM-DD format before appending T
+                    const isIsoRegex = /^\d{4}-\d{2}-\d{2}$/;
+                    if (isIsoRegex.test(evtDate)) {
+                        const composed = new Date(`${evtDate}T${evtTime}`);
+                        if (!isNaN(composed.getTime())) parsed = composed;
+                    } else {
+                        // Fallback: use the date parsed, set hours/mins from time
+                        const [hours, minutes] = evtTime.split(':');
+                        if (!isNaN(parsed.getTime()) && hours !== undefined && minutes !== undefined) {
+                            parsed.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0);
+                        }
+                    }
+                }
+
+                if (!isNaN(parsed.getTime())) {
+                    startDt = parsed;
+                    endDt = new Date(startDt.getTime() + 60 * 60 * 1000);
+                }
+            }
+
+            // Local time formatting for ICS (Floating Time)
+            const formatICS = (d) => {
+                const pad = (n) => n < 10 ? '0' + n : n;
+                return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+            };
+
+            // UTC format for Google Calendar
+            const formatGoogle = (d) => {
+                return d.toISOString().replace(/-|:|\.\d\d\d/g, "");
+            };
+
+            return {
+                icsStart: formatICS(startDt),
+                icsEnd: formatICS(endDt),
+                googleStart: formatGoogle(startDt),
+                googleEnd: formatGoogle(endDt)
+            };
+        },
+
+        getEventDescription() {
+            const asset = this.asset;
+            let fullDescription = asset.description || '';
+
+            if (asset.details && asset.details.postPurchaseInstructions) {
+                fullDescription += `\n\nNotes / Instructions:\n${asset.details.postPurchaseInstructions}`;
+            }
+
+            const link = asset.eventDetails?.link;
+            if (link) {
+                fullDescription += `\n\nWebinar Link: ${link}`;
+            }
+
+            if (asset.files && asset.files.length > 0) {
+                fullDescription += `\n\nIncluded Files/Links:\n`;
+                asset.files.forEach(f => {
+                    const linkUrl = f.link.startsWith('http') ? f.link : (window.location.origin + f.link);
+                    fullDescription += `- ${f.title}: ${linkUrl}\n`;
+                });
+            }
+            return fullDescription;
+        },
+
+        generateICSString(isForQR = false) {
+            const asset = this.asset;
+            const title = asset.title || 'Event';
+            let description = this.getEventDescription().replace(/\n/g, '\\n');
+            const location = asset.eventDetails?.link || '';
+            const dates = this.getEventDates();
+
+            // Truncate description for QR codes to maintain scannability
+            if (isForQR && description.length > 300) {
+                description = description.substring(0, 297) + '...';
+            }
+
+            let alarms = '';
+            // Omit alarms for QR to reduce string length
+            if (!isForQR) {
+                const reminders = [
+                    { trigger: '-P1D', desc: '1 day' },
+                    { trigger: '-PT1H', desc: '1 hour' },
+                    { trigger: '-PT5M', desc: '5 mins' }
+                ];
+
+                reminders.forEach(r => {
+                    alarms += `BEGIN:VALARM\nTRIGGER:${r.trigger}\nACTION:DISPLAY\nDESCRIPTION:Reminder: ${title} in ${r.desc}\nEND:VALARM\n`;
+                });
+            }
+
+            const now = new Date().toISOString().replace(/-|:|\.\d\d\d/g, "");
+            return `BEGIN:VCALENDAR\nVERSION:2.0\nPROID:-//Nyota//Asset Calendar//EN\nBEGIN:VEVENT\nUID:${asset.id || Date.now()}@nyota.app\nDTSTAMP:${now}\nDTSTART:${dates.icsStart}\nDTEND:${dates.icsEnd}\nSUMMARY:${title}\nDESCRIPTION:${description}\nLOCATION:${location}\n${alarms}END:VEVENT\nEND:VCALENDAR`;
+        },
+
+        smartCalendarSave() {
+            try {
+                const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+                const isAndroid = /android/i.test(userAgent);
+
+                if (isAndroid) {
+                    window.open(this.getGoogleCalendarUrl(), '_blank');
+                } else {
+                    const icsString = this.generateICSString();
+                    const blob = new Blob([icsString], { type: 'text/calendar;charset=utf-8' });
+                    const link = document.createElement('a');
+                    link.href = window.URL.createObjectURL(blob);
+                    link.setAttribute('download', `${this.asset.slug || 'event'}.ics`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            } catch (err) {
+                console.error("Error saving to calendar:", err);
+                this.showToast("Could not save to calendar. Invalid event details.", "error");
+            }
+        },
+
+        getGoogleCalendarUrl() {
+            const asset = this.asset;
+            const title = encodeURIComponent(asset.title || 'Event');
+            const description = encodeURIComponent(this.getEventDescription());
+            const location = encodeURIComponent(asset.eventDetails?.link || '');
+            const dates = this.getEventDates();
+
+            return `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${description}&location=${location}&dates=${dates.googleStart}/${dates.googleEnd}`;
+        }
     }));
 
     Alpine.data('userLibrary', (currencySymbol) => ({
@@ -555,15 +705,24 @@ document.addEventListener('alpine:init', () => {
                 this.editableAsset.customFields = this.asset.custom_fields || [];
             }
 
-            // Initialize content items date from description
+            // Initialize content items date/expiry from description
             if (this.editableAsset.files) {
                 this.editableAsset.files.forEach(f => {
                     f.newFile = null; // Initialize for UI binding
-                    const dateMatch = f.description ? f.description.match(/^\[Date:(\d{4}-\d{2}-\d{2})\]\s*/) : null;
+                    // Parse [Date:YYYY-MM-DD] from description
+                    const dateMatch = f.description ? f.description.match(/\[Date:(\d{4}-\d{2}-\d{2})\]\s*/) : null;
                     if (dateMatch) {
                         f.date = dateMatch[1];
                         f.description = f.description.replace(dateMatch[0], '');
                     }
+                    // Parse [Expiry:YYYY-MM-DD] from description
+                    const expiryMatch = f.description ? f.description.match(/\[Expiry:(\d{4}-\d{2}-\d{2})\]\s*/) : null;
+                    if (expiryMatch) {
+                        f.expiry = expiryMatch[1];
+                        f.description = f.description.replace(expiryMatch[0], '');
+                    }
+                    if (!f.expiry) f.expiry = '';
+                    if (!f.date) f.date = '';
                     // Initialize type if missing
                     if (!f.type) {
                         f.type = f.link && !f.link.startsWith('/content/') ? 'link' : 'upload';
@@ -585,7 +744,7 @@ document.addEventListener('alpine:init', () => {
 
         get publicUrl() {
             // Guard against a null asset object here as well.
-            return `${window.location.origin}/asset/${this.asset.slug || ''}`;
+            return `${window.location.origin}/${this.editableAsset.slug || this.asset.slug || ''}`;
         },
 
         addContentItem() {
@@ -612,7 +771,7 @@ document.addEventListener('alpine:init', () => {
                     animation: 150,
                     handle: '.drag-handle',
                     ghostClass: 'opacity-50',
-                    chosenClass: 'ring-2 ring-indigo-500',
+                    chosenClass: 'ring-indigo-500',
                     dragClass: 'shadow-lg',
                     onEnd: (evt) => {
                         const oldIndex = evt.oldIndex;
@@ -680,6 +839,9 @@ document.addEventListener('alpine:init', () => {
             // Construct the asset_data JSON structure expected by save_asset_from_form
             const contentItems = (this.editableAsset.files || []).map(f => {
                 let desc = f.description || '';
+                if (f.expiry) {
+                    desc = `[Expiry:${f.expiry}] ${desc}`;
+                }
                 if (f.date) {
                     desc = `[Date:${f.date}] ${desc}`;
                 }
@@ -698,7 +860,8 @@ document.addEventListener('alpine:init', () => {
                     title: this.editableAsset.title,
                     description: this.editableAsset.description,
                     story_snippet: this.editableAsset.story,
-                    uza_product_id: this.editableAsset.uza_product_id || ''
+                    uza_product_id: this.editableAsset.uza_product_id || '',
+                    slug: this.editableAsset.slug || ''
                 },
                 allow_download: this.editableAsset.allow_download,
                 assetTypeEnum: this.asset.asset_type,

@@ -8,10 +8,8 @@
     <!-- Canonical URL -->
     <link rel="canonical" href="{{ request.url }}">
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='nyota.icon.png') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='nyota.icon.png') }}">
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 
     <title>{% block title %}Nyota ✨ Storefront{% endblock %}</title>
 
@@ -300,6 +298,13 @@
     </footer>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/js/sw.js').catch(err => console.log('SW registration failed:', err));
+            });
+        }
+    </script>
     {% block scripts_extra %}{% endblock %}
 </body>
 

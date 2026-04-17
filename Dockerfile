@@ -36,5 +36,7 @@ USER nonroot
 # Expose the port the app runs on
 EXPOSE 80
 
+ENTRYPOINT ["sh", "/app/entrypoint.sh"]
+
 # Command to run the application in production
 CMD ["gunicorn", "wsgi:app", "-b", "0.0.0.0:80", "--worker-class", "gthread", "--workers", "2", "--threads", "4", "--timeout", "120"]

@@ -1421,6 +1421,203 @@ document.addEventListener('alpine:init', () => {
         }
     }));
 
+    // checkoutForm — standalone full-page checkout component (used by /checkout/<slug>)
+    // Mirrors the modal `checkout` component but uses `state` instead of `status`
+    // and derives paymentUrl from the parent element's data-payment-url attribute.
+    Alpine.data('checkoutForm', (asset, channelId) => ({
+        asset: asset,
+        channelId: channelId,
+        phoneNumber: localStorage.getItem('nyota_phone') || '',
+        state: 'ready',
+        errorMessage: '',
+        statusMessage: '',
+        purchaseId: null,
+        dealId: null,
+        pollingInterval: null,
+        pollCount: 0,
+        maxPolls: 120,
+        eventSource: null,
+        selectedTier: null,
+        _trackPurchaseOnce: false,
+
+        get paymentUrl() {
+            return this.$el.dataset.paymentUrl || '/api/initiate-payment';
+        },
+
+        get totalPrice() {
+            if (this.selectedTier && this.selectedTier.price !== undefined) {
+                return parseFloat(this.selectedTier.price) || 0;
+            }
+            return parseFloat(this.asset.price || 0);
+        },
+
+        init() {
+            this.selectedTier = (this.asset.details?.subscription_tiers || [])[0] || null;
+
+            // Resume a pending payment if one was stored (e.g. page refresh)
+            const pendingData = localStorage.getItem(`nyota_purchase_${this.asset.id}`);
+            if (pendingData) {
+                try {
+                    const pending = JSON.parse(pendingData);
+                    if (pending.status?.name === 'PENDING' && pending.id) {
+                        setTimeout(() => this.resumePaymentCheck(pending.id, pending.deal_id, pending.channel_id), 500);
+                    }
+                } catch (e) { }
+            }
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && this.state === 'waiting' && this.purchaseId) {
+                    this.checkPaymentStatus();
+                }
+            });
+        },
+
+        async submitPayment() {
+            if (this.phoneNumber.replace(/\D/g, '').length < 10) {
+                this.errorMessage = 'Please enter a valid phone number.';
+                return;
+            }
+            this.state = 'waiting';
+            this.statusMessage = 'Initiating payment...';
+            this.errorMessage = '';
+            localStorage.setItem('nyota_phone', this.phoneNumber);
+
+            try {
+                const response = await fetch(this.paymentUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone_number: this.phoneNumber.replace(/\D/g, ''),
+                        asset_id: this.asset.id,
+                        channel_id: this.channelId,
+                        tier: this.selectedTier,
+                        language: navigator.language || 'en'
+                    })
+                });
+                const result = await response.json();
+
+                // --- Already owns this item ---
+                if (result.already_owned) {
+                    if (result.sms_sent) {
+                        this.state = 'already_owned';
+                        this.statusMessage = result.message;
+                    } else {
+                        // SMS throttled or not configured — show inline error + library link
+                        this.state = 'ready';
+                        this.errorMessage = result.message;
+                    }
+                    return;
+                }
+
+                if (response.ok && result.success) {
+                    if (result.is_free) {
+                        this.state = 'success';
+                        this.statusMessage = result.message || 'Access granted!';
+                        setTimeout(() => { window.location.href = result.redirect_url || '/library'; }, 800);
+                        return;
+                    }
+                    this.state = 'waiting';
+                    this.statusMessage = result.message || 'Check your phone to complete payment.';
+                    this.purchaseId = result.purchase_id;
+                    this.dealId = result.deal_id;
+                    localStorage.setItem(`nyota_purchase_${this.asset.id}`, JSON.stringify({
+                        id: result.purchase_id,
+                        deal_id: result.deal_id,
+                        channel_id: this.channelId,
+                        status: { name: 'PENDING' }
+                    }));
+                    this.listenForPaymentResult();
+                    this.startPolling();
+                } else {
+                    this.state = 'ready';
+                    this.errorMessage = result.message || 'Could not start payment.';
+                }
+            } catch (err) {
+                this.state = 'ready';
+                this.errorMessage = 'A network error occurred. Please try again.';
+            }
+        },
+
+        async resumePaymentCheck(purchaseId, dealId, storedChannelId) {
+            this.purchaseId = purchaseId;
+            this.dealId = dealId;
+            if (storedChannelId) this.channelId = storedChannelId;
+            this.state = 'waiting';
+            this.statusMessage = 'Resuming payment check...';
+            this.listenForPaymentResult();
+            this.startPolling();
+        },
+
+        startPolling() {
+            this.stopPolling();
+            this.pollCount = 0;
+            this.pollingInterval = setInterval(() => this.checkPaymentStatus(), 5000);
+        },
+
+        stopPolling() {
+            if (this.pollingInterval) {
+                clearInterval(this.pollingInterval);
+                this.pollingInterval = null;
+            }
+        },
+
+        async checkPaymentStatus() {
+            if (!this.purchaseId) return;
+            this.pollCount++;
+            if (this.pollCount > this.maxPolls) {
+                this.stopPolling();
+                this.state = 'ready';
+                this.errorMessage = 'Payment timed out. Please try again or contact support.';
+                return;
+            }
+            try {
+                const response = await fetch(`/api/payment-status/${this.purchaseId}`);
+                if (!response.ok) return;
+                const data = await response.json();
+                if (data.status === 'COMPLETED') {
+                    this._onSuccess(data);
+                } else if (data.status === 'FAILED') {
+                    this.state = 'ready';
+                    this.errorMessage = data.message || 'Payment failed. Please try again.';
+                    this.stopPolling();
+                }
+            } catch (e) { }
+        },
+
+        listenForPaymentResult() {
+            if (this.eventSource) { this.eventSource.close(); }
+            this.eventSource = new EventSource(`/api/payment-stream/${this.channelId}`);
+            this.eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.status === 'SUCCESS') this._onSuccess(data);
+                    else if (data.status === 'FAILED') {
+                        this.state = 'ready';
+                        this.errorMessage = data.message || 'Payment failed.';
+                        this.stopPolling();
+                        this.eventSource.close();
+                    }
+                } catch (e) { }
+            };
+            this.eventSource.onerror = () => {
+                if (this.eventSource?.readyState === EventSource.CLOSED && this.state === 'waiting') {
+                    setTimeout(() => this.listenForPaymentResult(), 3000);
+                }
+            };
+        },
+
+        _onSuccess(data) {
+            if (this._trackPurchaseOnce) return;
+            this._trackPurchaseOnce = true;
+            this.state = 'success';
+            this.statusMessage = 'Payment confirmed!';
+            this.stopPolling();
+            if (this.eventSource) { this.eventSource.close(); }
+            localStorage.removeItem(`nyota_purchase_${this.asset.id}`);
+            setTimeout(() => { window.location.href = data.redirect_url || '/library'; }, 1500);
+        }
+    }));
+
     Alpine.data('adminSupporters', () => ({
         // --- Data ---
         supporters: [], // Start with a guaranteed empty array

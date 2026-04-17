@@ -108,4 +108,11 @@ def create_app(config_class=Config):
             response.cache_control.public = True
         return response
 
+    # Start background worker (scheduled campaigns + subscription reminders).
+    # Suppressed during flask db migrate / flask db upgrade via env var.
+    import os
+    if not os.environ.get('FLASK_SKIP_BACKGROUND_WORKER'):
+        from services.background_tasks import start_background_worker
+        start_background_worker(app)
+
     return app

@@ -1705,16 +1705,37 @@ def sms_forecast():
         if is_active and expiry_date:
             active_expiries.append(expiry_date)
 
+    # Load all scheduled campaigns once; resolve live audience per campaign (not
+    # total_recipients, which is 0 for campaigns that haven't fired yet).
+    all_scheduled = SMSCampaign.query.filter(
+        SMSCampaign.creator_id == g.creator.id,
+        SMSCampaign.status == SMSCampaignStatus.SCHEDULED,
+    ).all()
+    campaign_audience = {
+        c.id: len(_resolve_campaign_audience(c.creator_id, c.targeting))
+        for c in all_scheduled
+    }
+
     for days in periods:
         end = now + timedelta(days=days)
 
-        # Scheduled (one-shot) campaigns whose send time falls in the window
-        campaigns_due = SMSCampaign.query.filter(
-            SMSCampaign.creator_id == g.creator.id,
-            SMSCampaign.status == SMSCampaignStatus.SCHEDULED,
-            SMSCampaign.scheduled_at.between(now, end)
-        ).all()
-        campaign_sms = sum(c.total_recipients or 0 for c in campaigns_due)
+        campaign_sms = 0
+        for c in all_scheduled:
+            recipients = campaign_audience.get(c.id, 0)
+            if not recipients:
+                continue
+            next_run = c.next_run_at or c.scheduled_at
+            if not next_run:
+                continue
+            if c.is_recurring and c.recurrence_interval_days and c.recurrence_interval_days > 0:
+                run = next_run
+                while run <= end:
+                    if run >= now:
+                        campaign_sms += recipients
+                    run += timedelta(days=c.recurrence_interval_days)
+            else:
+                if now <= next_run <= end:
+                    campaign_sms += recipients
 
         # Subscriptions expiring in this window each trigger up to 3 reminder SMS
         # (sent at 5 days, 1 day, and 0 days before expiry).
@@ -2164,13 +2185,19 @@ def asset_detail(slug):
     if customer_phone:
         customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
         if customer:
-            # Re-query for latest purchase attempt (might be pending/failed)
-            # We already checked purchase status for permission, but this logic
-            # is used for the UI state (e.g. "Processing", "Buy Now")
+            # Prefer COMPLETED purchase for UI state — a stale PENDING record
+            # (e.g. from a duplicate attempt before the guard was in place) must
+            # not hide content the customer already paid for.
             latest_purchase = Purchase.query.filter_by(
-                customer_id=customer.id, 
-                asset_id=asset_obj.id
+                customer_id=customer.id,
+                asset_id=asset_obj.id,
+                status=PurchaseStatus.COMPLETED
             ).order_by(Purchase.purchase_date.desc()).first()
+            if not latest_purchase:
+                latest_purchase = Purchase.query.filter_by(
+                    customer_id=customer.id,
+                    asset_id=asset_obj.id
+                ).order_by(Purchase.purchase_date.desc()).first()
 
     # --- Construct Asset Metadata (Files & Types) ---
     asset_meta = {'total_files': 0, 'types': set()}

@@ -806,6 +806,14 @@ function smsCampaigns() {
 
         init() {
             this.$watch('form', () => this.schedulePreview(), { deep: true });
+            // Restore active tab from URL hash on load
+            const hash = window.location.hash.slice(1);
+            if (['campaigns', 'log', 'templates'].includes(hash)) {
+                this.tab = hash;
+                if (hash === 'log') this.loadLog();
+            }
+            // Keep hash in sync when tab changes
+            this.$watch('tab', val => { window.location.hash = val; });
         },
 
         // ---- Campaign builder helpers ----

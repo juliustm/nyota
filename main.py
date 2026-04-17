@@ -52,6 +52,11 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Trust the reverse proxy's X-Forwarded-Proto header so request.url_root
+    # uses https:// instead of http:// when behind nginx/Cloudflare.
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
     # --- Initialize Flask Extensions ---
     db.init_app(app)
     migrate.init_app(app, db)

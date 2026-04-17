@@ -27,11 +27,13 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
 from models.nyota import (
-    db, Creator, CreatorSetting, DigitalAsset, AssetFile, 
-    Purchase, Customer, Subscription, Comment, Rating, 
-    Ambassador, AssetStatus, AssetType, PurchaseStatus, 
-    SubscriptionInterval, SubscriptionStatus, TicketStatus,
-    AccessAttempt
+    db, Creator, CreatorSetting, DigitalAsset, AssetFile,
+    Purchase, Customer, Comment,
+    Ambassador, AssetStatus, AssetType, PurchaseStatus,
+    SubscriptionInterval,
+    AccessAttempt, SMSMagicLink,
+    SMSCampaign, SMSCampaignLog, SMSCampaignStatus,
+    SMSLog, SMSLogType
 )
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
@@ -716,25 +718,34 @@ def check_subscription_status(purchase):
     """
     Checks if a subscription purchase is still active.
     Returns (is_active, expiry_date).
+
+    Handles both is_subscription assets and any purchase where the customer
+    selected a recurring tier (ticket_data['tier']['interval'] is set).
     """
-    if not purchase.asset.is_subscription:
+    has_tier_interval = (
+        purchase.ticket_data
+        and 'tier' in purchase.ticket_data
+        and purchase.ticket_data['tier'].get('interval')
+    )
+    if not purchase.asset.is_subscription and not has_tier_interval:
         return True, None
-        
+
     start_date = purchase.purchase_date
     interval = purchase.asset.subscription_interval.name.lower() if purchase.asset.subscription_interval else 'monthly'
-    
-    # Override interval if tier is selected
+
     if purchase.ticket_data and 'tier' in purchase.ticket_data:
         interval = purchase.ticket_data['tier'].get('interval', interval).lower()
         
-    if interval == 'weekly':
-        delta = timedelta(days=7)
-    elif interval == 'quarterly':
-        delta = timedelta(days=90)
-    elif interval == 'yearly':
-        delta = timedelta(days=365)
-    else: # monthly
-        delta = timedelta(days=30)
+    interval_map = {
+        'daily':      timedelta(days=1),
+        'weekly':     timedelta(days=7),
+        'biweekly':   timedelta(days=14),
+        'monthly':    timedelta(days=30),
+        'quarterly':  timedelta(days=90),
+        'halfyearly': timedelta(days=183),
+        'yearly':     timedelta(days=365),
+    }
+    delta = interval_map.get(interval, timedelta(days=30))
         
     expiry_date = start_date + delta
     is_active = datetime.utcnow() < expiry_date
@@ -1290,6 +1301,437 @@ def test_sms():
         return jsonify({'success': True, 'message': 'Test SMS sent successfully!'})
     else:
         return jsonify({'success': False, 'message': f'Failed to send SMS: {response}'}), 500
+
+# ==============================================================================
+# == SMS CAMPAIGN ROUTES (ADMIN)
+# ==============================================================================
+
+def _get_subscription_phones(asset_filter):
+    """
+    Returns (active_phones, expired_phones) sets by inspecting completed purchases.
+    Covers both is_subscription assets and any purchase where a recurring tier was chosen.
+    The Subscription table is intentionally not used — subscriptions are tracked via
+    Purchase.ticket_data['tier'] and the asset's subscription_interval.
+    """
+    from sqlalchemy import or_
+    purchases = db.session.query(Purchase).join(DigitalAsset).filter(
+        asset_filter,
+        Purchase.status == PurchaseStatus.COMPLETED,
+        or_(
+            DigitalAsset.is_subscription == True,
+            Purchase.ticket_data.isnot(None),
+        )
+    ).all()
+
+    active, expired = set(), set()
+    for p in purchases:
+        is_active, expiry_date = check_subscription_status(p)
+        if not expiry_date:
+            continue
+        phone = p.customer.whatsapp_number
+        if not phone:
+            continue
+        (active if is_active else expired).add(phone)
+    return active, expired
+
+
+def _resolve_campaign_audience(creator_id, targeting, exclude_buyers_since=None):
+    """
+    Returns a deduplicated set of phone numbers matching the targeting config.
+    targeting keys:
+      groups        – list of "past_buyers" | "active_subscribers" | "expired_subscribers"
+      asset_ids     – list of asset IDs (empty = all creator assets)
+      imported_phones – list of raw phone strings
+    exclude_buyers_since – if provided, remove phones that made a purchase after this datetime
+
+    Deduplication is automatic — phones is a Python set, so a number that appears
+    in multiple groups (e.g. past buyer AND active subscriber) is counted only once.
+    """
+    phones = set()
+    groups = targeting.get('groups', [])
+    asset_ids = targeting.get('asset_ids', [])
+
+    if asset_ids:
+        asset_filter = (DigitalAsset.creator_id == creator_id) & (DigitalAsset.id.in_(asset_ids))
+    else:
+        asset_filter = (DigitalAsset.creator_id == creator_id)
+
+    if 'past_buyers' in groups:
+        rows = db.session.query(Customer.whatsapp_number)\
+            .join(Purchase).join(DigitalAsset)\
+            .filter(asset_filter, Purchase.status == PurchaseStatus.COMPLETED)\
+            .distinct().all()
+        phones.update(r[0] for r in rows if r[0])
+
+    need_sub = 'active_subscribers' in groups or 'expired_subscribers' in groups
+    if need_sub:
+        active_phones, expired_phones = _get_subscription_phones(asset_filter)
+        if 'active_subscribers' in groups:
+            phones.update(active_phones)
+        if 'expired_subscribers' in groups:
+            phones.update(expired_phones)
+
+    for p in targeting.get('imported_phones', []):
+        cleaned = str(p).strip()
+        if cleaned:
+            phones.add(cleaned)
+
+    if exclude_buyers_since:
+        recent_buyer_phones = set(
+            r[0] for r in db.session.query(Customer.whatsapp_number)
+            .join(Purchase).join(DigitalAsset)
+            .filter(
+                DigitalAsset.creator_id == creator_id,
+                Purchase.status == PurchaseStatus.COMPLETED,
+                Purchase.purchase_date >= exclude_buyers_since
+            ).distinct().all()
+        )
+        phones -= recent_buyer_phones
+
+    return phones
+
+
+@admin_bp.route('/campaigns/sms')
+@creator_login_required
+def sms_campaigns():
+    sms_configured = bool(get_sms_provider(g.creator))
+    campaigns = SMSCampaign.query.filter_by(creator_id=g.creator.id)\
+                                  .order_by(SMSCampaign.created_at.desc()).all()
+    all_assets = DigitalAsset.query.filter_by(creator_id=g.creator.id)\
+                                    .with_entities(DigitalAsset.id, DigitalAsset.title).all()
+
+    total_buyers = db.session.query(func.count(distinct(Customer.id)))\
+        .join(Purchase).join(DigitalAsset)\
+        .filter(DigitalAsset.creator_id == g.creator.id,
+                Purchase.status == PurchaseStatus.COMPLETED).scalar() or 0
+
+    creator_asset_filter = (DigitalAsset.creator_id == g.creator.id)
+    active_sub_phones, expired_sub_phones = _get_subscription_phones(creator_asset_filter)
+    active_subs = len(active_sub_phones)
+    expired_subs = len(expired_sub_phones)
+
+    template_keys = [
+        'sms_tpl_purchase_sw', 'sms_tpl_purchase_en',
+        'sms_tpl_magic_sw', 'sms_tpl_magic_en',
+        'sms_tpl_reminder_sw_many', 'sms_tpl_reminder_en_many',
+        'sms_tpl_reminder_sw_1', 'sms_tpl_reminder_en_1',
+        'sms_tpl_reminder_sw_0', 'sms_tpl_reminder_en_0',
+    ]
+    sms_templates = {k: (g.creator.get_setting(k) or '') for k in template_keys}
+    sms_templates['sms_cost_per_unit'] = g.creator.get_setting('sms_cost_per_unit') or ''
+
+    from services.sms_service import DEFAULT_TEMPLATES
+    sms_defaults = {f'sms_tpl_{k}': v for k, v in DEFAULT_TEMPLATES.items()}
+
+    campaigns_data = [{
+        'id': c.id, 'name': c.name, 'message': c.message,
+        'status': c.status.value, 'status_name': c.status.name,
+        'total_recipients': c.total_recipients, 'sent_count': c.sent_count,
+        'failed_count': c.failed_count, 'targeting': c.targeting or {},
+        'is_recurring': c.is_recurring,
+        'recurrence_interval_days': c.recurrence_interval_days,
+        'smart_exclude_recent_buyers': c.smart_exclude_recent_buyers,
+        'sent_at': c.sent_at.isoformat() if c.sent_at else None,
+        'scheduled_at': c.scheduled_at.isoformat() if c.scheduled_at else None,
+        'created_at': c.created_at.isoformat(),
+    } for c in campaigns]
+
+    return render_template('admin/campaigns_sms.html',
+                           campaigns_json=json.dumps(campaigns_data),
+                           sms_configured=sms_configured,
+                           assets=all_assets,
+                           sms_templates=sms_templates,
+                           sms_defaults=sms_defaults,
+                           stats={
+                               'total_buyers': total_buyers,
+                               'active_subs': active_subs,
+                               'expired_subs': expired_subs,
+                               'total_reachable': total_buyers,
+                           })
+
+
+@admin_bp.route('/api/campaigns/sms/preview-audience', methods=['POST'])
+@creator_login_required
+def sms_campaign_preview_audience():
+    data = request.get_json()
+    phones = _resolve_campaign_audience(g.creator.id, data.get('targeting', {}))
+    return jsonify({'count': len(phones), 'sample': list(phones)[:5]})
+
+
+@admin_bp.route('/api/campaigns/sms/save', methods=['POST'])
+@creator_login_required
+def sms_campaign_save():
+    data = request.get_json()
+    campaign_id = data.get('id')
+
+    if campaign_id:
+        campaign = SMSCampaign.query.filter_by(id=campaign_id, creator_id=g.creator.id).first_or_404()
+        if campaign.status in (SMSCampaignStatus.SENT, SMSCampaignStatus.SENDING):
+            return jsonify({'success': False, 'message': 'Cannot edit a sent campaign.'}), 400
+    else:
+        campaign = SMSCampaign(creator_id=g.creator.id, message='', name='Untitled')
+        db.session.add(campaign)
+
+    campaign.name = data.get('name', 'Untitled Campaign')
+    campaign.message = data.get('message', '')
+    campaign.targeting = data.get('targeting', {})
+    campaign.is_recurring = bool(data.get('is_recurring', False))
+    campaign.recurrence_interval_days = int(data.get('recurrence_interval_days') or 30)
+    campaign.smart_exclude_recent_buyers = bool(data.get('smart_exclude_recent_buyers', True))
+    campaign.status = SMSCampaignStatus.DRAFT
+
+    scheduled_at_str = data.get('scheduled_at')
+    if scheduled_at_str:
+        try:
+            campaign.scheduled_at = datetime.fromisoformat(scheduled_at_str)
+            campaign.status = SMSCampaignStatus.SCHEDULED
+        except ValueError:
+            pass
+    else:
+        campaign.scheduled_at = None
+
+    db.session.commit()
+    return jsonify({'success': True, 'id': campaign.id, 'message': 'Campaign saved.'})
+
+
+@admin_bp.route('/api/campaigns/sms/<int:campaign_id>/send', methods=['POST'])
+@creator_login_required
+def sms_campaign_send(campaign_id):
+    campaign = SMSCampaign.query.filter_by(id=campaign_id, creator_id=g.creator.id).first_or_404()
+
+    if campaign.status == SMSCampaignStatus.SENT:
+        return jsonify({'success': False, 'message': 'Campaign already sent.'}), 400
+    if campaign.status == SMSCampaignStatus.SCHEDULED:
+        return jsonify({'success': False, 'message': 'This campaign is scheduled — it will send automatically at the scheduled time.'}), 400
+
+    sms_provider = get_sms_provider(g.creator)
+    if not sms_provider:
+        return jsonify({'success': False, 'message': 'SMS not configured.'}), 400
+
+    exclude_since = None
+    if campaign.smart_exclude_recent_buyers:
+        exclude_since = campaign.scheduled_at or campaign.created_at
+    phones = _resolve_campaign_audience(g.creator.id, campaign.targeting, exclude_buyers_since=exclude_since)
+    if not phones:
+        return jsonify({'success': False, 'message': 'No recipients found for this audience.'}), 400
+
+    campaign.status = SMSCampaignStatus.SENDING
+    campaign.total_recipients = len(phones)
+    db.session.commit()
+
+    # CRITICAL: capture real references before spawning thread —
+    # current_app and g are proxies that die with the request context.
+    app = current_app._get_current_object()
+    creator_id = g.creator.id
+    phones_list = list(phones)
+    campaign_message = campaign.message
+    campaign_id_val = campaign.id
+
+    def _send():
+        with app.app_context():
+            from models.nyota import Creator, SMSCampaign, SMSCampaignLog, db
+            from services.sms_service import get_sms_provider
+            inner_creator = Creator.query.get(creator_id)
+            inner_provider = get_sms_provider(inner_creator)
+            inner_campaign = SMSCampaign.query.get(campaign_id_val)
+            if not inner_provider or not inner_campaign:
+                return
+            sent, failed = 0, 0
+            for phone in phones_list:
+                success, resp = inner_provider.send_sms(phone, campaign_message)
+                db.session.add(SMSCampaignLog(
+                    campaign_id=campaign_id_val,
+                    phone_number=phone,
+                    status='sent' if success else 'failed',
+                    error_message=None if success else str(resp)[:500],
+                    sent_at=datetime.utcnow() if success else None
+                ))
+                inner_provider._log(creator_id, phone, campaign_message, 'CAMPAIGN',
+                                    success, campaign_id=campaign_id_val,
+                                    error=None if success else str(resp)[:500])
+                if success:
+                    sent += 1
+                else:
+                    failed += 1
+            inner_campaign.sent_count = sent
+            inner_campaign.failed_count = failed
+            inner_campaign.status = SMSCampaignStatus.SENT
+            inner_campaign.sent_at = datetime.utcnow()
+            db.session.commit()
+
+    t = threading.Thread(target=_send, daemon=True)
+    t.start()
+
+    return jsonify({
+        'success': True,
+        'message': f'Campaign is sending to {len(phones)} recipients.',
+        'recipients': len(phones)
+    })
+
+
+@admin_bp.route('/api/campaigns/sms/<int:campaign_id>/delete', methods=['POST'])
+@creator_login_required
+def sms_campaign_delete(campaign_id):
+    campaign = SMSCampaign.query.filter_by(id=campaign_id, creator_id=g.creator.id).first_or_404()
+    if campaign.status == SMSCampaignStatus.SENDING:
+        return jsonify({'success': False, 'message': 'Cannot delete a campaign while it is sending.'}), 400
+    SMSCampaignLog.query.filter_by(campaign_id=campaign.id).delete()
+    db.session.delete(campaign)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@admin_bp.route('/api/campaigns/sms/<int:campaign_id>/logs')
+@creator_login_required
+def sms_campaign_logs(campaign_id):
+    campaign = SMSCampaign.query.filter_by(id=campaign_id, creator_id=g.creator.id).first_or_404()
+    logs = SMSCampaignLog.query.filter_by(campaign_id=campaign.id)\
+                                .order_by(SMSCampaignLog.id.desc()).limit(500).all()
+    return jsonify({
+        'campaign': {'id': campaign.id, 'name': campaign.name, 'status': campaign.status.value},
+        'logs': [{'phone': l.phone_number, 'status': l.status,
+                  'sent_at': l.sent_at.isoformat() if l.sent_at else None,
+                  'error': l.error_message} for l in logs]
+    })
+
+
+@admin_bp.route('/api/sms/templates', methods=['POST'])
+@creator_login_required
+def save_sms_templates():
+    data = request.get_json()
+    saveable_keys = [
+        'sms_tpl_purchase_sw', 'sms_tpl_purchase_en',
+        'sms_tpl_magic_sw', 'sms_tpl_magic_en',
+        'sms_tpl_reminder_sw_many', 'sms_tpl_reminder_en_many',
+        'sms_tpl_reminder_sw_1', 'sms_tpl_reminder_en_1',
+        'sms_tpl_reminder_sw_0', 'sms_tpl_reminder_en_0',
+        'sms_cost_per_unit',
+    ]
+    for key in saveable_keys:
+        val = data.get(key)
+        if val is not None:
+            g.creator.set_setting(key, val.strip() or None)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Templates saved.'})
+
+
+@admin_bp.route('/api/campaigns/sms/log/reset', methods=['POST'])
+@creator_login_required
+def sms_log_reset():
+    data = request.get_json() or {}
+    totp_code = str(data.get('totp_code', '')).strip()
+    if not verify_totp(g.creator.totp_secret, totp_code):
+        return jsonify({'success': False, 'message': 'Invalid authentication code.'}), 403
+    SMSLog.query.filter_by(creator_id=g.creator.id).delete()
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'SMS log cleared.'})
+
+
+@admin_bp.route('/api/campaigns/sms/log')
+@creator_login_required
+def sms_global_log():
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    log_type_filter = request.args.get('type')
+
+    q = SMSLog.query.filter_by(creator_id=g.creator.id)
+
+    if from_date:
+        try:
+            q = q.filter(SMSLog.sent_at >= datetime.strptime(from_date, '%Y-%m-%d'))
+        except ValueError:
+            pass
+    if to_date:
+        try:
+            q = q.filter(SMSLog.sent_at <= datetime.strptime(to_date, '%Y-%m-%d') + timedelta(days=1))
+        except ValueError:
+            pass
+    if log_type_filter and log_type_filter in [t.name for t in SMSLogType]:
+        q = q.filter(SMSLog.log_type == SMSLogType[log_type_filter])
+
+    total = q.count()
+    sent_total = q.filter(SMSLog.status == 'sent').count()
+    failed_total = q.filter(SMSLog.status == 'failed').count()
+    cost_per = float(g.creator.get_setting('sms_cost_per_unit') or 0.05)
+    logs = q.order_by(SMSLog.sent_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        'total': total,
+        'sent': sent_total,
+        'failed': failed_total,
+        'estimated_cost': round(sent_total * cost_per, 2),
+        'cost_per_sms': cost_per,
+        'page': page,
+        'has_more': logs.has_next,
+        'logs': [{
+            'id': l.id,
+            'phone': l.phone_number,
+            'type': l.log_type.value,
+            'status': l.status,
+            'sent_at': l.sent_at.isoformat() if l.sent_at else None,
+            'preview': l.message_preview,
+            'campaign_id': l.campaign_id,
+        } for l in logs.items]
+    })
+
+
+@admin_bp.route('/api/campaigns/sms/forecast')
+@creator_login_required
+def sms_forecast():
+    from sqlalchemy import or_
+    periods = [7, 30, 90, 365]
+    now = datetime.utcnow()
+    cost_per = float(g.creator.get_setting('sms_cost_per_unit') or 0.05)
+    result = []
+
+    # Collect real expiry dates for every active subscription purchase.
+    # One entry per unique phone — if a customer has multiple active subs,
+    # each expiry is tracked separately (each will generate its own reminders).
+    creator_asset_filter = (DigitalAsset.creator_id == g.creator.id)
+    sub_purchases = db.session.query(Purchase).join(DigitalAsset).filter(
+        creator_asset_filter,
+        Purchase.status == PurchaseStatus.COMPLETED,
+        or_(
+            DigitalAsset.is_subscription == True,
+            Purchase.ticket_data.isnot(None),
+        )
+    ).all()
+
+    active_expiries = []
+    for p in sub_purchases:
+        is_active, expiry_date = check_subscription_status(p)
+        if is_active and expiry_date:
+            active_expiries.append(expiry_date)
+
+    for days in periods:
+        end = now + timedelta(days=days)
+
+        # Scheduled (one-shot) campaigns whose send time falls in the window
+        campaigns_due = SMSCampaign.query.filter(
+            SMSCampaign.creator_id == g.creator.id,
+            SMSCampaign.status == SMSCampaignStatus.SCHEDULED,
+            SMSCampaign.scheduled_at.between(now, end)
+        ).all()
+        campaign_sms = sum(c.total_recipients or 0 for c in campaigns_due)
+
+        # Subscriptions expiring in this window each trigger up to 3 reminder SMS
+        # (sent at 5 days, 1 day, and 0 days before expiry).
+        expiring_in_window = sum(1 for e in active_expiries if now <= e <= end)
+        estimated_reminder_sms = expiring_in_window * 3
+
+        total = campaign_sms + estimated_reminder_sms
+        result.append({
+            'days': days,
+            'campaign_sms': campaign_sms,
+            'reminder_sms': estimated_reminder_sms,
+            'total': total,
+            'estimated_cost': round(total * cost_per, 2)
+        })
+
+    return jsonify(result)
+
 
 # ==============================================================================
 # == MAIN (PUBLIC) BLUEPRINT
@@ -1883,6 +2325,146 @@ def initiate_payment():
     
     db.session.flush() # Flush to ensure customer.id is available
 
+    # =========================================================================
+    # == DUPLICATE PURCHASE GUARD
+    # == If this phone already has a COMPLETED purchase for this asset, skip
+    # == creating a new Purchase record and either restore the session (free)
+    # == or send a magic-link SMS (paid) so they can re-access their content.
+    # =========================================================================
+    existing_completed = Purchase.query.filter_by(
+        customer_id=customer.id,
+        asset_id=asset.id,
+        status=PurchaseStatus.COMPLETED
+    ).first()
+
+    if existing_completed:
+        creator = asset.creator
+        lang = (customer.language or 'sw')[:2].lower()
+
+        MSGS = {
+            'throttled_sw': 'Tayari una bidhaa hii. SMS zimefika kikomo — fungua maktaba kwa nambari na tarehe ya ununuzi.',
+            'throttled_en': 'You already own this. SMS limit reached — unlock your library with phone and purchase date.',
+            'sent_sw':      'Unamiliki bidhaa hii! Tumetuma SMS yenye kiungo cha kuifikia.',
+            'sent_en':      'You already own this! We sent you an SMS with a magic access link.',
+            'nosms_sw':     'Tayari umemiliki bidhaa hii. Nenda kwenye maktaba yako na uingize nambari yako na tarehe ya ununuzi.',
+            'nosms_en':     'You already own this. Go to your library and unlock with your phone number and purchase date.',
+            'free_sw':      'Tayari una bidhaa hii ya bure. Unapelekwa kwenye ukurasa wake.',
+            'free_en':      'You already have this free item. Redirecting you there.',
+            'bot_sw':       'Ombi hili limekataliwa kwa usalama. Fikia maktaba yako moja kwa moja.',
+            'bot_en':       'Request blocked for security. Access your library directly.',
+        }
+
+        def pick(key):
+            return MSGS.get(f'{key}_{lang}', MSGS.get(f'{key}_sw', ''))
+
+        if float(amount) == 0:
+            # Free asset re-access — silently restore session, no SMS, no new record
+            session['customer_phone'] = str(phone_number).strip()
+            session['is_verified'] = True
+            session.pop('unverified_purchase_ids', None)
+            session.permanent = True
+            return jsonify({
+                'success': True,
+                'is_free': True,
+                'already_owned': True,
+                'message': pick('free'),
+                'redirect_url': url_for('main.asset_detail', slug=asset.slug)
+            })
+
+        # Paid asset — send magic link via SMS if configured
+        sms_provider = get_sms_provider(creator)
+        if sms_provider:
+            # -- Bot shield: detect phones rotating through a single IP --
+            ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
+            if ip_address and ',' in ip_address:
+                ip_address = ip_address.split(',')[0].strip()
+
+            one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+            distinct_phones_this_ip = db.session.query(
+                func.count(distinct(SMSMagicLink.phone_number))
+            ).filter(
+                SMSMagicLink.ip_address == ip_address,
+                SMSMagicLink.last_sms_sent_at >= one_hour_ago
+            ).scalar() or 0
+
+            bot_threshold = int(creator.get_setting('sms_bot_ip_threshold') or 15)
+            if distinct_phones_this_ip >= bot_threshold:
+                return jsonify({
+                    'success': False,
+                    'already_owned': True,
+                    'sms_throttled': True,
+                    'message': pick('bot'),
+                    'unlock_url': url_for('main.library')
+                }), 429
+
+            one_day_ago = datetime.utcnow() - timedelta(hours=24)
+            recent_links = SMSMagicLink.query.filter(
+                SMSMagicLink.phone_number == phone_number,
+                SMSMagicLink.asset_id == asset.id,
+                SMSMagicLink.created_at >= one_day_ago
+            ).all()
+            sms_sent_today = sum(link.sms_count for link in recent_links)
+
+            if sms_sent_today >= 3:
+                return jsonify({
+                    'success': False,
+                    'already_owned': True,
+                    'sms_throttled': True,
+                    'message': pick('throttled'),
+                    'unlock_url': url_for('main.library')
+                }), 429
+
+            # Reuse an existing valid link or create a new one
+            active_link = SMSMagicLink.query.filter(
+                SMSMagicLink.phone_number == phone_number,
+                SMSMagicLink.asset_id == asset.id,
+                SMSMagicLink.expires_at > datetime.utcnow(),
+                SMSMagicLink.opens_remaining > 0
+            ).first()
+
+            if not active_link:
+                active_link = SMSMagicLink(
+                    phone_number=phone_number,
+                    asset_id=asset.id,
+                    opens_remaining=3,
+                    sms_count=1,
+                    last_sms_sent_at=datetime.utcnow(),
+                    ip_address=ip_address,
+                    expires_at=datetime.utcnow() + timedelta(hours=24)
+                )
+                db.session.add(active_link)
+                db.session.flush()
+            else:
+                active_link.sms_count += 1
+                active_link.last_sms_sent_at = datetime.utcnow()
+                active_link.ip_address = ip_address
+
+            db.session.commit()
+
+            magic_url = f"{request.url_root.rstrip('/')}/to/{active_link.token}"
+            sms_provider.send_magic_link(
+                phone_number, asset.title, magic_url,
+                language=lang, creator=creator
+            )
+
+            return jsonify({
+                'success': False,
+                'already_owned': True,
+                'sms_sent': True,
+                'message': pick('sent')
+            })
+
+        else:
+            # SMS not configured — direct user to the library unlock flow
+            return jsonify({
+                'success': False,
+                'already_owned': True,
+                'sms_sent': False,
+                'message': pick('nosms'),
+                'unlock_url': url_for('main.library')
+            })
+    # == END DUPLICATE PURCHASE GUARD =========================================
+
     purchase = Purchase(
         customer_id=customer.id,
         asset_id=asset.id,
@@ -2448,7 +3030,57 @@ def payment_stream(channel_id):
             sse_logger.info(f"SSE connection closed for channel {channel_id}, but channel remains active")
 
     return Response(event_stream(), mimetype='text/event-stream')
-    
+
+
+@main_bp.route('/to/<token>')
+@main_bp.route('/access/magic/<token>')
+def magic_library_access(token):
+    """
+    Magic link route for users who already own an asset but are on a new browser.
+    Validates the token, decrements opens_remaining, and restores a verified session.
+    """
+    link = SMSMagicLink.query.filter_by(token=token).first()
+
+    if not link:
+        flash('This magic link is invalid.', 'error')
+        return redirect(url_for('main.library'))
+
+    if datetime.utcnow() > link.expires_at:
+        flash('This magic link has expired. Please unlock your library using your phone number and purchase date.', 'warning')
+        return redirect(url_for('main.library'))
+
+    if link.opens_remaining <= 0:
+        flash('This magic link has already been used the maximum number of times. Please use phone + date to unlock.', 'warning')
+        return redirect(url_for('main.library'))
+
+    customer = Customer.query.filter_by(whatsapp_number=link.phone_number).first()
+    if not customer:
+        flash('Could not find your account.', 'error')
+        return redirect(url_for('main.library'))
+
+    purchase = Purchase.query.filter_by(
+        customer_id=customer.id,
+        asset_id=link.asset_id,
+        status=PurchaseStatus.COMPLETED
+    ).first()
+
+    if not purchase:
+        flash('No completed purchase found for this link.', 'error')
+        return redirect(url_for('main.library'))
+
+    link.opens_remaining -= 1
+    link.used_at = datetime.utcnow()
+    db.session.commit()
+
+    session['customer_phone'] = link.phone_number
+    session['is_verified'] = True
+    session.pop('unverified_purchase_ids', None)
+    session.permanent = True
+
+    flash('Welcome back! Your library is ready.', 'success')
+    return redirect(url_for('main.asset_detail', slug=link.asset.slug))
+
+
 @main_bp.route('/library', methods=['GET', 'POST'])
 def library():
     customer_phone = session.get('customer_phone')

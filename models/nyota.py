@@ -10,6 +10,7 @@ with a professional, scalable model for creator settings and preferences.
 
 import enum
 import uuid
+import secrets
 from datetime import datetime
 from slugify import slugify
 from flask_sqlalchemy import SQLAlchemy
@@ -35,9 +36,12 @@ class AssetStatus(enum.Enum):
     ARCHIVED = "Archived"
 
 class SubscriptionInterval(enum.Enum):
+    DAILY = "daily"
     WEEKLY = "weekly"
+    BIWEEKLY = "biweekly"
     MONTHLY = "monthly"
     QUARTERLY = "quarterly"
+    HALFYEARLY = "halfyearly"
     YEARLY = "yearly"
 
 class SubscriptionStatus(enum.Enum):
@@ -516,6 +520,100 @@ class AccessAttempt(db.Model):
     phone_suffix = db.Column(db.String(4), nullable=False)
     attempt_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
     success = db.Column(db.Boolean, default=False, nullable=False)
-    
+
     def __repr__(self):
         return f'<AccessAttempt {self.ip_address} at {self.attempt_time}>'
+
+
+class SMSMagicLink(db.Model):
+    """
+    Tracks magic links sent to phone numbers to restore library access on a new browser
+    and to enforce SMS rate limiting when a customer re-attempts checkout for an item
+    they already own.
+    """
+    __tablename__ = 'sms_magic_link'
+    id = db.Column(db.Integer, primary_key=True)
+    phone_number = db.Column(db.String(25), nullable=False, index=True)
+    asset_id = db.Column(db.Integer, db.ForeignKey('digital_asset.id'), nullable=False)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True,
+                      default=lambda: secrets.token_urlsafe(22))
+    opens_remaining = db.Column(db.Integer, default=3)
+    sms_count = db.Column(db.Integer, default=0)
+    last_sms_sent_at = db.Column(db.DateTime, nullable=True)
+    ip_address = db.Column(db.String(45), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    asset = db.relationship('DigitalAsset')
+
+
+class SMSCampaignStatus(enum.Enum):
+    DRAFT = "Draft"
+    SCHEDULED = "Scheduled"
+    SENDING = "Sending"
+    SENT = "Sent"
+    FAILED = "Failed"
+
+
+class SMSCampaign(db.Model):
+    """
+    Stores SMS marketing campaign definitions. Target groups are stored as JSON
+    to avoid a complex many-to-many schema and remain schema-flexible.
+    """
+    __tablename__ = 'sms_campaign'
+    id = db.Column(db.Integer, primary_key=True)
+    creator_id = db.Column(db.Integer, db.ForeignKey('creator.id'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    status = db.Column(db.Enum(SMSCampaignStatus), default=SMSCampaignStatus.DRAFT, nullable=False)
+    # targeting JSON example:
+    # {"groups": ["past_buyers", "active_subscribers", "expired_subscribers"],
+    #  "asset_ids": [1, 2],  # empty = all creator assets
+    #  "imported_phones": ["255712...", "255713..."]}
+    targeting = db.Column(JSON, nullable=False, default=dict)
+    total_recipients = db.Column(db.Integer, default=0)
+    sent_count = db.Column(db.Integer, default=0)
+    failed_count = db.Column(db.Integer, default=0)
+    scheduled_at = db.Column(db.DateTime, nullable=True)
+    sent_at = db.Column(db.DateTime, nullable=True)
+    # Recurring campaign support
+    is_recurring = db.Column(db.Boolean, default=False)
+    recurrence_interval_days = db.Column(db.Integer, nullable=True)
+    next_run_at = db.Column(db.DateTime, nullable=True)
+    smart_exclude_recent_buyers = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    creator = db.relationship('Creator')
+
+
+class SMSCampaignLog(db.Model):
+    """Per-recipient delivery log for each campaign send."""
+    __tablename__ = 'sms_campaign_log'
+    id = db.Column(db.Integer, primary_key=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey('sms_campaign.id'), nullable=False, index=True)
+    phone_number = db.Column(db.String(25), nullable=False)
+    status = db.Column(db.String(20), default='pending')  # 'pending', 'sent', 'failed'
+    error_message = db.Column(db.Text, nullable=True)
+    sent_at = db.Column(db.DateTime, nullable=True)
+    campaign = db.relationship('SMSCampaign')
+
+
+class SMSLogType(enum.Enum):
+    PURCHASE = "purchase"
+    MAGIC_LINK = "magic_link"
+    REMINDER = "reminder"
+    CAMPAIGN = "campaign"
+
+
+class SMSLog(db.Model):
+    """Global audit log for every SMS sent through Nyota."""
+    __tablename__ = 'sms_log'
+    id = db.Column(db.Integer, primary_key=True)
+    creator_id = db.Column(db.Integer, db.ForeignKey('creator.id'), nullable=False, index=True)
+    phone_number = db.Column(db.String(25), nullable=False)
+    message_preview = db.Column(db.String(200), nullable=True)
+    log_type = db.Column(db.Enum(SMSLogType), nullable=False)
+    status = db.Column(db.String(10), default='sent')  # 'sent' / 'failed'
+    campaign_id = db.Column(db.Integer, db.ForeignKey('sms_campaign.id'), nullable=True, index=True)
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    error_message = db.Column(db.Text, nullable=True)

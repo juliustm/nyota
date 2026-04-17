@@ -1,0 +1,1049 @@
+{% extends "admin/base.html" %}
+
+{% block title %}SMS Campaigns{% endblock %}
+
+{% block content %}
+<div x-data="smsCampaigns()" x-init="init()" x-cloak>
+
+    <!-- Page Header -->
+    <div class="mb-6 flex items-center justify-between flex-wrap gap-3">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">SMS Campaigns</h1>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Send targeted SMS messages to your audience.</p>
+        </div>
+        {% if not sms_configured %}
+        <a href="{{ url_for('admin.manage_settings') }}#sms"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 rounded-xl text-sm font-medium border border-yellow-200 dark:border-yellow-700">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Configure SMS first
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Audience Stat Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 text-center cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-600 transition-colors"
+            @click="tab = 'campaigns'; form.targeting.groups = form.targeting.groups.includes('past_buyers') ? form.targeting.groups : [...form.targeting.groups, 'past_buyers']">
+            <p class="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400">{{ stats.total_buyers }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium">Total Buyers</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 text-center cursor-pointer hover:border-green-300 dark:hover:border-green-600 transition-colors"
+            @click="tab = 'campaigns'; form.targeting.groups = form.targeting.groups.includes('active_subscribers') ? form.targeting.groups : [...form.targeting.groups, 'active_subscribers']">
+            <p class="text-2xl font-extrabold text-green-600 dark:text-green-400">{{ stats.active_subs }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium">Active Subscribers</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 text-center cursor-pointer hover:border-orange-300 dark:hover:border-orange-600 transition-colors"
+            @click="tab = 'campaigns'; form.targeting.groups = form.targeting.groups.includes('expired_subscribers') ? form.targeting.groups : [...form.targeting.groups, 'expired_subscribers']">
+            <p class="text-2xl font-extrabold text-orange-500 dark:text-orange-400">{{ stats.expired_subs }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium">Expired Subscribers</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 text-center">
+            <p class="text-2xl font-extrabold text-gray-800 dark:text-gray-100">{{ stats.total_reachable }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium">Total Reachable</p>
+        </div>
+    </div>
+
+    <!-- Tab Nav -->
+    <div class="flex border-b border-gray-200 dark:border-gray-700 mb-6 gap-1">
+        <button @click="tab = 'campaigns'"
+            :class="tab === 'campaigns' ? 'border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+            class="px-4 py-2.5 text-sm font-semibold transition-colors">
+            Campaigns
+        </button>
+        <button @click="tab = 'log'; loadLog()"
+            :class="tab === 'log' ? 'border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+            class="px-4 py-2.5 text-sm font-semibold transition-colors">
+            Log
+        </button>
+        {% if sms_configured %}
+        <button @click="tab = 'templates'"
+            :class="tab === 'templates' ? 'border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+            class="px-4 py-2.5 text-sm font-semibold transition-colors">
+            Templates
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- ====================================================================
+         TAB 1: CAMPAIGNS
+         ==================================================================== -->
+    <div x-show="tab === 'campaigns'">
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+            <!-- Campaign Builder -->
+            <div class="lg:col-span-2">
+                <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 sticky top-20">
+                    <h2 class="text-base font-bold text-gray-900 dark:text-white mb-5" x-text="editingId ? 'Edit Campaign' : 'New Campaign'"></h2>
+
+                    <!-- Name -->
+                    <div class="mb-4">
+                        <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">Campaign Name</label>
+                        <input type="text" x-model="form.name" placeholder="e.g. March Flash Sale"
+                            class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+
+                    <!-- Message -->
+                    <div class="mb-4">
+                        <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">Message</label>
+                        <textarea x-model="form.message" rows="4" placeholder="Type your SMS message..."
+                            class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                            @input="updateCharCount()"></textarea>
+                        <div class="flex justify-between mt-1">
+                            <span class="text-xs text-gray-400" x-text="charCount + ' chars'"></span>
+                            <span class="text-xs" :class="charCount > 160 ? 'text-orange-500 font-semibold' : 'text-gray-400'"
+                                  x-text="Math.ceil(Math.max(charCount,1) / 160) + ' SMS segment(s)'"></span>
+                        </div>
+                    </div>
+
+                    <!-- Audience Groups -->
+                    <div class="mb-4">
+                        <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">Target Audience</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" value="past_buyers" x-model="form.targeting.groups"
+                                    class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">All Past Buyers</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" value="active_subscribers" x-model="form.targeting.groups"
+                                    class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Active Subscribers</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" value="expired_subscribers" x-model="form.targeting.groups"
+                                    class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Expired Subscribers</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Filter by Asset -->
+                    <div class="mb-4">
+                        <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">Filter by Product <span class="font-normal normal-case text-gray-400">(optional)</span></label>
+                        <select x-model="selectedAsset" @change="updateAssetFilter()"
+                            class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <option value="">All products</option>
+                            {% for asset in assets %}
+                            <option value="{{ asset.id }}">{{ asset.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Imported Phones -->
+                    <div class="mb-4">
+                        <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 uppercase tracking-wide">Import Numbers <span class="font-normal normal-case text-gray-400">(optional, one per line)</span></label>
+                        <textarea x-model="importedPhonesRaw" rows="2"
+                            placeholder="255712345678&#10;255698765432"
+                            class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-xs text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono"
+                            @input="updateImportedPhones()"></textarea>
+                    </div>
+
+                    <!-- Audience Preview Strip -->
+                    <div class="mb-4 flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800/30">
+                        <span class="text-sm text-indigo-700 dark:text-indigo-300 font-medium">Est. recipients:</span>
+                        <span class="font-bold text-indigo-700 dark:text-indigo-300" x-text="previewCount === null ? '—' : previewCount + ' numbers'"></span>
+                    </div>
+
+                    <!-- Schedule Toggle -->
+                    <div class="mb-4">
+                        <label class="flex items-center gap-2 cursor-pointer mb-2">
+                            <input type="checkbox" x-model="scheduleEnabled"
+                                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Schedule for later</span>
+                        </label>
+                        <div x-show="scheduleEnabled" x-cloak class="mt-1">
+                            <input type="datetime-local" x-model="form.scheduled_at"
+                                class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Recurring Toggle -->
+                    <div class="mb-5">
+                        <label class="flex items-center gap-2 cursor-pointer mb-2">
+                            <input type="checkbox" x-model="form.is_recurring"
+                                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Recurring campaign</span>
+                        </label>
+                        <div x-show="form.is_recurring" x-cloak class="space-y-2 pl-6">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-500">Every</span>
+                                <input type="number" x-model="form.recurrence_interval_days" min="1" placeholder="30"
+                                    class="w-20 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <span class="text-xs text-gray-500">days</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Omit purchased numbers -->
+                    <div class="mb-5">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" x-model="form.smart_exclude_recent_buyers"
+                                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Omit purchased numbers</span>
+                        </label>
+                        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 pl-6">At send time, skip any number that already purchased after this campaign was created.</p>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex gap-3">
+                        <button @click="saveDraft()" :disabled="saving"
+                            class="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50">
+                            <span x-show="!saving">Save Draft</span>
+                            <span x-show="saving" x-cloak>Saving…</span>
+                        </button>
+                        <template x-if="!scheduleEnabled">
+                            <button @click="sendNow()" :disabled="sending || !smsConfigured"
+                                class="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
+                                <span x-show="!sending">Send Now</span>
+                                <span x-show="sending" x-cloak>Sending…</span>
+                            </button>
+                        </template>
+                        <template x-if="scheduleEnabled">
+                            <button @click="saveDraft()" :disabled="saving"
+                                class="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
+                                <span x-show="!saving">Save Schedule</span>
+                                <span x-show="saving" x-cloak>Saving…</span>
+                            </button>
+                        </template>
+                    </div>
+                    <p x-show="!smsConfigured" class="text-xs text-yellow-600 dark:text-yellow-400 mt-2 text-center">SMS not configured — sending is disabled.</p>
+                    <p x-show="feedback" x-text="feedback"
+                       :class="feedbackOk ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'"
+                       class="text-xs mt-2 text-center" x-cloak></p>
+                    <button x-show="editingId" @click="resetForm()"
+                        class="w-full mt-3 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" x-cloak>
+                        ✕ Cancel edit
+                    </button>
+                </div>
+            </div>
+
+            <!-- Campaign History -->
+            <div class="lg:col-span-3">
+                <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
+                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                        <h2 class="text-base font-bold text-gray-900 dark:text-white">Campaign History</h2>
+                    </div>
+
+                    <template x-if="campaigns.length > 0">
+                        <div class="divide-y divide-gray-100 dark:divide-gray-700/50">
+                            <template x-for="c in campaigns" :key="c.id">
+                                <div class="px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2 flex-wrap">
+                                                <p class="font-semibold text-gray-900 dark:text-white text-sm truncate" x-text="c.name"></p>
+                                                <span x-show="c.is_recurring"
+                                                    class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 font-medium">
+                                                    ↻ recurring
+                                                </span>
+                                            </div>
+                                            <p class="text-xs text-gray-400 mt-0.5 line-clamp-1" x-text="(c.message || '').substring(0, 80) + (c.message && c.message.length > 80 ? '…' : '')"></p>
+                                            <div class="flex items-center gap-3 mt-2 flex-wrap">
+                                                <!-- Status badge -->
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                                                    :class="{
+                                                        'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400': c.status_name === 'SENT',
+                                                        'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400': c.status_name === 'SENDING',
+                                                        'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400': c.status_name === 'SCHEDULED',
+                                                        'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400': c.status_name === 'FAILED',
+                                                        'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400': c.status_name === 'DRAFT'
+                                                    }">
+                                                    <span x-show="c.status_name === 'SENDING'" class="w-1.5 h-1.5 rounded-full bg-yellow-500 mr-1 animate-pulse inline-block"></span>
+                                                    <span x-text="c.status"></span>
+                                                </span>
+                                                <span x-show="c.total_recipients" class="text-xs text-gray-500 dark:text-gray-400"
+                                                    x-text="c.sent_count + '/' + c.total_recipients + ' sent'"></span>
+                                                <span x-show="c.failed_count" class="text-xs text-red-500"
+                                                    x-text="c.failed_count + ' failed'"></span>
+                                                <span x-show="c.sent_at" class="text-xs text-gray-400"
+                                                    x-text="c.sent_at ? c.sent_at.replace('T',' ').substring(0,16) : ''"></span>
+                                                <span x-show="!c.sent_at && c.scheduled_at" class="text-xs text-blue-500"
+                                                    x-text="'Scheduled ' + (c.scheduled_at ? c.scheduled_at.replace('T',' ').substring(0,16) : '')"></span>
+                                            </div>
+                                        </div>
+                                        <!-- Actions -->
+                                        <div class="flex items-center gap-3 flex-shrink-0">
+                                            <button @click="viewLogs(c.id, c.name)"
+                                                class="text-xs text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium">
+                                                Logs
+                                            </button>
+                                            <template x-if="c.status_name !== 'SENT' && c.status_name !== 'SENDING'">
+                                                <div class="flex items-center gap-3">
+                                                    <button @click="editCampaign(c)"
+                                                        class="text-xs text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium">
+                                                        Edit
+                                                    </button>
+                                                    <button @click="deleteCampaign(c.id)"
+                                                        class="text-xs text-red-400 hover:text-red-600 font-medium">
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <template x-if="campaigns.length === 0">
+                        <div class="px-6 py-12 text-center">
+                            <svg class="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+                            </svg>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">No campaigns yet. Create your first one!</p>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====================================================================
+         TAB 2: LOG
+         ==================================================================== -->
+    <div x-show="tab === 'log'">
+        <!-- Filters + Settings row -->
+        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 mb-5 flex flex-wrap gap-3 items-end justify-between">
+            <div class="flex flex-wrap gap-3 items-end">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">From</label>
+                    <input type="date" x-model="log.fromDate"
+                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">To</label>
+                    <input type="date" x-model="log.toDate"
+                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Type</label>
+                    <select x-model="log.typeFilter"
+                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <option value="">All types</option>
+                        <option value="PURCHASE">Purchase</option>
+                        <option value="MAGIC_LINK">Magic Link</option>
+                        <option value="REMINDER">Reminder</option>
+                        <option value="CAMPAIGN">Campaign</option>
+                    </select>
+                </div>
+                <button @click="loadLog(true)"
+                    class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors">
+                    Apply
+                </button>
+                <button @click="openClearLog()" :disabled="clearingLog"
+                    class="px-4 py-2 border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
+                    <span x-show="!clearingLog">Clear Log</span>
+                    <span x-show="clearingLog" x-cloak>Clearing…</span>
+                </button>
+            </div>
+            <!-- Price per SMS setting -->
+            <div class="flex items-end gap-2">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Cost per SMS (TZS)</label>
+                    <input type="number" x-model="tpl.sms_cost_per_unit" min="0" step="0.01" placeholder="0.05"
+                        class="w-28 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <button @click="savePrice()" :disabled="priceSaving"
+                    class="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
+                    <span x-show="!priceSaving">Save</span>
+                    <span x-show="priceSaving" x-cloak>…</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Summary Strip -->
+        <div class="grid grid-cols-3 gap-4 mb-5">
+            <div class="bg-green-50 dark:bg-green-900/20 rounded-2xl p-4 border border-green-100 dark:border-green-800/40 text-center">
+                <p class="text-2xl font-extrabold text-green-600 dark:text-green-400" x-text="log.summary.sent ?? '—'"></p>
+                <p class="text-xs text-green-700 dark:text-green-400 mt-1 font-medium">Sent</p>
+            </div>
+            <div class="bg-red-50 dark:bg-red-900/20 rounded-2xl p-4 border border-red-100 dark:border-red-800/40 text-center">
+                <p class="text-2xl font-extrabold text-red-500 dark:text-red-400" x-text="log.summary.failed ?? '—'"></p>
+                <p class="text-xs text-red-600 dark:text-red-400 mt-1 font-medium">Failed</p>
+            </div>
+            <div class="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 border border-gray-200 dark:border-gray-700 text-center">
+                <p class="text-2xl font-extrabold text-gray-700 dark:text-gray-200" x-text="log.summary.estimated_cost !== undefined ? 'TZS ' + log.summary.estimated_cost.toFixed(2) : '—'"></p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-medium">Est. Cost</p>
+            </div>
+        </div>
+
+        <!-- Forecast Accordion -->
+        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 mb-5 overflow-hidden">
+            <button @click="toggleForecast()"
+                class="w-full flex items-center justify-between px-6 py-4 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                <span>📊 SMS Forecast</span>
+                <svg class="w-4 h-4 transition-transform" :class="forecastOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+            </button>
+            <div x-show="forecastOpen" x-cloak class="border-t border-gray-100 dark:border-gray-700">
+                <div x-show="forecast.loading" class="py-6 text-center text-sm text-gray-400">Loading forecast…</div>
+                <template x-if="!forecast.loading && forecast.data.length > 0">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="bg-gray-50 dark:bg-gray-700/30">
+                                <tr class="text-gray-500 dark:text-gray-400">
+                                    <th class="text-left px-6 py-3 font-semibold">Period</th>
+                                    <th class="text-right px-4 py-3 font-semibold">Campaigns</th>
+                                    <th class="text-right px-4 py-3 font-semibold">Reminders</th>
+                                    <th class="text-right px-4 py-3 font-semibold">Total SMS</th>
+                                    <th class="text-right px-6 py-3 font-semibold">Est. Cost</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-50 dark:divide-gray-700/50">
+                                <template x-for="row in forecast.data" :key="row.days">
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/20">
+                                        <td class="px-6 py-3 font-medium text-gray-700 dark:text-gray-200" x-text="'Next ' + row.days + ' days'"></td>
+                                        <td class="px-4 py-3 text-right text-gray-600 dark:text-gray-300" x-text="row.campaign_sms.toLocaleString()"></td>
+                                        <td class="px-4 py-3 text-right text-gray-600 dark:text-gray-300" x-text="'~' + row.reminder_sms.toLocaleString()"></td>
+                                        <td class="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100" x-text="'~' + row.total.toLocaleString()"></td>
+                                        <td class="px-6 py-3 text-right text-indigo-600 dark:text-indigo-400 font-medium" x-text="'TZS ' + row.estimated_cost.toFixed(2)"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Log Table -->
+        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-base font-bold text-gray-900 dark:text-white">Message Log</h2>
+            </div>
+            <div x-show="log.loading && log.items.length === 0" class="py-10 text-center text-sm text-gray-400">Loading…</div>
+            <template x-if="!log.loading && log.items.length === 0">
+                <div class="py-10 text-center text-sm text-gray-400">No messages found for the selected filters.</div>
+            </template>
+            <template x-if="log.items.length > 0">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                        <thead class="bg-gray-50 dark:bg-gray-700/30 sticky top-0">
+                            <tr class="text-gray-500 dark:text-gray-400">
+                                <th class="text-left px-4 py-3 font-semibold">Date / Time</th>
+                                <th class="text-left px-4 py-3 font-semibold">Type</th>
+                                <th class="text-left px-4 py-3 font-semibold">Phone</th>
+                                <th class="text-left px-4 py-3 font-semibold">Preview</th>
+                                <th class="text-left px-4 py-3 font-semibold">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50 dark:divide-gray-700/50">
+                            <template x-for="l in log.items" :key="l.id">
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/20">
+                                    <td class="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap" x-text="l.sent_at ? l.sent_at.replace('T',' ').substring(0,16) : '—'"></td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-1.5 py-0.5 rounded text-xs font-medium"
+                                            :class="{
+                                                'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400': l.type === 'purchase',
+                                                'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400': l.type === 'magic_link',
+                                                'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400': l.type === 'reminder',
+                                                'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400': l.type === 'campaign',
+                                            }" x-text="l.type.replace('_',' ')"></span>
+                                    </td>
+                                    <td class="px-4 py-3 font-mono text-gray-700 dark:text-gray-300"
+                                        x-text="l.phone ? (l.phone.length > 6 ? l.phone.slice(0,-4).replace(/./g,'*').slice(0,8) + l.phone.slice(-4) : l.phone) : '—'"></td>
+                                    <td class="px-4 py-3 text-gray-600 dark:text-gray-300 max-w-xs truncate" :title="l.preview" x-text="(l.preview || '').substring(0,45) + (l.preview && l.preview.length > 45 ? '…' : '')"></td>
+                                    <td class="px-4 py-3">
+                                        <span :class="l.status === 'sent' ? 'text-green-600 dark:text-green-400' : 'text-red-500'" x-text="l.status"></span>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+            <div x-show="log.hasMore" class="px-6 py-4 border-t border-gray-100 dark:border-gray-700 text-center">
+                <button @click="loadMoreLog()"
+                    class="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
+                    Load more
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====================================================================
+         TAB 3: TEMPLATES (only if sms_configured)
+         ==================================================================== -->
+    {% if sms_configured %}
+    <div x-show="tab === 'templates'">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 max-w-3xl">
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                Customize the SMS messages sent automatically. Leave blank to use the default template.
+                Available variables are shown below each section.
+            </p>
+
+            <!-- Purchase Confirmation -->
+            <div class="mb-8">
+                <div class="flex items-center justify-between mb-1">
+                    <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100">Purchase Confirmation</h3>
+                    <button @click="resetTpl('sms_tpl_purchase_sw'); resetTpl('sms_tpl_purchase_en')"
+                        class="text-xs text-gray-400 hover:text-red-500 transition-colors">Reset to default</button>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">Sent after a successful payment. <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">{link}</code> will be a magic access link to the product.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-xs font-semibold text-gray-500">Swahili (SW)</label>
+                            <span class="text-xs text-gray-400" :class="estimateLen('sms_tpl_purchase_sw') > 160 ? 'text-orange-500 font-semibold' : ''"
+                                x-text="'~' + estimateLen('sms_tpl_purchase_sw') + ' chars'"></span>
+                        </div>
+                        <textarea x-model="tpl.sms_tpl_purchase_sw" rows="3"
+                            :placeholder="defaults.sms_tpl_purchase_sw"
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono placeholder:text-gray-300 dark:placeholder:text-gray-600"></textarea>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-xs font-semibold text-gray-500">English (EN)</label>
+                            <span class="text-xs text-gray-400" :class="estimateLen('sms_tpl_purchase_en') > 160 ? 'text-orange-500 font-semibold' : ''"
+                                x-text="'~' + estimateLen('sms_tpl_purchase_en') + ' chars'"></span>
+                        </div>
+                        <textarea x-model="tpl.sms_tpl_purchase_en" rows="3"
+                            :placeholder="defaults.sms_tpl_purchase_en"
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono placeholder:text-gray-300 dark:placeholder:text-gray-600"></textarea>
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-2 flex-wrap">
+                    <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs font-mono text-gray-500">{asset_title}</span>
+                    <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs font-mono text-gray-500">{link}</span>
+                    <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs font-mono text-gray-500">{ref}</span>
+                </div>
+            </div>
+
+            <!-- Magic Link -->
+            <div class="mb-8">
+                <div class="flex items-center justify-between mb-1">
+                    <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100">Magic Link (Already Owns)</h3>
+                    <button @click="resetTpl('sms_tpl_magic_sw'); resetTpl('sms_tpl_magic_en')"
+                        class="text-xs text-gray-400 hover:text-red-500 transition-colors">Reset to default</button>
+                </div>
+                <p class="text-xs text-gray-400 mb-3">Sent when a customer retries checkout for something they already purchased.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-xs font-semibold text-gray-500">Swahili (SW)</label>
+                            <span class="text-xs text-gray-400" :class="estimateLen('sms_tpl_magic_sw') > 160 ? 'text-orange-500 font-semibold' : ''"
+                                x-text="'~' + estimateLen('sms_tpl_magic_sw') + ' chars'"></span>
+                        </div>
+                        <textarea x-model="tpl.sms_tpl_magic_sw" rows="3"
+                            :placeholder="defaults.sms_tpl_magic_sw"
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono placeholder:text-gray-300 dark:placeholder:text-gray-600"></textarea>
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-xs font-semibold text-gray-500">English (EN)</label>
+                            <span class="text-xs text-gray-400" :class="estimateLen('sms_tpl_magic_en') > 160 ? 'text-orange-500 font-semibold' : ''"
+                                x-text="'~' + estimateLen('sms_tpl_magic_en') + ' chars'"></span>
+                        </div>
+                        <textarea x-model="tpl.sms_tpl_magic_en" rows="3"
+                            :placeholder="defaults.sms_tpl_magic_en"
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono placeholder:text-gray-300 dark:placeholder:text-gray-600"></textarea>
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-2 flex-wrap">
+                    <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs font-mono text-gray-500">{asset_title}</span>
+                    <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs font-mono text-gray-500">{link}</span>
+                </div>
+            </div>
+
+            <!-- Subscription Reminders -->
+            <div class="mb-8">
+                <div class="flex items-center justify-between mb-1">
+                    <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100">Subscription Reminders</h3>
+                    <button @click="['sms_tpl_reminder_sw_many','sms_tpl_reminder_en_many','sms_tpl_reminder_sw_1','sms_tpl_reminder_en_1','sms_tpl_reminder_sw_0','sms_tpl_reminder_en_0'].forEach(k => resetTpl(k))"
+                        class="text-xs text-gray-400 hover:text-red-500 transition-colors">Reset all to default</button>
+                </div>
+                <p class="text-xs text-gray-400 mb-4">Sent at 5 days, 1 day, and 0 days (expiry day) before subscription ends. Works for any product with a recurring tier.</p>
+
+                <!-- 5+ days -->
+                <div class="mb-5">
+                    <p class="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">5+ days left</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs font-semibold text-gray-500">SW</label>
+                                <span class="text-xs text-gray-400" :class="estimateLen('sms_tpl_reminder_sw_many') > 160 ? 'text-orange-500 font-semibold' : ''"
+                                    x-text="'~' + estimateLen('sms_tpl_reminder_sw_many') + ' chars'"></span>
+                            </div>
+                            <textarea x-model="tpl.sms_tpl_reminder_sw_many" rows="2"
+                                :placeholder="defaults.sms_tpl_reminder_sw_many"
+                                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono placeholder:text-gray-300 dark:placeholder:text-gray-600"></textarea>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs font-semibold text-gray-500">EN</label>
+                                <span class="text-xs text-gray-400" :class="estimateLen('sms_tpl_reminder_en_many') > 160 ? 'text-orange-500 font-semibold' : ''"
+                                    x-text="'~' + estimateLen('sms_tpl_reminder_en_many') + ' chars'"></span>
+                            </div>
+                            <textarea x-model="tpl.sms_tpl_reminder_en_many" rows="2"
+                                :placeholder="defaults.sms_tpl_reminder_en_many"
+                                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono placeholder:text-gray-300 dark:placeholder:text-gray-600"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <!-- 1 day left -->
+                <div class="mb-5">
+                    <p class="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">1 day left (tomorrow)</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs font-semibold text-gray-500">SW</label>
+                                <span class="text-xs text-gray-400" :class="estimateLen('sms_tpl_reminder_sw_1') > 160 ? 'text-orange-500 font-semibold' : ''"
+                                    x-text="'~' + estimateLen('sms_tpl_reminder_sw_1') + ' chars'"></span>
+                            </div>
+                            <textarea x-model="tpl.sms_tpl_reminder_sw_1" rows="2"
+                                :placeholder="defaults.sms_tpl_reminder_sw_1"
+                                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono placeholder:text-gray-300 dark:placeholder:text-gray-600"></textarea>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs font-semibold text-gray-500">EN</label>
+                                <span class="text-xs text-gray-400" :class="estimateLen('sms_tpl_reminder_en_1') > 160 ? 'text-orange-500 font-semibold' : ''"
+                                    x-text="'~' + estimateLen('sms_tpl_reminder_en_1') + ' chars'"></span>
+                            </div>
+                            <textarea x-model="tpl.sms_tpl_reminder_en_1" rows="2"
+                                :placeholder="defaults.sms_tpl_reminder_en_1"
+                                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono placeholder:text-gray-300 dark:placeholder:text-gray-600"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <!-- Expiry day -->
+                <div class="mb-5">
+                    <p class="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">0 days (expiry day)</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs font-semibold text-gray-500">SW</label>
+                                <span class="text-xs text-gray-400" :class="estimateLen('sms_tpl_reminder_sw_0') > 160 ? 'text-orange-500 font-semibold' : ''"
+                                    x-text="'~' + estimateLen('sms_tpl_reminder_sw_0') + ' chars'"></span>
+                            </div>
+                            <textarea x-model="tpl.sms_tpl_reminder_sw_0" rows="2"
+                                :placeholder="defaults.sms_tpl_reminder_sw_0"
+                                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono placeholder:text-gray-300 dark:placeholder:text-gray-600"></textarea>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <label class="text-xs font-semibold text-gray-500">EN</label>
+                                <span class="text-xs text-gray-400" :class="estimateLen('sms_tpl_reminder_en_0') > 160 ? 'text-orange-500 font-semibold' : ''"
+                                    x-text="'~' + estimateLen('sms_tpl_reminder_en_0') + ' chars'"></span>
+                            </div>
+                            <textarea x-model="tpl.sms_tpl_reminder_en_0" rows="2"
+                                :placeholder="defaults.sms_tpl_reminder_en_0"
+                                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none font-mono placeholder:text-gray-300 dark:placeholder:text-gray-600"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-2 flex-wrap">
+                    <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs font-mono text-gray-500">{asset_title}</span>
+                    <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs font-mono text-gray-500">{days}</span>
+                    <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs font-mono text-gray-500">{link}</span>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="flex items-center gap-4">
+                <button @click="saveTemplates()" :disabled="tplSaving"
+                    class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
+                    <span x-show="!tplSaving">Save Templates</span>
+                    <span x-show="tplSaving" x-cloak>Saving…</span>
+                </button>
+                <p x-show="tplFeedback" x-text="tplFeedback"
+                   :class="tplFeedbackOk ? 'text-green-600 dark:text-green-400' : 'text-red-500'"
+                   class="text-sm" x-cloak></p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Log Modal (per-campaign) -->
+    <div x-show="logModal.open" x-cloak
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95">
+        <div class="absolute inset-0 bg-black/60" @click="logModal.open = false"></div>
+        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 class="font-bold text-gray-900 dark:text-white text-sm" x-text="'Delivery Log: ' + logModal.name"></h3>
+                <button @click="logModal.open = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="overflow-y-auto flex-1 p-4">
+                <div x-show="logModal.loading" class="text-center py-8 text-gray-400 text-sm">Loading…</div>
+                <template x-if="!logModal.loading && logModal.logs.length === 0">
+                    <p class="text-center text-sm text-gray-400 py-8">No delivery records found.</p>
+                </template>
+                <table x-show="!logModal.loading && logModal.logs.length > 0" class="w-full text-xs">
+                    <thead>
+                        <tr class="text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                            <th class="text-left pb-2 font-semibold">Phone</th>
+                            <th class="text-left pb-2 font-semibold">Status</th>
+                            <th class="text-left pb-2 font-semibold">Sent At</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50 dark:divide-gray-700/50">
+                        <template x-for="log in logModal.logs" :key="log.phone">
+                            <tr>
+                                <td class="py-2 text-gray-700 dark:text-gray-300 font-mono" x-text="log.phone"></td>
+                                <td class="py-2">
+                                    <span :class="log.status === 'sent' ? 'text-green-600 dark:text-green-400' : 'text-red-500'"
+                                        x-text="log.status"></span>
+                                </td>
+                                <td class="py-2 text-gray-400"
+                                    x-text="log.sent_at ? log.sent_at.replace('T',' ').substring(0,16) : '—'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOTP Confirmation Modal (Clear Log) -->
+    <div x-show="totpModal" x-cloak
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        @keydown.escape.window="totpModal = false">
+        <div class="absolute inset-0 bg-black/60" @click="totpModal = false"></div>
+        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <h3 class="text-base font-bold text-gray-900 dark:text-white mb-1">Confirm: Clear SMS Log</h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Enter your authenticator code to permanently delete all log entries.</p>
+            <input x-ref="totpInput"
+                type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                x-model="totpCode"
+                @keydown.enter="confirmClearLog()"
+                placeholder="000000"
+                class="w-full px-4 py-3 text-center text-2xl tracking-widest font-mono border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 outline-none mb-2">
+            <p x-show="totpError" x-text="totpError" class="text-xs text-red-500 text-center mb-3" x-cloak></p>
+            <div class="flex gap-3 mt-2">
+                <button @click="totpModal = false"
+                    class="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Cancel
+                </button>
+                <button @click="confirmClearLog()" :disabled="clearingLog || totpCode.length !== 6"
+                    class="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50">
+                    <span x-show="!clearingLog">Clear Log</span>
+                    <span x-show="clearingLog" x-cloak>Clearing…</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{# JSON data islands must appear BEFORE the script that reads them #}
+<script type="application/json" id="campaigns-data">{{ campaigns_json|safe }}</script>
+<script type="application/json" id="sms-templates-data">{{ sms_templates|tojson|safe }}</script>
+<script type="application/json" id="sms-defaults-data">{{ sms_defaults|tojson|safe }}</script>
+
+<script>
+const _campaignsData = JSON.parse(document.getElementById('campaigns-data').textContent);
+const _smsTemplates = JSON.parse(document.getElementById('sms-templates-data').textContent);
+const _smsDefaults = JSON.parse(document.getElementById('sms-defaults-data').textContent);
+
+function smsCampaigns() {
+    return {
+        tab: 'campaigns',
+        smsConfigured: {{ 'true' if sms_configured else 'false' }},
+
+        // ---- Campaign builder ----
+        campaigns: _campaignsData,
+        form: {
+            name: '', message: '',
+            targeting: { groups: [], asset_ids: [], imported_phones: [] },
+            scheduled_at: '',
+            is_recurring: false,
+            recurrence_interval_days: 30,
+            smart_exclude_recent_buyers: true,
+        },
+        editingId: null,
+        selectedAsset: '',
+        importedPhonesRaw: '',
+        scheduleEnabled: false,
+        charCount: 0,
+        previewCount: null,
+        previewDebounce: null,
+        saving: false,
+        sending: false,
+        feedback: '',
+        feedbackOk: true,
+        logModal: { open: false, name: '', logs: [], loading: false },
+
+        // ---- Global SMS log ----
+        log: {
+            fromDate: '', toDate: '', typeFilter: '',
+            items: [], loading: false, page: 1, hasMore: false,
+            summary: {}
+        },
+        forecastOpen: false,
+        forecast: { loading: false, data: [] },
+
+        // ---- Templates ----
+        tpl: Object.assign({
+            sms_tpl_purchase_sw: '', sms_tpl_purchase_en: '',
+            sms_tpl_magic_sw: '', sms_tpl_magic_en: '',
+            sms_tpl_reminder_sw_many: '', sms_tpl_reminder_en_many: '',
+            sms_tpl_reminder_sw_1: '', sms_tpl_reminder_en_1: '',
+            sms_tpl_reminder_sw_0: '', sms_tpl_reminder_en_0: '',
+            sms_cost_per_unit: '',
+        }, _smsTemplates),
+        defaults: _smsDefaults,
+        tplSaving: false,
+        tplFeedback: '',
+        tplFeedbackOk: true,
+        // ---- Log settings ----
+        priceSaving: false,
+        clearingLog: false,
+        totpModal: false,
+        totpCode: '',
+        totpError: '',
+
+        init() {
+            this.$watch('form', () => this.schedulePreview(), { deep: true });
+        },
+
+        // ---- Campaign builder helpers ----
+        updateCharCount() { this.charCount = this.form.message.length; },
+        updateAssetFilter() {
+            this.form.targeting.asset_ids = this.selectedAsset ? [parseInt(this.selectedAsset)] : [];
+        },
+        updateImportedPhones() {
+            this.form.targeting.imported_phones = this.importedPhonesRaw
+                .split(/[\n,]+/).map(p => p.trim()).filter(p => p.length > 0);
+        },
+        schedulePreview() {
+            clearTimeout(this.previewDebounce);
+            this.previewDebounce = setTimeout(() => this.fetchPreview(), 600);
+        },
+        async fetchPreview() {
+            if (!this.form.targeting.groups.length && !this.form.targeting.imported_phones.length) {
+                this.previewCount = 0; return;
+            }
+            try {
+                const r = await fetch('{{ url_for("admin.sms_campaign_preview_audience") }}', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targeting: this.form.targeting })
+                });
+                const d = await r.json();
+                this.previewCount = d.count;
+            } catch (e) {}
+        },
+        async saveDraft() {
+            if (!this.form.name.trim() || !this.form.message.trim()) {
+                this.setFeedback('Please fill in name and message.', false); return;
+            }
+            this.saving = true;
+            try {
+                const payload = { ...this.form };
+                if (this.editingId) payload.id = this.editingId;
+                if (!this.scheduleEnabled) payload.scheduled_at = null;
+                const r = await fetch('{{ url_for("admin.sms_campaign_save") }}', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const d = await r.json();
+                if (d.success) {
+                    this.editingId = d.id;
+                    this.setFeedback('Draft saved.', true);
+                    // Update local list without full reload
+                    const existing = this.campaigns.findIndex(c => c.id === d.id);
+                    const updated = { ...this.form, id: d.id, status: 'Draft', status_name: 'DRAFT',
+                        sent_count: 0, failed_count: 0, total_recipients: 0,
+                        sent_at: null, scheduled_at: this.scheduleEnabled ? this.form.scheduled_at : null,
+                        created_at: new Date().toISOString() };
+                    if (existing >= 0) this.campaigns[existing] = updated;
+                    else this.campaigns.unshift(updated);
+                } else {
+                    this.setFeedback(d.message || 'Save failed.', false);
+                }
+            } catch (e) { this.setFeedback('Network error.', false); }
+            this.saving = false;
+        },
+        async sendNow() {
+            if (!this.editingId) {
+                await this.saveDraft();
+                if (!this.editingId) return;
+            }
+            if (!confirm(`Send this campaign to ~${this.previewCount ?? '?'} recipients now?`)) return;
+            this.sending = true;
+            try {
+                const r = await fetch(`/admin/api/campaigns/sms/${this.editingId}/send`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }
+                });
+                const d = await r.json();
+                if (d.success) {
+                    this.setFeedback(d.message, true);
+                    setTimeout(() => location.reload(), 2000);
+                } else { this.setFeedback(d.message || 'Send failed.', false); }
+            } catch (e) { this.setFeedback('Network error.', false); }
+            this.sending = false;
+        },
+        editCampaign(c) {
+            this.editingId = c.id;
+            this.form.name = c.name || '';
+            this.form.message = c.message || '';
+            this.form.targeting = c.targeting || { groups: [], asset_ids: [], imported_phones: [] };
+            this.form.scheduled_at = c.scheduled_at || '';
+            this.form.is_recurring = c.is_recurring || false;
+            this.form.recurrence_interval_days = c.recurrence_interval_days || 30;
+            this.form.smart_exclude_recent_buyers = c.smart_exclude_recent_buyers !== false;
+            this.scheduleEnabled = !!c.scheduled_at;
+            this.charCount = this.form.message.length;
+            this.importedPhonesRaw = (this.form.targeting.imported_phones || []).join('\n');
+            this.selectedAsset = (this.form.targeting.asset_ids || [])[0] || '';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        },
+        resetForm() {
+            this.editingId = null;
+            this.form = { name: '', message: '',
+                targeting: { groups: [], asset_ids: [], imported_phones: [] },
+                scheduled_at: '', is_recurring: false,
+                recurrence_interval_days: 30, smart_exclude_recent_buyers: true };
+            this.scheduleEnabled = false;
+            this.charCount = 0;
+            this.importedPhonesRaw = '';
+            this.selectedAsset = '';
+            this.previewCount = null;
+        },
+        async deleteCampaign(id) {
+            if (!confirm('Delete this campaign? This cannot be undone.')) return;
+            try {
+                const r = await fetch(`/admin/api/campaigns/sms/${id}/delete`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }
+                });
+                const d = await r.json();
+                if (d.success) this.campaigns = this.campaigns.filter(c => c.id !== id);
+                else alert(d.message || 'Delete failed.');
+            } catch (e) { alert('Network error.'); }
+        },
+        async viewLogs(id, name) {
+            this.logModal = { open: true, name, logs: [], loading: true };
+            try {
+                const r = await fetch(`/admin/api/campaigns/sms/${id}/logs`);
+                const d = await r.json();
+                this.logModal.logs = d.logs || [];
+            } catch (e) {}
+            this.logModal.loading = false;
+        },
+        setFeedback(msg, ok) {
+            this.feedback = msg; this.feedbackOk = ok;
+            setTimeout(() => { this.feedback = ''; }, 4000);
+        },
+
+        // ---- Global log helpers ----
+        async loadLog(reset = false) {
+            if (reset) { this.log.page = 1; this.log.items = []; }
+            this.log.loading = true;
+            const params = new URLSearchParams({ page: this.log.page });
+            if (this.log.fromDate) params.set('from_date', this.log.fromDate);
+            if (this.log.toDate) params.set('to_date', this.log.toDate);
+            if (this.log.typeFilter) params.set('type', this.log.typeFilter);
+            try {
+                const r = await fetch(`/admin/api/campaigns/sms/log?${params}`);
+                const d = await r.json();
+                if (reset) {
+                    this.log.items = d.logs || [];
+                } else {
+                    this.log.items = [...this.log.items, ...(d.logs || [])];
+                }
+                this.log.summary = { sent: d.sent, failed: d.failed, estimated_cost: d.estimated_cost };
+                this.log.hasMore = d.has_more || false;
+            } catch (e) {}
+            this.log.loading = false;
+        },
+        async loadMoreLog() {
+            this.log.page++;
+            await this.loadLog(false);
+        },
+        async toggleForecast() {
+            this.forecastOpen = !this.forecastOpen;
+            if (this.forecastOpen && this.forecast.data.length === 0) {
+                this.forecast.loading = true;
+                try {
+                    const r = await fetch('/admin/api/campaigns/sms/forecast');
+                    const d = await r.json();
+                    this.forecast.data = d;
+                } catch (e) {}
+                this.forecast.loading = false;
+            }
+        },
+
+        // ---- Templates helpers ----
+        resetTpl(key) { this.tpl[key] = ''; },
+        // Estimate rendered character count by substituting variables with sample values.
+        // Uses actual hostname so the link length reflects the real domain.
+        estimateLen(key) {
+            const text = this.tpl[key] || this.defaults[key] || '';
+            const domain = window.location.origin;
+            const sampleLink = `${domain}/to/${'x'.repeat(30)}`;
+            return text
+                .replace(/\{asset_title\}/g, 'Bidhaa Yangu ya Kidijitali')
+                .replace(/\{link\}/g, sampleLink)
+                .replace(/\{ref\}/g, 'UZA-123456')
+                .replace(/\{days\}/g, '5')
+                .length;
+        },
+        openClearLog() {
+            this.totpCode = '';
+            this.totpError = '';
+            this.totpModal = true;
+            this.$nextTick(() => this.$refs.totpInput?.focus());
+        },
+        async confirmClearLog() {
+            if (this.totpCode.length !== 6) { this.totpError = 'Enter the 6-digit code.'; return; }
+            this.clearingLog = true;
+            this.totpError = '';
+            try {
+                const r = await fetch('/admin/api/campaigns/sms/log/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ totp_code: this.totpCode })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    this.log.items = [];
+                    this.log.summary = {};
+                    this.totpModal = false;
+                } else {
+                    this.totpError = d.message || 'Invalid code.';
+                    this.totpCode = '';
+                    this.$nextTick(() => this.$refs.totpInput?.focus());
+                }
+            } catch (e) { this.totpError = 'Network error.'; }
+            this.clearingLog = false;
+        },
+        async savePrice() {
+            this.priceSaving = true;
+            try {
+                await fetch('{{ url_for("admin.save_sms_templates") }}', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sms_cost_per_unit: this.tpl.sms_cost_per_unit })
+                });
+            } catch (e) {}
+            this.priceSaving = false;
+        },
+        async saveTemplates() {
+            this.tplSaving = true;
+            try {
+                const r = await fetch('{{ url_for("admin.save_sms_templates") }}', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.tpl)
+                });
+                const d = await r.json();
+                this.tplFeedback = d.message || (d.success ? 'Saved.' : 'Error.');
+                this.tplFeedbackOk = d.success;
+            } catch (e) { this.tplFeedback = 'Network error.'; this.tplFeedbackOk = false; }
+            this.tplSaving = false;
+            setTimeout(() => { this.tplFeedback = ''; }, 4000);
+        },
+    };
+}
+</script>
+
+{% endblock %}

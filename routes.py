@@ -1067,6 +1067,68 @@ def purchase_grants_access(purchase):
     is_active, _ = check_subscription_status(purchase)
     return is_active
 
+def _apply_scoped_free_session(phone_number, purchase_id):
+    """Set a SCOPED, UNVERIFIED session for a free claim — the single source of truth
+    for "a free item was just acquired".
+
+    A free claim must never unlock a phone number's full (possibly paid) library. So:
+      - If the session is ALREADY fully verified for this same phone, keep it as-is
+        (never downgrade a legitimately verified owner).
+      - Otherwise switch the session to the claimant's phone, mark it unverified, and
+        grant access ONLY to the specific free purchase(s) claimed in this browser by
+        APPENDING purchase_id to unverified_purchase_ids (accumulate, don't replace —
+        a free-only user keeps access to every free item they claimed this session).
+
+    Full verification (is_verified=True) stays gated behind payment approval, magic
+    link, or phone + purchase-date — never a phone number alone.
+    """
+    phone = str(phone_number).strip()
+    existing_phone = session.get('customer_phone')
+    phone_matches = bool(existing_phone) and str(existing_phone).strip() == phone
+
+    if phone_matches and session.get('is_verified'):
+        # Already a fully-verified session for this phone — nothing to downgrade.
+        session.permanent = True
+        session.modified = True
+        return
+
+    # New visitor or a different phone — drop any prior identity before re-scoping.
+    if existing_phone and not phone_matches:
+        session.pop('customer_phone', None)
+        session.pop('is_verified', None)
+        session.pop('free_purchase_only', None)
+        session.pop('unverified_purchase_ids', None)
+
+    session['customer_phone'] = phone
+    session['is_verified'] = False
+    session['free_purchase_only'] = True
+
+    unverified_ids = session.get('unverified_purchase_ids', [])
+    if purchase_id not in unverified_ids:
+        unverified_ids.append(purchase_id)
+    session['unverified_purchase_ids'] = unverified_ids
+
+    session.permanent = True
+    session.modified = True
+
+def _phone_authorized_for_ticket(purchase_id):
+    """Return the customer phone allowed to edit this purchase's questionnaire answers,
+    or None.
+
+    Verified sessions may edit any of their own purchases. Unverified (e.g. free-claim)
+    sessions may edit ONLY a purchase scoped to them via unverified_purchase_ids — so a
+    free claimer can fill in their own form, but cannot touch another purchase tied to
+    the same phone number.
+    """
+    phone = session.get('customer_phone')
+    if not phone:
+        return None
+    if session.get('is_verified'):
+        return phone
+    if purchase_id in session.get('unverified_purchase_ids', []):
+        return phone
+    return None
+
 def save_asset_from_form(asset, req):
     if 'asset_data' not in req.form: raise ValueError("Form submission incomplete. Please try again.")
     form_data = json.loads(req.form['asset_data'])
@@ -1524,14 +1586,147 @@ def supporter_detail(id):
         (p.source_used for p in sorted_purchases if p.source_used), None
     )
 
+    # Build the activity payload (Alpine renders this client-side, mirroring the
+    # asset activity feed) plus the de-duplicated product list for the filter.
+    currency_symbol = g.creator.get_setting('payment_uza_currency', 'TZS')
+    activity_items = []
+    products = []
+    seen_products = set()
+    for p in purchases:
+        answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+        activity_items.append({
+            'purchase_id': p.id,
+            'asset_id': p.asset_id,
+            'asset_title': p.asset.title,
+            'date': p.purchase_date.isoformat(),
+            'amount_display': f"{currency_symbol} {float(p.amount_paid or 0):,.2f}",
+            'payment_status': p.status.name,
+            'refcode_used': p.refcode_used or '',
+            'answers': answers,
+            'filled': bool(answers),
+        })
+        if p.asset_id not in seen_products:
+            seen_products.add(p.asset_id)
+            products.append({'id': p.asset_id, 'title': p.asset.title})
+
     return render_template(
         'admin/supporter_detail.html',
         supporter=customer,
         purchases=purchases,
         stats=stats,
         acquisition_refcode=acquisition_refcode,
-        acquisition_source=acquisition_source
+        acquisition_source=acquisition_source,
+        activity_json=json.dumps(activity_items),
+        products=products
     )
+
+
+@admin_bp.route('/supporters/<int:id>/responses/export')
+@creator_login_required
+def export_supporter_responses(id):
+    """Export one supporter's purchases (and questionnaire answers) as CSV.
+
+    Scoped to the logged-in creator's assets. Accepts the same filters the UI
+    exposes so the download matches the on-screen list:
+      asset_id       : restrict to a single product
+      payment_status : COMPLETED | PENDING | FAILED | all (default all)
+      quest_filled   : filled | pending | all (default all)
+      date_from      : YYYY-MM-DD inclusive lower bound
+      date_to        : YYYY-MM-DD inclusive upper bound
+    """
+    customer = Customer.query.get_or_404(id)
+
+    asset_id_str   = request.args.get('asset_id', '').strip()
+    payment_status = request.args.get('payment_status', 'all').strip().upper()
+    quest_filled   = request.args.get('quest_filled',   'all').strip().lower()
+    date_from_str  = request.args.get('date_from', '').strip()
+    date_to_str    = request.args.get('date_to',   '').strip()
+
+    try:
+        date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date() if date_from_str else None
+    except ValueError:
+        date_from = None
+    try:
+        date_to = datetime.strptime(date_to_str, '%Y-%m-%d').date() if date_to_str else None
+    except ValueError:
+        date_to = None
+
+    purchase_query = Purchase.query.join(DigitalAsset).filter(
+        Purchase.customer_id == customer.id,
+        DigitalAsset.creator_id == g.creator.id
+    )
+    if asset_id_str.isdigit():
+        purchase_query = purchase_query.filter(Purchase.asset_id == int(asset_id_str))
+    if payment_status != 'ALL' and payment_status in ('COMPLETED', 'PENDING', 'FAILED'):
+        try:
+            purchase_query = purchase_query.filter(Purchase.status == PurchaseStatus[payment_status])
+        except KeyError:
+            pass
+    if date_from:
+        purchase_query = purchase_query.filter(Purchase.purchase_date >= datetime.combine(date_from, time.min))
+    if date_to:
+        purchase_query = purchase_query.filter(Purchase.purchase_date <= datetime.combine(date_to, time.max))
+    purchases = purchase_query.order_by(Purchase.purchase_date.desc()).all()
+
+    # Question columns: union of all questions defined across the purchased
+    # assets (definition order), then any stray keys found in the data.
+    questions = []
+    extra_keys = []
+    answer_rows = []
+    for p in purchases:
+        for f in (p.asset.custom_fields or []):
+            q = f.get('question') if isinstance(f, dict) else None
+            if q and q not in questions:
+                questions.append(q)
+        answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+        filled = bool(answers)
+        if quest_filled == 'filled' and not filled:
+            continue
+        if quest_filled == 'pending' and filled:
+            continue
+        for k in answers:
+            if k not in questions and k not in extra_keys:
+                extra_keys.append(k)
+        answer_rows.append((p, answers))
+
+    question_cols = questions + extra_keys
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(
+        ['Product', 'Order ID', 'Date', 'Time', 'Payment Status',
+         'Questionnaire Filled', 'Amount', 'Refcode Used', 'Source Used'] + question_cols
+    )
+    for p, answers in answer_rows:
+        questionnaire_filled = ('N/A' if not p.asset.custom_fields
+                                else ('Yes' if bool(answers) else 'No'))
+        row = [
+            p.asset.title,
+            p.id,
+            p.purchase_date.strftime('%Y-%m-%d'),
+            p.purchase_date.strftime('%H:%M:%S'),
+            p.status.name,
+            questionnaire_filled,
+            p.amount_paid,
+            p.refcode_used or '',
+            p.source_used or '',
+        ]
+        for col in question_cols:
+            v = answers.get(col, '')
+            if isinstance(v, bool):
+                v = 'Yes' if v else 'No'
+            elif isinstance(v, dict) and v.get('__file__'):
+                v = v.get('original_name', '[file]')
+            row.append(v)
+        cw.writerow(row)
+
+    fname = f"supporter_{customer.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        si.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-disposition": f"attachment; filename={fname}"}
+    )
+
 
 # --- TOOLTIP API ENDPOINTS ---
 
@@ -2947,6 +3142,12 @@ def asset_detail(slug):
         for f in asset_dict.get('files', []):
             f['link'] = None
             f['storage_path'] = None
+        # A private webinar/join link is the product for an online event — don't ship
+        # the real URL in the page source until the buyer is entitled. The public view
+        # still shows "Online event" via the isOnline flag. A plain venue stays visible.
+        ev = asset_dict.get('eventDetails') or {}
+        if ev.get('isOnline'):
+            ev['link'] = None
     asset_json = json.dumps(asset_dict, default=json_serial)
 
     # --- Construct Asset Metadata (Files & Types) ---
@@ -3174,11 +3375,9 @@ def initiate_payment():
             return MSGS.get(f'{key}_{lang}', MSGS.get(f'{key}_sw', ''))
 
         if float(amount) == 0:
-            # Free asset re-access — silently restore session, no SMS, no new record
-            session['customer_phone'] = str(phone_number).strip()
-            session['is_verified'] = True
-            session.pop('unverified_purchase_ids', None)
-            session.permanent = True
+            # Free re-access: scope the session to THIS free purchase only — never
+            # verify the whole (possibly paid) library from a phone number alone.
+            _apply_scoped_free_session(phone_number, existing_completed.id)
             return jsonify({
                 'success': True,
                 'is_free': True,
@@ -3310,34 +3509,9 @@ def initiate_payment():
         
         db.session.commit()
         
-        # --- Session management: preserve existing verified sessions ---
-        existing_phone = session.get('customer_phone')
-        existing_verified = session.get('is_verified', False)
-        phone_matches = existing_phone and str(existing_phone).strip() == str(phone_number).strip()
-        
-        if phone_matches and existing_verified:
-            # User already has a verified session for this phone — don't downgrade
-            current_app.logger.info(f"Free checkout: Preserving existing verified session for {phone_number}")
-        else:
-            # New visitor or different phone — set scoped session
-            if existing_phone and not phone_matches:
-                session.pop('customer_phone', None)
-                session.pop('is_verified', None)
-                session.pop('free_purchase_only', None)
-                session.pop('unverified_purchase_ids', None)
-            
-            session['customer_phone'] = str(phone_number).strip()
-            session['is_verified'] = False
-            session['free_purchase_only'] = True
-            
-            # Track this specific purchase so they can only access it, not all assets for this phone
-            unverified_ids = session.get('unverified_purchase_ids', [])
-            if purchase.id not in unverified_ids:
-                unverified_ids.append(purchase.id)
-            session['unverified_purchase_ids'] = unverified_ids
-        
-        session.permanent = True
-        session.modified = True
+        # --- Session management: scope to this free purchase, preserving any
+        # already-verified session for the same phone (see _apply_scoped_free_session) ---
+        _apply_scoped_free_session(phone_number, purchase.id)
         
         # --- Optionally call UZA API to create a record (if configured) ---
         uza_pk = creator.get_setting('payment_uza_pk')
@@ -4138,11 +4312,21 @@ def finalize_session(purchase_id):
         return redirect(url_for('main.library'))
 
     if purchase.status == PurchaseStatus.COMPLETED:
-        session['is_verified'] = True
-        session.permanent = True
-        session.pop('unverified_purchase_ids', None) # Clear constraint since verified
-        flash("Payment successful! Welcome to your library.", "success")
-        return redirect(url_for('main.library'))
+        # Only a PAID purchase that THIS browser initiated may upgrade the session to
+        # verified. This blocks (a) free purchases granting full access and (b) anyone
+        # who set a phone in session via a free claim then points finalize-session at a
+        # guessed paid purchase_id to self-verify into someone else's library.
+        unverified_ids = session.get('unverified_purchase_ids', [])
+        own_paid_purchase = float(purchase.amount_paid) > 0 and purchase.id in unverified_ids
+        if session.get('is_verified') or own_paid_purchase:
+            session['is_verified'] = True
+            session.permanent = True
+            session.pop('unverified_purchase_ids', None) # Clear constraint since verified
+            flash("Payment successful! Welcome to your library.", "success")
+            return redirect(url_for('main.library'))
+        # Completed but free / not initiated in this browser — don't verify; the
+        # scoped session set at claim time still grants access to the item itself.
+        return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
     else:
         flash("Payment not yet confirmed. Please wait or check your phone.", "warning")
         return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
@@ -4187,7 +4371,7 @@ def cancel_payment():
 @main_bp.route('/api/purchases/<int:purchase_id>/ticket-data', methods=['POST'])
 def save_purchase_custom_data(purchase_id):
     """Save custom field responses submitted after a purchase."""
-    customer_phone = session.get('customer_phone') if session.get('is_verified') else None
+    customer_phone = _phone_authorized_for_ticket(purchase_id)
     if not customer_phone:
         return jsonify({'success': False, 'message': 'Not authenticated.'}), 401
 
@@ -4217,7 +4401,7 @@ def save_purchase_custom_data(purchase_id):
 @main_bp.route('/api/purchases/<int:purchase_id>/ticket-file', methods=['POST'])
 def save_purchase_ticket_file(purchase_id):
     """Upload a file answer for a single questionnaire question."""
-    customer_phone = session.get('customer_phone') if session.get('is_verified') else None
+    customer_phone = _phone_authorized_for_ticket(purchase_id)
     if not customer_phone:
         return jsonify({'success': False, 'message': 'Not authenticated.'}), 401
 

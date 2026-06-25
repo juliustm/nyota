@@ -3142,6 +3142,12 @@ def asset_detail(slug):
         for f in asset_dict.get('files', []):
             f['link'] = None
             f['storage_path'] = None
+        # A private webinar/join link is the product for an online event — don't ship
+        # the real URL in the page source until the buyer is entitled. The public view
+        # still shows "Online event" via the isOnline flag. A plain venue stays visible.
+        ev = asset_dict.get('eventDetails') or {}
+        if ev.get('isOnline'):
+            ev['link'] = None
     asset_json = json.dumps(asset_dict, default=json_serial)
 
     # --- Construct Asset Metadata (Files & Types) ---

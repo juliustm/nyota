@@ -104,6 +104,16 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
 {% block content %}
 <!-- Data Loading -->
 <script type="application/json" id="asset-data">{{ asset_json|safe }}</script>
+{# Translatable fragments for the timezone hints rendered by the assetDetail component.
+   {d} is a literal placeholder the frontend fills with a duration like "3h 30m". #}
+<script type="application/json" id="event-i18n">{
+    "same": {{ translate('tz_same_zone')|tojson|safe }},
+    "ahead": {{ translate('tz_ahead')|tojson|safe }},
+    "behind": {{ translate('tz_behind')|tojson|safe }},
+    "yourTime": {{ translate('tz_your_time')|tojson|safe }},
+    "hourShort": {{ translate('tz_hour_short')|tojson|safe }},
+    "minShort": {{ translate('tz_min_short')|tojson|safe }}
+}</script>
 <script type="application/json" id="purchase-data">
     {{ latest_purchase.to_dict()|tojson|safe if (latest_purchase and not subscription_expired) else 'null' }}
 </script>
@@ -310,9 +320,11 @@ null
                     {% set info_pending = asset_obj.custom_fields and not info_answered %}
                     {% set info_gate_locked = (collect_mode == 'gate' and info_pending) %}
 
-                    <!-- Content Access -->
+                    <!-- Content Access — hidden when there are no files (e.g. ticket-only) so the
+                         buyer never sees an empty "Access Your Content" shell. -->
                     {% if not info_gate_locked %}
                     <section id="content-access-section" class="fade-in mb-4" style="animation-delay: 100ms;"
+                        x-show="asset.files && asset.files.length > 0" x-cloak
                         x-init="$nextTick(() => ensureFlipbooks())">
                         <div
                             class="bg-white dark:bg-gray-800 sm:border border-gray-200 dark:border-gray-700 sm:rounded-2xl overflow-hidden shadow-sm">
@@ -597,6 +609,64 @@ null
                             </div>
                         </div>
                     </section>
+
+                    {% if asset_obj.asset_type.name == 'TICKET' %}
+                    <!-- Ticket confirmation: shown in place of the file list when a ticket has no
+                         downloadable asset, so the post-purchase view never feels empty. -->
+                    <template x-if="!asset.files || asset.files.length === 0">
+                        <section class="fade-in mb-4" style="animation-delay: 100ms;">
+                            <div class="bg-white dark:bg-gray-800 sm:border border-gray-200 dark:border-gray-700 sm:rounded-2xl overflow-hidden shadow-sm">
+                                <div class="p-5 md:p-6 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/10 border-b border-gray-200 dark:border-gray-700">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 rounded-full bg-green-100 dark:bg-green-800/50 flex items-center justify-center text-green-600 dark:text-green-400 shrink-0">
+                                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ translate('ticket_confirmed') }}</h2>
+                                            <p class="text-sm text-gray-500 dark:text-gray-400">{{ translate('ticket_confirmed_sub') }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-5 md:p-6 space-y-4">
+                                    <!-- When -->
+                                    <template x-if="eventInfo">
+                                        <div class="flex items-start gap-3">
+                                            <svg class="w-4 h-4 mt-0.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <div class="min-w-0">
+                                                <p class="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">{{ translate('event_when') }}</p>
+                                                <p class="text-sm font-semibold text-gray-900 dark:text-white" x-text="eventInfo.adminDisplay"></p>
+                                                <template x-if="eventInfo.userDisplay && !eventInfo.sameZone">
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span x-text="eventInfo.userDisplay"></span> <span x-text="eventI18n.yourTime"></span> — <span x-text="eventInfo.relation"></span></p>
+                                                </template>
+                                                <template x-if="eventInfo.sameZone">
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" x-text="eventInfo.relation"></p>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <!-- Where / join link (revealed now that the buyer owns the ticket) -->
+                                    <template x-if="asset.eventDetails?.link">
+                                        <div class="flex items-start gap-3">
+                                            <svg class="w-4 h-4 mt-0.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            </svg>
+                                            <div class="min-w-0">
+                                                <p class="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">{{ translate('event_where') }}</p>
+                                                <a x-show="asset.eventDetails.isOnline" :href="asset.eventDetails.link" target="_blank" rel="noopener" class="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline break-all" x-text="asset.eventDetails.link"></a>
+                                                <p x-show="!asset.eventDetails.isOnline" class="text-sm font-semibold text-gray-900 dark:text-white" x-text="asset.eventDetails.link"></p>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </section>
+                    </template>
+                    {% endif %}
                     {% endif %}{# end content gate #}
 
                     {% if asset_obj.custom_fields %}
@@ -812,15 +882,34 @@ null
                                     </svg>
                                     {{ translate('save_to_calendar') }}
                                 </h3>
-                                <p class="text-indigo-100 text-xs opacity-90 flex items-center justify-center sm:justify-start gap-1"
-                                    x-show="asset.eventDetails?.date">
-                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    <span
-                                        x-text="asset.eventDetails?.date + (asset.eventDetails?.time ? ' at ' + asset.eventDetails.time : '')"></span>
-                                </p>
+                                <div class="mt-1 space-y-1" x-show="eventInfo" x-cloak>
+                                    <!-- Canonical event time (creator's timezone) -->
+                                    <p class="text-white text-sm font-semibold flex items-center justify-center sm:justify-start gap-1.5">
+                                        <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <span x-text="eventInfo?.adminDisplay"></span>
+                                    </p>
+                                    <!-- Buyer's local equivalent + how their zone relates -->
+                                    <template x-if="eventInfo && eventInfo.userDisplay && !eventInfo.sameZone">
+                                        <p class="text-indigo-100 text-xs opacity-90 flex items-center justify-center sm:justify-start gap-1.5">
+                                            <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <span><span x-text="eventInfo.userDisplay"></span> <span x-text="eventI18n.yourTime"></span> — <span x-text="eventInfo.relation"></span></span>
+                                        </p>
+                                    </template>
+                                    <template x-if="eventInfo && eventInfo.sameZone">
+                                        <p class="text-indigo-100 text-xs opacity-90 flex items-center justify-center sm:justify-start gap-1.5">
+                                            <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                            </svg>
+                                            <span x-text="eventInfo.relation"></span>
+                                        </p>
+                                    </template>
+                                </div>
                             </div>
 
                             <div
@@ -990,6 +1079,61 @@ null
                         <div class="lead text-lg md:text-xl text-gray-600 dark:text-gray-300 [&>p:first-child]:mt-0"
                             x-html="renderMarkdown(asset.description)"></div>
                     </div>
+
+                    {% if asset_obj.asset_type.name == 'TICKET' %}
+                    <!-- Event Details (pre-purchase): surface date/time/location/capacity up front -->
+                    <div class="mt-6 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-900/10 overflow-hidden"
+                        x-show="asset.eventDetails && (asset.eventDetails.date || asset.eventDetails.link || asset.eventDetails.maxAttendees)" x-cloak>
+                        <div class="px-4 py-3 border-b border-indigo-100 dark:border-indigo-900/50 flex items-center gap-2">
+                            <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <h3 class="text-sm font-bold text-indigo-900 dark:text-indigo-100">{{ translate('event_details') }}</h3>
+                        </div>
+                        <div class="p-4 space-y-3">
+                            <!-- Date & time in the creator's timezone (+ buyer's local equivalent) -->
+                            <template x-if="eventInfo">
+                                <div class="flex items-start gap-3">
+                                    <svg class="w-4 h-4 mt-0.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-semibold text-gray-900 dark:text-white" x-text="eventInfo.adminDisplay"></p>
+                                        <template x-if="eventInfo.userDisplay && !eventInfo.sameZone">
+                                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span x-text="eventInfo.userDisplay"></span> <span x-text="eventI18n.yourTime"></span> — <span x-text="eventInfo.relation"></span></p>
+                                        </template>
+                                        <template x-if="eventInfo.sameZone">
+                                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" x-text="eventInfo.relation"></p>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                            <!-- Location: a plain venue is shown; a private join link stays hidden until purchase -->
+                            <template x-if="asset.eventDetails?.link || asset.eventDetails?.isOnline">
+                                <div class="flex items-start gap-3">
+                                    <svg class="w-4 h-4 mt-0.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-semibold text-gray-900 dark:text-white" x-show="!asset.eventDetails.isOnline" x-text="asset.eventDetails.link"></p>
+                                        <p class="text-sm font-semibold text-gray-900 dark:text-white" x-show="asset.eventDetails.isOnline">{{ translate('event_online') }}</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400" x-show="asset.eventDetails.isOnline">{{ translate('event_link_after_purchase') }}</p>
+                                    </div>
+                                </div>
+                            </template>
+                            <!-- Capacity / pax -->
+                            <template x-if="asset.eventDetails?.maxAttendees">
+                                <div class="flex items-start gap-3">
+                                    <svg class="w-4 h-4 mt-0.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 00-3-3.87" />
+                                    </svg>
+                                    <p class="text-sm font-semibold text-gray-900 dark:text-white"><span x-text="asset.eventDetails.maxAttendees"></span> {{ translate('event_spots') }}</p>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    {% endif %}
 
                     <!-- File Metadata Breakdown -->
                     {% if asset_meta and asset_meta.total_files > 0 %}

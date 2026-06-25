@@ -11,7 +11,8 @@ with a professional, scalable model for creator settings and preferences.
 import enum
 import uuid
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from slugify import slugify
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -347,9 +348,43 @@ class DigitalAsset(db.Model):
     def to_dict(self):
         """Serializes the asset object to a dictionary for JSON conversion."""
         
-        # Helper to format date and time if they exist
+        # Helper to format date and time if they exist. event_date is stored as a
+        # NAIVE datetime holding the creator's wall-clock time (what the admin typed).
         event_date_str = self.event_date.strftime('%Y-%m-%d') if self.event_date else None
         event_time_str = self.event_date.strftime('%H:%M') if self.event_date else None
+
+        # Resolve the event against the creator's configured timezone so the public
+        # always sees the SAME canonical wall-clock the admin set, while the calendar
+        # files / "your local time" hints can be anchored to a real UTC instant.
+        event_utc_str = None        # absolute instant, e.g. "2026-06-27T18:32:00Z"
+        event_tz_name = None        # IANA name, e.g. "Africa/Nairobi"
+        event_tz_label = None       # friendly label, e.g. "EAT" or "GMT+3"
+        event_tz_offset_min = None  # creator offset from UTC at the event, e.g. 180
+        if self.event_date:
+            tz_name = None
+            try:
+                if self.creator:
+                    tz_name = self.creator.get_setting('creator_timezone')
+            except Exception:
+                tz_name = None
+            tz_name = tz_name or 'Africa/Nairobi'  # sensible default for the store's region
+            try:
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                tz_name, tz = 'Africa/Nairobi', ZoneInfo('Africa/Nairobi')
+            aware = self.event_date.replace(tzinfo=tz)
+            event_utc_str = aware.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            event_tz_name = tz_name
+            offset = aware.utcoffset()
+            event_tz_offset_min = int(offset.total_seconds() // 60) if offset else 0
+            abbrev = aware.tzname() or ''
+            # Some zones report a numeric abbrev like "+03"; fall back to a GMT label.
+            if abbrev and abbrev.isalpha():
+                event_tz_label = abbrev
+            else:
+                sign = '+' if event_tz_offset_min >= 0 else '-'
+                hrs, mins = divmod(abs(event_tz_offset_min), 60)
+                event_tz_label = f"GMT{sign}{hrs}" + (f":{mins:02d}" if mins else "")
 
         asset_data = {
             'id': self.id,
@@ -379,9 +414,19 @@ class DigitalAsset(db.Model):
             # Create nested objects that the frontend component expects
             'eventDetails': {
                 'link': self.event_location,
+                # A URL location is a private join link (the deliverable for a webinar);
+                # the route redacts the actual URL for non-buyers but keeps this flag so
+                # the public view can still show "Online event".
+                'isOnline': bool(self.event_location and str(self.event_location).startswith('http')),
                 'date': event_date_str,
                 'time': event_time_str,
-                'maxAttendees': self.max_attendees
+                'maxAttendees': self.max_attendees,
+                # Timezone context so the frontend can show the canonical creator time
+                # and compute the buyer's local equivalent / offset.
+                'utc': event_utc_str,
+                'timezone': event_tz_name,
+                'tzLabel': event_tz_label,
+                'tzOffsetMinutes': event_tz_offset_min
             },
             
             # The 'details' column is JSON, so it can be used directly.

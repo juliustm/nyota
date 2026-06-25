@@ -26,8 +26,17 @@ document.addEventListener('alpine:init', () => {
         asset: {}, countdown: 'Loading...', currency: currencySymbol, visibleReviews: 3,
         toast: { show: false, message: '', type: 'success' },
         qrCodeUrl: '', showQRCode: false,
+        // Translatable fragments for the timezone hints; overridden from #event-i18n.
+        eventI18n: {
+            same: 'This is your local time', ahead: "You're {d} ahead", behind: "You're {d} behind",
+            yourTime: 'your time', hourShort: 'h', minShort: 'm'
+        },
 
-        init() { try { const dataElement = document.getElementById('asset-data'); if (dataElement) this.asset = JSON.parse(dataElement.textContent); } catch (e) { console.error('Error parsing asset detail data:', e); } if (this.asset.asset_type === 'TICKET' && this.asset.event_date) { this.countdownInterval = setInterval(() => this.updateCountdown(), 1000); this.updateCountdown(); } },
+        init() {
+            try { const dataElement = document.getElementById('asset-data'); if (dataElement) this.asset = JSON.parse(dataElement.textContent); } catch (e) { console.error('Error parsing asset detail data:', e); }
+            try { const i18nEl = document.getElementById('event-i18n'); if (i18nEl) this.eventI18n = Object.assign(this.eventI18n, JSON.parse(i18nEl.textContent)); } catch (e) { /* keep defaults */ }
+            if (this.asset.asset_type === 'TICKET' && this.asset.event_date) { this.countdownInterval = setInterval(() => this.updateCountdown(), 1000); this.updateCountdown(); }
+        },
 
         showToast(message, type = 'success') {
             this.toast.message = message;
@@ -64,7 +73,79 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
+        // --- Timezone-aware event display -------------------------------------
+        // The creator's wall-clock time is the single source of truth. We show it
+        // verbatim (labelled with the creator's zone) and, when we have a real UTC
+        // anchor, also tell the buyer how their own zone relates to it.
+        get eventInfo() {
+            const ev = this.asset.eventDetails || {};
+            if (!ev.date) return null;
+            const info = {
+                hasTime: !!ev.time,
+                tzLabel: ev.tzLabel || '',
+                adminDisplay: this._formatWallClock(ev.date, ev.time, ev.tzLabel),
+                userDisplay: null,
+                relation: null,
+                sameZone: null
+            };
+            // Buyer-relative info needs the UTC anchor + the creator's offset.
+            if (ev.utc && ev.tzOffsetMinutes !== undefined && ev.tzOffsetMinutes !== null) {
+                const instant = new Date(ev.utc);
+                if (!isNaN(instant.getTime())) {
+                    const userOffset = -instant.getTimezoneOffset(); // minutes east of UTC
+                    const diff = userOffset - ev.tzOffsetMinutes;    // + => buyer ahead
+                    info.sameZone = (diff === 0);
+                    info.userDisplay = instant.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                    info.relation = this._describeOffset(diff);
+                }
+            }
+            return info;
+        },
+
+        // Format creator wall-clock numbers without any timezone shift. We build a
+        // local Date from the literal parts purely so Intl can render names; the
+        // displayed numbers are exactly what the admin entered.
+        _formatWallClock(dateStr, timeStr, tzLabel) {
+            const [y, m, d] = (dateStr || '').split('-').map(Number);
+            if (!y || !m || !d) return (dateStr || '') + (timeStr ? ' ' + timeStr : '');
+            let hh = 0, mm = 0;
+            if (timeStr) { const p = timeStr.split(':'); hh = parseInt(p[0], 10) || 0; mm = parseInt(p[1], 10) || 0; }
+            const dt = new Date(y, m - 1, d, hh, mm);
+            const opts = timeStr
+                ? { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }
+                : { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
+            let out = dt.toLocaleString(undefined, opts);
+            if (tzLabel) out += ' ' + tzLabel;
+            return out;
+        },
+
+        _describeOffset(diffMinutes) {
+            if (diffMinutes === 0) return this.eventI18n.same;
+            const ahead = diffMinutes > 0;
+            const abs = Math.abs(diffMinutes);
+            const h = Math.floor(abs / 60), m = abs % 60;
+            let dur = '';
+            if (h) dur += h + this.eventI18n.hourShort;
+            if (m) dur += (h ? ' ' : '') + m + this.eventI18n.minShort;
+            return (ahead ? this.eventI18n.ahead : this.eventI18n.behind).replace('{d}', dur);
+        },
+
         getEventDates() {
+            const toUtcStamp = (d) => d.toISOString().replace(/[-:]|\.\d{3}/g, ''); // -> 20260627T183200Z
+
+            // Preferred path: anchor to the server-computed UTC instant so the saved
+            // calendar entry lands at the correct absolute moment in every timezone.
+            const evUtc = this.asset.eventDetails?.utc;
+            if (evUtc) {
+                const start = new Date(evUtc);
+                if (!isNaN(start.getTime())) {
+                    const end = new Date(start.getTime() + 60 * 60 * 1000);
+                    const stamp = toUtcStamp(start), endStamp = toUtcStamp(end);
+                    return { icsStart: stamp, icsEnd: endStamp, googleStart: stamp, googleEnd: endStamp };
+                }
+            }
+
+            // Fallback (no UTC anchor): legacy floating local time.
             let startDt = new Date();
             let endDt = new Date(startDt.getTime() + 60 * 60 * 1000); // default +1 hour
 

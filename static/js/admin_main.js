@@ -808,7 +808,7 @@ document.addEventListener('alpine:init', () => {
 
         // Custom Fields Management
         addCustomField() {
-            this.customFields.push({ type: 'text', question: '' });
+            this.customFields.push({ type: 'text', question: '', required: false, _optionsRaw: '', accept: '', maxSizeMb: 5 });
         },
 
         removeCustomField(index) {

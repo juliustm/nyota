@@ -214,6 +214,7 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('postPurchaseForm', (assetId, purchaseId, alreadyAnswered = false) => ({
         fields: [],
         formData: {},
+        fileData: {},
         isSubmitting: false,
         submitted: false,
         alreadyAnswered: alreadyAnswered,
@@ -247,7 +248,12 @@ document.addEventListener('alpine:init', () => {
             // Seed formData: reuse an existing answer when present, else a sensible empty default.
             this.fields.forEach(field => {
                 const existing = answers[field.question];
-                if (existing !== undefined && existing !== null) {
+                if (field.type === 'file') {
+                    this.fileData[field.question] = null;
+                    // Show original filename if already uploaded
+                    this.formData[field.question] = (existing && existing.__file__)
+                        ? existing.original_name : '';
+                } else if (existing !== undefined && existing !== null) {
                     this.formData[field.question] = existing;
                 } else {
                     this.formData[field.question] = field.type === 'checkbox' ? false : '';
@@ -258,24 +264,80 @@ document.addEventListener('alpine:init', () => {
         displayValue(field) {
             const v = this.formData[field.question];
             if (field.type === 'checkbox') return v ? 'Yes' : 'No';
+            if (field.type === 'file') return v ? v : '—';
             return (v === '' || v === null || v === undefined) ? '—' : v;
+        },
+        handleFileSelect(question, event) {
+            const file = event.target.files[0] || null;
+            this.fileData[question] = file;
+            this.formData[question] = file ? file.name : '';
+        },
+        get currentStep() {
+            const total = this.fields.length;
+            const answered = this.fields.filter(f => {
+                if (f.type === 'file') return !!this.fileData[f.question];
+                const v = this.formData[f.question];
+                return v !== '' && v !== false && v !== null && v !== undefined;
+            }).length;
+            return { answered, total };
         },
         async submit() {
             this.isSubmitting = true;
             try {
-                const response = await fetch(`/api/purchases/${purchaseId}/ticket-data`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ticket_data: this.formData })
+                // Step 1: collect non-file answers
+                const textAnswers = {};
+                this.fields.forEach(f => {
+                    if (f.type !== 'file') {
+                        textAnswers[f.question] = this.formData[f.question];
+                    }
                 });
-                const result = await response.json();
-                if (response.ok && result.success) {
-                    this.submitted = true;
-                    // Optional: Reload page or update UI state
-                    setTimeout(() => window.location.reload(), 1500);
-                } else {
-                    alert(result.message || 'Error submitting form.');
+
+                // Step 2: submit text answers to existing endpoint
+                if (Object.keys(textAnswers).length > 0) {
+                    const r = await fetch(`/api/purchases/${purchaseId}/ticket-data`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticket_data: textAnswers })
+                    });
+                    const result = await r.json();
+                    if (!r.ok || !result.success) {
+                        alert(result.message || 'Error submitting answers.');
+                        return;
+                    }
                 }
+
+                // Step 3: upload each file answer
+                for (const field of this.fields) {
+                    if (field.type !== 'file') continue;
+                    const file = this.fileData[field.question];
+                    if (!file && field.required) {
+                        alert(`Please select a file for "${field.question}".`);
+                        return;
+                    }
+                    if (!file) continue;
+
+                    const maxBytes = (field.maxSizeMb || 5) * 1024 * 1024;
+                    if (file.size > maxBytes) {
+                        alert(`"${field.question}": file exceeds the ${field.maxSizeMb || 5} MB limit.`);
+                        return;
+                    }
+
+                    const fd = new FormData();
+                    fd.append('question_name', field.question);
+                    fd.append('file', file);
+                    const fr = await fetch(`/api/purchases/${purchaseId}/ticket-file`, {
+                        method: 'POST',
+                        body: fd
+                    });
+                    const fres = await fr.json();
+                    if (!fr.ok || !fres.success) {
+                        alert(fres.message || `Error uploading file for "${field.question}".`);
+                        return;
+                    }
+                }
+
+                this.submitted = true;
+                setTimeout(() => window.location.reload(), 1500);
             } catch (e) {
                 alert('A network error occurred.');
             } finally {
@@ -512,7 +574,7 @@ document.addEventListener('alpine:init', () => {
         setAssetType(type) { this.assetType = type; this.assetTypeEnum = this.mapFormTypeToEnumType(type); },
         addContentItem(defaultType = 'upload') { this.contentItems.push({ type: defaultType, title: '', link: '', description: '' }); },
         removeContentItem(index) { this.contentItems.splice(index, 1); },
-        addCustomField() { this.customFields.push({ type: 'text', question: '', required: false, options: [], _optionsRaw: '' }); },
+        addCustomField() { this.customFields.push({ type: 'text', question: '', required: false, options: [], _optionsRaw: '', accept: '', maxSizeMb: 5 }); },
         removeCustomField(index) { this.customFields.splice(index, 1); },
         addPricingTier() { this.pricing.tiers.push({ name: '', price: null, interval: 'monthly', description: '' }); },
         removePricingTier(index) { this.pricing.tiers.splice(index, 1); },
@@ -524,6 +586,10 @@ document.addEventListener('alpine:init', () => {
                 if (f.type === 'select') {
                     out.options = (f._optionsRaw || (Array.isArray(f.options) ? f.options.join(', ') : ''))
                         .split(',').map(s => s.trim()).filter(Boolean);
+                }
+                if (f.type === 'file') {
+                    out.accept = f.accept || '';
+                    out.maxSizeMb = f.maxSizeMb || 5;
                 }
                 return out;
             }).filter(f => f.question.trim());
@@ -806,6 +872,8 @@ document.addEventListener('alpine:init', () => {
                     f._optionsRaw = Array.isArray(f.options) ? f.options.join(', ') : '';
                 }
                 if (f.required === undefined) f.required = false;
+                if (f.accept === undefined) f.accept = '';
+                if (f.maxSizeMb === undefined) f.maxSizeMb = 5;
             });
 
             // Initialize questionnaire enforcement mode: 'optional' | 'reminder' | 'gate'
@@ -929,7 +997,7 @@ document.addEventListener('alpine:init', () => {
 
         addCustomField() {
             if (!this.editableAsset.customFields) this.editableAsset.customFields = [];
-            this.editableAsset.customFields.push({ type: 'text', question: '', required: false, options: [], _optionsRaw: '' });
+            this.editableAsset.customFields.push({ type: 'text', question: '', required: false, options: [], _optionsRaw: '', accept: '', maxSizeMb: 5 });
         },
 
         removeCustomField(index) {
@@ -985,6 +1053,10 @@ document.addEventListener('alpine:init', () => {
                 if (f.type === 'select') {
                     out.options = (f._optionsRaw || (Array.isArray(f.options) ? f.options.join(', ') : ''))
                         .split(',').map(s => s.trim()).filter(Boolean);
+                }
+                if (f.type === 'file') {
+                    out.accept = f.accept || '';
+                    out.maxSizeMb = f.maxSizeMb || 5;
                 }
                 return out;
             }).filter(f => f.question.trim());
@@ -2007,6 +2079,128 @@ document.addEventListener('alpine:init', () => {
                     }, 5000);
                 }
             }
+        }
+    }));
+
+    Alpine.data('activityFeed', (hasQuestionnaire = false, assetId = null) => ({
+        allItems: [],
+        hasQuestionnaire,
+        assetId,
+        filters: { activityType: 'all', paymentStatus: 'all', questFilled: 'all', dateFrom: '', dateTo: '' },
+        pageSize: 25,
+        currentPage: 1,
+        showFilterPanel: false,
+
+        init() {
+            // Restore saved filters from localStorage
+            if (assetId) {
+                try {
+                    const saved = localStorage.getItem(`activityFilters_${assetId}`);
+                    if (saved) this.filters = { ...this.filters, ...JSON.parse(saved) };
+                } catch {}
+            }
+
+            try {
+                const el = document.getElementById('activity-feed-data');
+                const parsed = el ? JSON.parse(el.textContent || '[]') : [];
+                this.allItems = parsed.sort((a, b) => new Date(b.date) - new Date(a.date));
+            } catch (e) {
+                this.allItems = [];
+                console.error('Error parsing activity feed data:', e);
+            }
+
+            // Persist filter changes and reset page
+            this.$watch('filters', (val) => {
+                this.currentPage = 1;
+                if (assetId) {
+                    try { localStorage.setItem(`activityFilters_${assetId}`, JSON.stringify(val)); } catch {}
+                }
+            }, { deep: true });
+        },
+
+        get hasActiveFilters() {
+            return this.filters.activityType !== 'all'
+                || this.filters.paymentStatus !== 'all'
+                || this.filters.questFilled !== 'all'
+                || !!this.filters.dateFrom
+                || !!this.filters.dateTo;
+        },
+
+        get filteredItems() {
+            return this.allItems.filter(item => {
+                if (this.filters.activityType !== 'all' && item.activity_type !== this.filters.activityType) return false;
+                if (this.filters.dateFrom) {
+                    if (new Date(item.date) < new Date(this.filters.dateFrom)) return false;
+                }
+                if (this.filters.dateTo) {
+                    if (new Date(item.date) > new Date(this.filters.dateTo + 'T23:59:59')) return false;
+                }
+                if (item.activity_type === 'purchase') {
+                    if (this.filters.paymentStatus !== 'all' && item.payment_status !== this.filters.paymentStatus) return false;
+                    if (this.filters.questFilled === 'filled' && !item.filled) return false;
+                    if (this.filters.questFilled === 'pending' && item.filled) return false;
+                }
+                return true;
+            });
+        },
+
+        get totalPages() {
+            return Math.max(1, Math.ceil(this.filteredItems.length / this.pageSize));
+        },
+
+        get pagedItems() {
+            const start = (this.currentPage - 1) * this.pageSize;
+            return this.filteredItems.slice(start, start + this.pageSize);
+        },
+
+        get exportUrl() {
+            const base = `/admin/assets/${this.assetId}/responses/export`;
+            const p = new URLSearchParams();
+            if (this.filters.activityType  !== 'all') p.set('activity_type',  this.filters.activityType);
+            if (this.filters.paymentStatus !== 'all') p.set('payment_status', this.filters.paymentStatus);
+            if (this.filters.questFilled   !== 'all') p.set('quest_filled',   this.filters.questFilled);
+            if (this.filters.dateFrom) p.set('date_from', this.filters.dateFrom);
+            if (this.filters.dateTo)   p.set('date_to',   this.filters.dateTo);
+            return p.toString() ? `${base}?${p}` : base;
+        },
+
+        // Returns chips for each active filter so the bar can render them
+        get activeFilterChips() {
+            const chips = [];
+            const typeLabels = { purchase: 'Purchases', comment: 'Comments' };
+            const statusLabels = { COMPLETED: 'Completed', PENDING: 'Pending', FAILED: 'Failed' };
+            const questLabels = { filled: 'Form filled', pending: 'Awaiting form' };
+            if (this.filters.activityType !== 'all') chips.push({ key: 'activityType',  label: typeLabels[this.filters.activityType]  || this.filters.activityType });
+            if (this.filters.paymentStatus !== 'all') chips.push({ key: 'paymentStatus', label: statusLabels[this.filters.paymentStatus] || this.filters.paymentStatus });
+            if (this.filters.questFilled   !== 'all') chips.push({ key: 'questFilled',   label: questLabels[this.filters.questFilled]   || this.filters.questFilled });
+            if (this.filters.dateFrom) chips.push({ key: 'dateFrom', label: `From ${this.filters.dateFrom}` });
+            if (this.filters.dateTo)   chips.push({ key: 'dateTo',   label: `To ${this.filters.dateTo}` });
+            return chips;
+        },
+
+        clearChip(key) {
+            if (key === 'dateFrom' || key === 'dateTo') this.filters[key] = '';
+            else this.filters[key] = 'all';
+        },
+
+        prevPage() { if (this.currentPage > 1) this.currentPage--; },
+        nextPage() { if (this.currentPage < this.totalPages) this.currentPage++; },
+
+        resetFilters() {
+            this.filters = { activityType: 'all', paymentStatus: 'all', questFilled: 'all', dateFrom: '', dateTo: '' };
+            this.currentPage = 1;
+            if (assetId) {
+                try { localStorage.removeItem(`activityFilters_${assetId}`); } catch {}
+            }
+        },
+
+        formatDate(iso) {
+            try {
+                return new Date(iso).toLocaleString(undefined, {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            } catch { return iso; }
         }
     }));
 

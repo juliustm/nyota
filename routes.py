@@ -12,7 +12,7 @@ import queue
 import threading
 import requests
 import re
-from datetime import datetime, date, timedelta # Added timedelta
+from datetime import datetime, date, time, timedelta
 import csv
 import io
 from functools import wraps
@@ -465,67 +465,160 @@ def export_dashboard_data():
 @admin_bp.route('/assets/<int:asset_id>/responses/export')
 @creator_login_required
 def export_asset_responses(asset_id):
-    """Export one asset's completed purchases with one CSV column per questionnaire question.
+    """Export purchases (and optionally comments) for one asset as CSV.
 
-    Unlike the dashboard export (which spans many assets and packs all answers into a single
-    cell), this is scoped to a single asset so each question becomes its own analysable column.
+    Accepts filter params so the download matches whatever the UI has filtered:
+      activity_type  : purchase | comment | all (default all)
+      payment_status : COMPLETED | PENDING | FAILED | all (default all)
+      quest_filled   : filled | pending | all (default all)
+      date_from      : YYYY-MM-DD inclusive lower bound
+      date_to        : YYYY-MM-DD inclusive upper bound
     """
     asset = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
 
-    # Question columns: definition order first, then any stray keys still present in the data
-    # (e.g. questions that were renamed/removed after some buyers had already answered).
+    activity_type  = request.args.get('activity_type',  'all').strip().lower()
+    payment_status = request.args.get('payment_status', 'all').strip().upper()
+    quest_filled   = request.args.get('quest_filled',   'all').strip().lower()
+    date_from_str  = request.args.get('date_from', '').strip()
+    date_to_str    = request.args.get('date_to',   '').strip()
+
+    try:
+        date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date() if date_from_str else None
+    except ValueError:
+        date_from = None
+    try:
+        date_to = datetime.strptime(date_to_str, '%Y-%m-%d').date() if date_to_str else None
+    except ValueError:
+        date_to = None
+
+    # Question columns: definition order first, then any stray keys in data
     questions = []
     for f in (asset.custom_fields or []):
         q = f.get('question') if isinstance(f, dict) else None
         if q and q not in questions:
             questions.append(q)
 
-    purchases = Purchase.query.filter_by(
-        asset_id=asset.id, status=PurchaseStatus.COMPLETED
-    ).order_by(Purchase.purchase_date.desc()).all()
-
-    answer_rows = []
-    extra_keys = []
-    for p in purchases:
-        answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
-        for k in answers:
-            if k not in questions and k not in extra_keys:
-                extra_keys.append(k)
-        answer_rows.append((p, answers))
-
-    question_cols = questions + extra_keys
-
     si = io.StringIO()
     cw = csv.writer(si)
-    cw.writerow(
-        ['Order ID', 'Date', 'Time', 'Customer Phone', 'Status', 'Amount',
-         'Refcode Used', 'Source Used'] + question_cols
-    )
 
-    for p, answers in answer_rows:
-        row = [
-            p.id,
-            p.purchase_date.strftime('%Y-%m-%d'),
-            p.purchase_date.strftime('%H:%M:%S'),
-            p.customer.whatsapp_number if p.customer else '',
-            p.status.name,
-            p.amount_paid,
-            p.refcode_used or '',
-            p.source_used or '',
-        ]
-        for col in question_cols:
-            v = answers.get(col, '')
-            if isinstance(v, bool):
-                v = 'Yes' if v else 'No'
-            row.append(v)
-        cw.writerow(row)
+    # --- Purchases section ---
+    if activity_type in ('all', 'purchase'):
+        purchase_query = Purchase.query.filter_by(asset_id=asset.id)
+        if payment_status != 'ALL' and payment_status in ('COMPLETED', 'PENDING', 'FAILED'):
+            try:
+                purchase_query = purchase_query.filter_by(status=PurchaseStatus[payment_status])
+            except KeyError:
+                pass
+        if date_from:
+            purchase_query = purchase_query.filter(Purchase.purchase_date >= datetime.combine(date_from, time.min))
+        if date_to:
+            purchase_query = purchase_query.filter(Purchase.purchase_date <= datetime.combine(date_to, time.max))
+        purchases = purchase_query.order_by(Purchase.purchase_date.desc()).all()
 
-    fname = f"responses_{asset.slug}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        answer_rows = []
+        extra_keys = []
+        for p in purchases:
+            answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+            filled = bool(answers)
+            if quest_filled == 'filled' and not filled:
+                continue
+            if quest_filled == 'pending' and filled:
+                continue
+            for k in answers:
+                if k not in questions and k not in extra_keys:
+                    extra_keys.append(k)
+            answer_rows.append((p, answers))
+
+        question_cols = questions + extra_keys
+
+        cw.writerow(
+            ['Order ID', 'Date', 'Time', 'Customer Phone', 'Payment Status',
+             'Questionnaire Filled', 'Amount', 'Refcode Used', 'Source Used'] + question_cols
+        )
+        for p, answers in answer_rows:
+            questionnaire_filled = ('N/A' if not asset.custom_fields
+                                    else ('Yes' if bool(answers) else 'No'))
+            row = [
+                p.id,
+                p.purchase_date.strftime('%Y-%m-%d'),
+                p.purchase_date.strftime('%H:%M:%S'),
+                p.customer.whatsapp_number if p.customer else '',
+                p.status.name,
+                questionnaire_filled,
+                p.amount_paid,
+                p.refcode_used or '',
+                p.source_used or '',
+            ]
+            for col in question_cols:
+                v = answers.get(col, '')
+                if isinstance(v, bool):
+                    v = 'Yes' if v else 'No'
+                elif isinstance(v, dict) and v.get('__file__'):
+                    v = v.get('original_name', '[file]')
+                row.append(v)
+            cw.writerow(row)
+
+    # --- Comments section ---
+    if activity_type in ('all', 'comment'):
+        comment_query = Comment.query.filter_by(asset_id=asset.id)
+        if date_from:
+            comment_query = comment_query.filter(Comment.created_at >= datetime.combine(date_from, time.min))
+        if date_to:
+            comment_query = comment_query.filter(Comment.created_at <= datetime.combine(date_to, time.max))
+        comments = comment_query.order_by(Comment.created_at.desc()).all()
+
+        if comments:
+            if activity_type == 'all':
+                cw.writerow([])
+            cw.writerow(['Date', 'Time', 'Customer Phone', 'Comment'])
+            for c in comments:
+                cw.writerow([
+                    c.created_at.strftime('%Y-%m-%d'),
+                    c.created_at.strftime('%H:%M:%S'),
+                    c.customer.whatsapp_number if c.customer else '',
+                    c.body or '',
+                ])
+
+    fname = f"activity_{asset.slug}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(
         si.getvalue(),
         mimetype="text/csv",
         headers={"Content-disposition": f"attachment; filename={fname}"}
     )
+
+
+@admin_bp.route('/purchases/<int:purchase_id>/ticket-file/<path:question_encoded>')
+@creator_login_required
+def download_ticket_file(purchase_id, question_encoded):
+    """Serve a buyer-uploaded questionnaire file. Admin-only."""
+    import urllib.parse
+    import mimetypes
+    question_name = urllib.parse.unquote(question_encoded)
+
+    purchase = Purchase.query.join(DigitalAsset).filter(
+        Purchase.id == purchase_id,
+        DigitalAsset.creator_id == g.creator.id
+    ).first_or_404()
+
+    answer = (purchase.ticket_data or {}).get(question_name)
+    if not answer or not isinstance(answer, dict) or not answer.get('__file__'):
+        abort(404)
+
+    storage_path = answer.get('storage_path', '')
+    if not storage_path.startswith('secure_uploads/'):
+        abort(400)
+
+    filename = storage_path[len('secure_uploads/'):]
+    directory = current_app.config['SECURE_UPLOADS_DIR']
+    original_name = answer.get('original_name', filename)
+    guessed_type, _ = mimetypes.guess_type(filename)
+    return send_from_directory(
+        directory, filename,
+        mimetype=guessed_type or 'application/octet-stream',
+        as_attachment=True,
+        download_name=original_name
+    )
+
 
 @admin_bp.route('/assets')
 @creator_login_required
@@ -609,10 +702,9 @@ def asset_edit(asset_id):
     recent_purchases = Purchase.query.filter_by(asset_id=asset.id).order_by(Purchase.purchase_date.desc()).limit(5).all()
     recent_comments = Comment.query.filter_by(asset_id=asset.id).order_by(Comment.created_at.desc()).limit(5).all()
 
-    # --- Questionnaire responses (for the "Responses" tab) ---
-    # Only meaningful when the asset collects custom info. We list completed
-    # purchases and whether each buyer has filled the questionnaire.
+    # --- Questionnaire responses ---
     has_questionnaire = bool(asset.custom_fields)
+    # Jinja badge counts: only completed purchases
     responses = []
     if has_questionnaire:
         completed = Purchase.query.filter_by(
@@ -629,6 +721,40 @@ def asset_edit(asset_id):
                 'filled': bool(answers),
             })
 
+    # Alpine activity feed: all purchases + comments as JSON
+    all_purchases = Purchase.query.filter_by(
+        asset_id=asset.id
+    ).order_by(Purchase.purchase_date.desc()).limit(200).all()
+    activity_purchases = []
+    for p in all_purchases:
+        answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+        activity_purchases.append({
+            'activity_type': 'purchase',
+            'purchase_id': p.id,
+            'customer': p.customer.whatsapp_number if p.customer else 'Unknown',
+            'date': p.purchase_date.isoformat(),
+            'amount': float(p.amount_paid or 0),
+            'payment_status': p.status.name,
+            'answers': answers,
+            'filled': bool(answers),
+        })
+
+    all_comments = Comment.query.filter_by(
+        asset_id=asset.id
+    ).order_by(Comment.created_at.desc()).limit(50).all()
+    activity_comments = [{
+        'activity_type': 'comment',
+        'purchase_id': None,
+        'customer': c.customer.whatsapp_number if c.customer else 'Unknown',
+        'date': c.created_at.isoformat(),
+        'body': c.body,
+        'payment_status': None,
+        'answers': {},
+        'filled': False,
+    } for c in all_comments]
+
+    activity_json = json.dumps(activity_purchases + activity_comments)
+
     return render_template(
         'admin/asset_view.html',
         asset=asset,
@@ -637,6 +763,7 @@ def asset_edit(asset_id):
         statuses=[s.value for s in AssetStatus],
         responses=responses,
         has_questionnaire=has_questionnaire,
+        activity_json=activity_json,
     )
 
 @admin_bp.route('/api/assets/<int:asset_id>/update', methods=['POST'])
@@ -3850,3 +3977,57 @@ def save_purchase_custom_data(purchase_id):
     flag_modified(purchase, 'ticket_data')
     db.session.commit()
     return jsonify({'success': True})
+
+
+@main_bp.route('/api/purchases/<int:purchase_id>/ticket-file', methods=['POST'])
+def save_purchase_ticket_file(purchase_id):
+    """Upload a file answer for a single questionnaire question."""
+    customer_phone = session.get('customer_phone') if session.get('is_verified') else None
+    if not customer_phone:
+        return jsonify({'success': False, 'message': 'Not authenticated.'}), 401
+
+    purchase = Purchase.query.get_or_404(purchase_id)
+    customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
+    if not customer or purchase.customer_id != customer.id:
+        return jsonify({'success': False, 'message': 'Unauthorized.'}), 403
+
+    question_name = request.form.get('question_name', '').strip()
+    if not question_name:
+        return jsonify({'success': False, 'message': 'question_name is required.'}), 400
+
+    uploaded_file = request.files.get('file')
+    if not uploaded_file or not uploaded_file.filename:
+        return jsonify({'success': False, 'message': 'No file provided.'}), 400
+
+    asset = purchase.asset
+    field_def = next(
+        (f for f in (asset.custom_fields or [])
+         if isinstance(f, dict) and f.get('type') == 'file' and f.get('question') == question_name),
+        None
+    )
+    if not field_def:
+        return jsonify({'success': False, 'message': 'Unknown file question.'}), 400
+
+    max_bytes = int(field_def.get('maxSizeMb') or 5) * 1024 * 1024
+    chunk = uploaded_file.read(max_bytes + 1)
+    if len(chunk) > max_bytes:
+        return jsonify({'success': False,
+                        'message': f"File exceeds the {field_def.get('maxSizeMb', 5)} MB limit."}), 413
+    uploaded_file.seek(0)
+
+    original_name = secure_filename(uploaded_file.filename)
+    unique_name = f"ticket_{purchase_id}_{int(datetime.now().timestamp())}_{original_name}"
+    save_path = os.path.join(current_app.config['SECURE_UPLOADS_DIR'], unique_name)
+    uploaded_file.save(save_path)
+
+    existing = dict(purchase.ticket_data or {})
+    existing[question_name] = {
+        '__file__': True,
+        'storage_path': f'secure_uploads/{unique_name}',
+        'original_name': original_name,
+        'size_bytes': os.path.getsize(save_path),
+    }
+    purchase.ticket_data = existing
+    flag_modified(purchase, 'ticket_data')
+    db.session.commit()
+    return jsonify({'success': True, 'original_name': original_name})

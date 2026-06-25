@@ -570,7 +570,14 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                     {% endif %}{# end content gate #}
 
                     {% if asset_obj.custom_fields %}
-                    <section class="fade-in mb-6" style="animation-delay: 120ms;">
+                    {# Reminder-mode: non-intrusive banner shown when content is accessible but form is unfilled #}
+                    {% if collect_mode == 'reminder' and info_pending %}
+                    <div class="mb-3 flex items-center gap-2 px-4 py-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl text-sm text-indigo-700 dark:text-indigo-300">
+                        <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>{{ translate('please_complete_registration') }}</span>
+                    </div>
+                    {% endif %}
+                    <section id="post-purchase-form-{{ asset_obj.id }}" class="fade-in mb-6" style="animation-delay: 120ms;">
                         {# Field definitions and existing answers are passed via JSON script tags (not
                            inline attributes): the JSON's double quotes would otherwise terminate the
                            enclosing x-data attribute early, breaking Alpine and leaving the form unrendered. #}
@@ -629,6 +636,20 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                             {# Editable form #}
                             <div class="p-6 md:p-8" x-show="mode === 'edit' && !submitted" x-cloak>
                                 <form @submit.prevent="submit" class="space-y-6">
+                                    <!-- Progress bar for multi-question forms -->
+                                    <template x-if="fields.length > 1">
+                                        <div>
+                                            <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                                                <span x-text="currentStep.answered + ' of ' + currentStep.total + ' answered'"></span>
+                                                <span x-text="Math.round((currentStep.answered / currentStep.total) * 100) + '%'"></span>
+                                            </div>
+                                            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                                                <div class="h-1.5 rounded-full transition-all duration-300 {% if info_gate_locked %}bg-amber-500{% else %}bg-indigo-500{% endif %}"
+                                                     :style="'width: ' + Math.round((currentStep.answered / currentStep.total) * 100) + '%'"></div>
+                                            </div>
+                                        </div>
+                                    </template>
+
                                     <template x-for="(field, index) in fields"
                                         :key="index">
                                         <div>
@@ -664,6 +685,29 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                                                     <span class="text-sm text-gray-600 dark:text-gray-400">Yes</span>
                                                 </label>
                                             </template>
+
+                                            <template x-if="field.type === 'file'">
+                                                <div>
+                                                    <label class="flex flex-col items-center justify-center w-full min-h-[7rem] border-2 border-dashed rounded-xl cursor-pointer transition-colors"
+                                                        :class="fileData[field.question]
+                                                            ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/10'
+                                                            : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/30 hover:border-gray-400 dark:hover:border-gray-500'">
+                                                        <svg class="w-7 h-7 mb-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                                                        </svg>
+                                                        <span class="text-sm font-medium text-gray-600 dark:text-gray-300 px-4 text-center"
+                                                              x-text="fileData[field.question] ? fileData[field.question].name : 'Tap to choose a file'"></span>
+                                                        <template x-if="field.accept">
+                                                            <span class="text-xs text-gray-400 mt-1 px-4 text-center" x-text="'Accepted: ' + field.accept"></span>
+                                                        </template>
+                                                        <span class="text-xs text-gray-400 mt-0.5" x-text="'Max ' + (field.maxSizeMb || 5) + ' MB'"></span>
+                                                        <input type="file" class="sr-only"
+                                                               :accept="field.accept || undefined"
+                                                               :required="field.required && !formData[field.question]"
+                                                               @change="handleFileSelect(field.question, $event)">
+                                                    </label>
+                                                </div>
+                                            </template>
                                         </div>
                                     </template>
 
@@ -693,6 +737,29 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                             </div>
                         </div>
                     </section>
+
+                    {# Gate mode: sticky bottom CTA on mobile to nudge the user to scroll up and fill the form #}
+                    {% if info_gate_locked %}
+                    <div x-data="{ _dismissed: false }"
+                         x-show="!_dismissed"
+                         x-cloak
+                         class="fixed bottom-0 inset-x-0 z-30 md:hidden">
+                        <div class="bg-amber-600 text-white px-4 py-3 shadow-2xl">
+                            <div class="flex items-center justify-between gap-3 max-w-lg mx-auto">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                    <span class="text-sm font-semibold truncate">{{ translate('complete_form_to_unlock') }}</span>
+                                </div>
+                                <a href="#post-purchase-form-{{ asset_obj.id }}"
+                                   @click="_dismissed = true"
+                                   class="shrink-0 px-4 py-2 bg-white text-amber-700 font-bold text-sm rounded-lg">
+                                    Fill in
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
                     {% endif %}
 
 

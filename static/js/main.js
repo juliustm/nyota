@@ -211,32 +211,133 @@ document.addEventListener('alpine:init', () => {
         formatCurrency(amount) { return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0); }
     }));
 
-    Alpine.data('postPurchaseForm', (assetId, purchaseId, customFields) => ({
+    Alpine.data('postPurchaseForm', (assetId, purchaseId, alreadyAnswered = false) => ({
+        fields: [],
         formData: {},
+        fileData: {},
         isSubmitting: false,
         submitted: false,
+        alreadyAnswered: alreadyAnswered,
+        // 'view' shows a read-only summary of submitted answers; 'edit' shows the form.
+        mode: alreadyAnswered ? 'view' : 'edit',
+        // In view mode the summary is a collapsed disclosure so it never competes with the
+        // bought content above it. Expanded by default while filling/unlocking the form.
+        open: !alreadyAnswered,
         init() {
-            // Initialize formData with empty values for each field
-            (customFields || []).forEach(field => {
-                this.formData[field.question] = '';
+            // Field definitions and any existing answers are read from JSON <script> tags rather
+            // than inline attribute arguments — embedding the JSON directly in x-data breaks the
+            // HTML attribute (its double quotes close the attribute early) and the form never renders.
+            try {
+                const el = document.getElementById('post-purchase-fields-' + assetId);
+                const parsed = el ? JSON.parse(el.textContent || '[]') : [];
+                this.fields = Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                this.fields = [];
+                console.error('Failed to parse post-purchase fields:', e);
+            }
+
+            let answers = {};
+            try {
+                const el = document.getElementById('post-purchase-answers-' + assetId);
+                answers = el ? (JSON.parse(el.textContent || '{}') || {}) : {};
+            } catch (e) {
+                answers = {};
+            }
+            delete answers.tier; // internal subscription key — never shown or edited
+
+            // Seed formData: reuse an existing answer when present, else a sensible empty default.
+            this.fields.forEach(field => {
+                const existing = answers[field.question];
+                if (field.type === 'file') {
+                    this.fileData[field.question] = null;
+                    // Show original filename if already uploaded
+                    this.formData[field.question] = (existing && existing.__file__)
+                        ? existing.original_name : '';
+                } else if (existing !== undefined && existing !== null) {
+                    this.formData[field.question] = existing;
+                } else {
+                    this.formData[field.question] = field.type === 'checkbox' ? false : '';
+                }
             });
+        },
+        // Human-readable value for the read-only summary.
+        displayValue(field) {
+            const v = this.formData[field.question];
+            if (field.type === 'checkbox') return v ? 'Yes' : 'No';
+            if (field.type === 'file') return v ? v : '—';
+            return (v === '' || v === null || v === undefined) ? '—' : v;
+        },
+        handleFileSelect(question, event) {
+            const file = event.target.files[0] || null;
+            this.fileData[question] = file;
+            this.formData[question] = file ? file.name : '';
+        },
+        get currentStep() {
+            const total = this.fields.length;
+            const answered = this.fields.filter(f => {
+                if (f.type === 'file') return !!this.fileData[f.question];
+                const v = this.formData[f.question];
+                return v !== '' && v !== false && v !== null && v !== undefined;
+            }).length;
+            return { answered, total };
         },
         async submit() {
             this.isSubmitting = true;
             try {
-                const response = await fetch(`/api/purchases/${purchaseId}/ticket-data`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ticket_data: this.formData })
+                // Step 1: collect non-file answers
+                const textAnswers = {};
+                this.fields.forEach(f => {
+                    if (f.type !== 'file') {
+                        textAnswers[f.question] = this.formData[f.question];
+                    }
                 });
-                const result = await response.json();
-                if (response.ok && result.success) {
-                    this.submitted = true;
-                    // Optional: Reload page or update UI state
-                    setTimeout(() => window.location.reload(), 1500);
-                } else {
-                    alert(result.message || 'Error submitting form.');
+
+                // Step 2: submit text answers to existing endpoint
+                if (Object.keys(textAnswers).length > 0) {
+                    const r = await fetch(`/api/purchases/${purchaseId}/ticket-data`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ticket_data: textAnswers })
+                    });
+                    const result = await r.json();
+                    if (!r.ok || !result.success) {
+                        alert(result.message || 'Error submitting answers.');
+                        return;
+                    }
                 }
+
+                // Step 3: upload each file answer
+                for (const field of this.fields) {
+                    if (field.type !== 'file') continue;
+                    const file = this.fileData[field.question];
+                    if (!file && field.required) {
+                        alert(`Please select a file for "${field.question}".`);
+                        return;
+                    }
+                    if (!file) continue;
+
+                    const maxBytes = (field.maxSizeMb || 5) * 1024 * 1024;
+                    if (file.size > maxBytes) {
+                        alert(`"${field.question}": file exceeds the ${field.maxSizeMb || 5} MB limit.`);
+                        return;
+                    }
+
+                    const fd = new FormData();
+                    fd.append('question_name', field.question);
+                    fd.append('file', file);
+                    const fr = await fetch(`/api/purchases/${purchaseId}/ticket-file`, {
+                        method: 'POST',
+                        body: fd
+                    });
+                    const fres = await fr.json();
+                    if (!fr.ok || !fres.success) {
+                        alert(fres.message || `Error uploading file for "${field.question}".`);
+                        return;
+                    }
+                }
+
+                this.submitted = true;
+                setTimeout(() => window.location.reload(), 1500);
             } catch (e) {
                 alert('A network error occurred.');
             } finally {
@@ -404,6 +505,8 @@ document.addEventListener('alpine:init', () => {
         subscriptionDetails: { welcomeContent: '', benefits: '' },
         newsletterDetails: { welcomeFile: null, welcomeDescription: '', frequency: 'monthly' },
         pricing: { type: 'one-time', amount: null, billingCycle: 'monthly', tiers: [] },
+        positionPreference: 'bottom',
+        collectInfoMode: 'optional',
         steps: [{ number: 1, title: 'Type', subtitle: 'Choose content format' }, { number: 2, title: 'Details', subtitle: 'Describe your asset' }, { number: 3, title: 'Content', subtitle: 'Add files/links' }, { number: 4, title: 'Pricing', subtitle: 'Set your price' }],
 
         init() {
@@ -447,27 +550,63 @@ document.addEventListener('alpine:init', () => {
                 // FIX: Only jump to step 2 if we are EDITING an existing asset (has ID)
                 this.step = existing.id ? 2 : 1;
             }
+            this.$nextTick(() => { this._initMDEditors(); });
+        },
+
+        _initMDEditors() {
+            if (typeof EasyMDE === 'undefined') return;
+            const toolbar = ['bold', 'italic', 'heading', '|', 'quote', 'unordered-list', 'ordered-list', '|', 'link', '|', 'preview'];
+            const descEl = document.getElementById('description');
+            if (descEl && !descEl._mde) {
+                const mde = new EasyMDE({ element: descEl, toolbar, minHeight: '80px', spellChecker: false, status: false });
+                mde.codemirror.on('change', () => { this.asset.description = mde.value(); });
+                if (this.asset.description) mde.value(this.asset.description);
+                descEl._mde = mde;
+            }
+            const storyEl = document.getElementById('story');
+            if (storyEl && !storyEl._mde) {
+                const mde = new EasyMDE({ element: storyEl, toolbar, minHeight: '140px', spellChecker: false, status: false });
+                mde.codemirror.on('change', () => { this.asset.story_snippet = mde.value(); });
+                if (this.asset.story_snippet) mde.value(this.asset.story_snippet);
+                storyEl._mde = mde;
+            }
         },
         setAssetType(type) { this.assetType = type; this.assetTypeEnum = this.mapFormTypeToEnumType(type); },
         addContentItem(defaultType = 'upload') { this.contentItems.push({ type: defaultType, title: '', link: '', description: '' }); },
         removeContentItem(index) { this.contentItems.splice(index, 1); },
-        addCustomField() { this.customFields.push({ type: 'text', question: '', required: false }); },
+        addCustomField() { this.customFields.push({ type: 'text', question: '', required: false, options: [], _optionsRaw: '', accept: '', maxSizeMb: 5 }); },
         removeCustomField(index) { this.customFields.splice(index, 1); },
         addPricingTier() { this.pricing.tiers.push({ name: '', price: null, interval: 'monthly', description: '' }); },
         removePricingTier(index) { this.pricing.tiers.splice(index, 1); },
         previewCoverImage(event) { const file = event.target.files[0]; if (file) { this.asset.cover_image_url = URL.createObjectURL(file); } },
         submitForm(action) {
+            // Clean custom fields: derive dropdown options + drop editor-only helpers.
+            const cleanedCustomFields = (this.customFields || []).map(f => {
+                const out = { type: f.type || 'text', question: f.question || '', required: !!f.required };
+                if (f.type === 'select') {
+                    out.options = (f._optionsRaw || (Array.isArray(f.options) ? f.options.join(', ') : ''))
+                        .split(',').map(s => s.trim()).filter(Boolean);
+                }
+                if (f.type === 'file') {
+                    out.accept = f.accept || '';
+                    out.maxSizeMb = f.maxSizeMb || 5;
+                }
+                return out;
+            }).filter(f => f.question.trim());
+
             // Prepare data for submission
             const allData = {
                 action: action,
                 asset: this.asset,
                 assetTypeEnum: this.assetTypeEnum,
                 contentItems: this.contentItems,
-                customFields: this.customFields,
+                customFields: cleanedCustomFields,
+                collect_info_mode: this.collectInfoMode || 'optional',
                 eventDetails: this.eventDetails,
                 subscriptionDetails: this.subscriptionDetails,
                 newsletterDetails: { ...this.newsletterDetails, welcomeFile: null },
-                pricing: this.pricing
+                pricing: this.pricing,
+                position_preference: this.positionPreference || 'bottom'
             };
 
             const hidden = document.createElement('input');
@@ -563,6 +702,16 @@ document.addEventListener('alpine:init', () => {
             this.metaPixelEnabled = this.settings.marketing_meta_pixel_enabled || false;
             this.gaEnabled = this.settings.marketing_ga_enabled || false;
 
+            // Restore the last-open tabs so a refresh returns to the same view.
+            const validMainTabs = ['storeProfile', 'appearance', 'integrations'];
+            const validIntegrationTabs = ['notifications', 'payments', 'marketing'];
+            const savedMainTab = localStorage.getItem('adminSettingsMainTab');
+            const savedIntegrationTab = localStorage.getItem('adminSettingsIntegrationTab');
+            if (validMainTabs.includes(savedMainTab)) this.mainTab = savedMainTab;
+            if (validIntegrationTabs.includes(savedIntegrationTab)) this.integrationTab = savedIntegrationTab;
+            this.$watch('mainTab', val => localStorage.setItem('adminSettingsMainTab', val));
+            this.$watch('integrationTab', val => localStorage.setItem('adminSettingsIntegrationTab', val));
+
             // This is just for the local theme picker, separate from saved settings
             const theme = localStorage.getItem('theme') || 'system';
             this.$dispatch('set-theme', theme);
@@ -656,6 +805,19 @@ document.addEventListener('alpine:init', () => {
             // Initialize preview image
             this.previewImage = this.asset.cover_image_url;
 
+            // Restore the last-open tab so a refresh returns to the same view.
+            // Fall back to General if the saved tab isn't valid for this asset type.
+            const validTabs = ['general', 'configuration', 'content', 'questionnaire', 'responses', 'activity'];
+            let savedTab = localStorage.getItem('adminAssetViewTab');
+            if (savedTab && validTabs.includes(savedTab)) {
+                const configurableTypes = ['TICKET', 'SUBSCRIPTION', 'NEWSLETTER'];
+                if (savedTab === 'configuration' && !configurableTypes.includes(this.asset.asset_type)) {
+                    savedTab = 'general';
+                }
+                this.activeTab = savedTab;
+            }
+            this.$watch('activeTab', val => localStorage.setItem('adminAssetViewTab', val));
+
             // Safely add the nested properties if they don't exist.
             if (!this.editableAsset.eventDetails) {
                 this.editableAsset.eventDetails = {
@@ -700,15 +862,30 @@ document.addEventListener('alpine:init', () => {
                 this.editableAsset.allow_download = this.asset.allow_download !== false;
             }
 
-            // Initialize custom fields for tickets
+            // Initialize custom fields (available for all asset types)
             if (!this.editableAsset.customFields) {
                 this.editableAsset.customFields = this.asset.custom_fields || [];
+            }
+            // Ensure each field has an editable raw-options string for the dropdown builder
+            this.editableAsset.customFields.forEach(f => {
+                if (f._optionsRaw === undefined) {
+                    f._optionsRaw = Array.isArray(f.options) ? f.options.join(', ') : '';
+                }
+                if (f.required === undefined) f.required = false;
+                if (f.accept === undefined) f.accept = '';
+                if (f.maxSizeMb === undefined) f.maxSizeMb = 5;
+            });
+
+            // Initialize questionnaire enforcement mode: 'optional' | 'reminder' | 'gate'
+            if (!this.editableAsset.collect_info_mode) {
+                this.editableAsset.collect_info_mode = this.asset.details?.collect_info_mode || 'optional';
             }
 
             // Initialize content items date/expiry from description
             if (this.editableAsset.files) {
-                this.editableAsset.files.forEach(f => {
+                this.editableAsset.files.forEach((f, i) => {
                     f.newFile = null; // Initialize for UI binding
+                    f._uid = f.id ? ('db-' + f.id) : ('uid-' + Date.now() + '-' + i);
                     // Parse [Date:YYYY-MM-DD] from description
                     const dateMatch = f.description ? f.description.match(/\[Date:(\d{4}-\d{2}-\d{2})\]\s*/) : null;
                     if (dateMatch) {
@@ -747,9 +924,21 @@ document.addEventListener('alpine:init', () => {
             return `${window.location.origin}/${this.editableAsset.slug || this.asset.slug || ''}`;
         },
 
-        addContentItem() {
+        addContentItem(position = 'bottom') {
             if (!this.editableAsset.files) this.editableAsset.files = [];
-            this.editableAsset.files.push({ title: '', link: '', description: '', newFile: null });
+            const blank = { _uid: 'new-' + Date.now() + '-' + Math.random(), title: '', link: '', description: '', newFile: null, type: 'upload', date: '', expiry: '' };
+            if (position === 'top') {
+                this.editableAsset.files.unshift(blank);
+            } else {
+                this.editableAsset.files.push(blank);
+            }
+            // Bring the newly added card into view on the next render tick.
+            this.$nextTick(() => {
+                const list = this.$refs.contentList;
+                if (!list) return;
+                const target = position === 'top' ? list.firstElementChild : list.lastElementChild;
+                if (target && target.scrollIntoView) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
         },
 
         removeContentItem(index) {
@@ -808,7 +997,7 @@ document.addEventListener('alpine:init', () => {
 
         addCustomField() {
             if (!this.editableAsset.customFields) this.editableAsset.customFields = [];
-            this.editableAsset.customFields.push({ type: 'text', question: '', required: false });
+            this.editableAsset.customFields.push({ type: 'text', question: '', required: false, options: [], _optionsRaw: '', accept: '', maxSizeMb: 5 });
         },
 
         removeCustomField(index) {
@@ -853,6 +1042,25 @@ document.addEventListener('alpine:init', () => {
                 };
             });
 
+            // Clean custom fields: derive dropdown options from the raw string and
+            // drop the editor-only _optionsRaw helper before persisting.
+            const cleanedCustomFields = (this.editableAsset.customFields || []).map(f => {
+                const out = {
+                    type: f.type || 'text',
+                    question: f.question || '',
+                    required: !!f.required
+                };
+                if (f.type === 'select') {
+                    out.options = (f._optionsRaw || (Array.isArray(f.options) ? f.options.join(', ') : ''))
+                        .split(',').map(s => s.trim()).filter(Boolean);
+                }
+                if (f.type === 'file') {
+                    out.accept = f.accept || '';
+                    out.maxSizeMb = f.maxSizeMb || 5;
+                }
+                return out;
+            }).filter(f => f.question.trim());
+
             const assetData = {
                 action: this.editableAsset.status === 'Draft' ? 'draft' : 'publish',
                 asset: {
@@ -866,7 +1074,8 @@ document.addEventListener('alpine:init', () => {
                 allow_download: this.editableAsset.allow_download,
                 assetTypeEnum: this.asset.asset_type,
                 contentItems: contentItems,
-                customFields: this.editableAsset.customFields || [],
+                customFields: cleanedCustomFields,
+                collect_info_mode: this.editableAsset.collect_info_mode || 'optional',
                 eventDetails: this.editableAsset.eventDetails || {},
                 subscriptionDetails: {
                     welcomeContent: this.editableAsset.details?.welcomeContent || '',
@@ -1870,6 +2079,128 @@ document.addEventListener('alpine:init', () => {
                     }, 5000);
                 }
             }
+        }
+    }));
+
+    Alpine.data('activityFeed', (hasQuestionnaire = false, assetId = null) => ({
+        allItems: [],
+        hasQuestionnaire,
+        assetId,
+        filters: { activityType: 'all', paymentStatus: 'all', questFilled: 'all', dateFrom: '', dateTo: '' },
+        pageSize: 25,
+        currentPage: 1,
+        showFilterPanel: false,
+
+        init() {
+            // Restore saved filters from localStorage
+            if (assetId) {
+                try {
+                    const saved = localStorage.getItem(`activityFilters_${assetId}`);
+                    if (saved) this.filters = { ...this.filters, ...JSON.parse(saved) };
+                } catch {}
+            }
+
+            try {
+                const el = document.getElementById('activity-feed-data');
+                const parsed = el ? JSON.parse(el.textContent || '[]') : [];
+                this.allItems = parsed.sort((a, b) => new Date(b.date) - new Date(a.date));
+            } catch (e) {
+                this.allItems = [];
+                console.error('Error parsing activity feed data:', e);
+            }
+
+            // Persist filter changes and reset page
+            this.$watch('filters', (val) => {
+                this.currentPage = 1;
+                if (assetId) {
+                    try { localStorage.setItem(`activityFilters_${assetId}`, JSON.stringify(val)); } catch {}
+                }
+            }, { deep: true });
+        },
+
+        get hasActiveFilters() {
+            return this.filters.activityType !== 'all'
+                || this.filters.paymentStatus !== 'all'
+                || this.filters.questFilled !== 'all'
+                || !!this.filters.dateFrom
+                || !!this.filters.dateTo;
+        },
+
+        get filteredItems() {
+            return this.allItems.filter(item => {
+                if (this.filters.activityType !== 'all' && item.activity_type !== this.filters.activityType) return false;
+                if (this.filters.dateFrom) {
+                    if (new Date(item.date) < new Date(this.filters.dateFrom)) return false;
+                }
+                if (this.filters.dateTo) {
+                    if (new Date(item.date) > new Date(this.filters.dateTo + 'T23:59:59')) return false;
+                }
+                if (item.activity_type === 'purchase') {
+                    if (this.filters.paymentStatus !== 'all' && item.payment_status !== this.filters.paymentStatus) return false;
+                    if (this.filters.questFilled === 'filled' && !item.filled) return false;
+                    if (this.filters.questFilled === 'pending' && item.filled) return false;
+                }
+                return true;
+            });
+        },
+
+        get totalPages() {
+            return Math.max(1, Math.ceil(this.filteredItems.length / this.pageSize));
+        },
+
+        get pagedItems() {
+            const start = (this.currentPage - 1) * this.pageSize;
+            return this.filteredItems.slice(start, start + this.pageSize);
+        },
+
+        get exportUrl() {
+            const base = `/admin/assets/${this.assetId}/responses/export`;
+            const p = new URLSearchParams();
+            if (this.filters.activityType  !== 'all') p.set('activity_type',  this.filters.activityType);
+            if (this.filters.paymentStatus !== 'all') p.set('payment_status', this.filters.paymentStatus);
+            if (this.filters.questFilled   !== 'all') p.set('quest_filled',   this.filters.questFilled);
+            if (this.filters.dateFrom) p.set('date_from', this.filters.dateFrom);
+            if (this.filters.dateTo)   p.set('date_to',   this.filters.dateTo);
+            return p.toString() ? `${base}?${p}` : base;
+        },
+
+        // Returns chips for each active filter so the bar can render them
+        get activeFilterChips() {
+            const chips = [];
+            const typeLabels = { purchase: 'Purchases', comment: 'Comments' };
+            const statusLabels = { COMPLETED: 'Completed', PENDING: 'Pending', FAILED: 'Failed' };
+            const questLabels = { filled: 'Form filled', pending: 'Awaiting form' };
+            if (this.filters.activityType !== 'all') chips.push({ key: 'activityType',  label: typeLabels[this.filters.activityType]  || this.filters.activityType });
+            if (this.filters.paymentStatus !== 'all') chips.push({ key: 'paymentStatus', label: statusLabels[this.filters.paymentStatus] || this.filters.paymentStatus });
+            if (this.filters.questFilled   !== 'all') chips.push({ key: 'questFilled',   label: questLabels[this.filters.questFilled]   || this.filters.questFilled });
+            if (this.filters.dateFrom) chips.push({ key: 'dateFrom', label: `From ${this.filters.dateFrom}` });
+            if (this.filters.dateTo)   chips.push({ key: 'dateTo',   label: `To ${this.filters.dateTo}` });
+            return chips;
+        },
+
+        clearChip(key) {
+            if (key === 'dateFrom' || key === 'dateTo') this.filters[key] = '';
+            else this.filters[key] = 'all';
+        },
+
+        prevPage() { if (this.currentPage > 1) this.currentPage--; },
+        nextPage() { if (this.currentPage < this.totalPages) this.currentPage++; },
+
+        resetFilters() {
+            this.filters = { activityType: 'all', paymentStatus: 'all', questFilled: 'all', dateFrom: '', dateTo: '' };
+            this.currentPage = 1;
+            if (assetId) {
+                try { localStorage.removeItem(`activityFilters_${assetId}`); } catch {}
+            }
+        },
+
+        formatDate(iso) {
+            try {
+                return new Date(iso).toLocaleString(undefined, {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            } catch { return iso; }
         }
     }));
 

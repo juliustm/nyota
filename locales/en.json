@@ -189,5 +189,17 @@
     "close": "Close",
     "important_instructions": "Important Instructions",
     "open_link": "Access Link",
-    "link_instructions": "Click to open the external link"
+    "link_instructions": "Click to open the external link",
+    "attendee_information_required": "Additional Information Required",
+    "please_complete_registration": "Please fill in the details below to complete your registration.",
+    "complete_form_to_unlock": "Complete the form to unlock your content",
+    "complete_form_to_unlock_sub": "Your content is ready — just answer the questions below to access it.",
+    "unlock_content": "Unlock My Content",
+    "submit_information": "Submit Information",
+    "your_responses": "Your Responses",
+    "your_responses_note": "You've completed this form. You can update your answers anytime.",
+    "edit_responses": "Edit responses",
+    "update_responses": "Update responses",
+    "thank_you": "Thank You!",
+    "registration_complete": "Your information has been saved successfully."
 }

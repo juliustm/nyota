@@ -7,6 +7,7 @@ This is the application factory for the Nyota ✨ project.
 import os
 import json
 from datetime import timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from flask import Flask, g, session, request
 from flask_babel import Babel
 import mistune
@@ -77,6 +78,23 @@ def create_app(config_class=Config):
     
     # This lambda function takes text, processes it with mistune, and returns HTML.
     app.jinja_env.filters['markdown'] = lambda text: mistune.html(text)
+
+    def local_dt_filter(dt, fmt='%b %d, %Y %I:%M %p'):
+        """Convert a naive UTC datetime to the creator's local timezone."""
+        if dt is None:
+            return ''
+        tz_str = None
+        if hasattr(g, 'creator') and g.creator:
+            tz_str = g.creator.get_setting('creator_timezone')
+        if not tz_str:
+            return dt.strftime(fmt)
+        try:
+            local = dt.replace(tzinfo=ZoneInfo('UTC')).astimezone(ZoneInfo(tz_str))
+            return local.strftime(fmt)
+        except (ZoneInfoNotFoundError, Exception):
+            return dt.strftime(fmt)
+
+    app.jinja_env.filters['local_dt'] = local_dt_filter
 
     # --- Register Blueprints ---
     app.register_blueprint(main_bp)

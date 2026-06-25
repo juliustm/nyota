@@ -69,10 +69,11 @@ def _process_scheduled_campaigns():
         if campaign.smart_exclude_recent_buyers:
             exclude_since = campaign.sent_at or campaign.scheduled_at or campaign.created_at
 
-        phones = _resolve_campaign_audience(
+        result = _resolve_campaign_audience(
             campaign.creator_id, campaign.targeting,
             exclude_buyers_since=exclude_since
         )
+        phones = result['phones']
 
         # Idempotency guard: skip phones already successfully sent in this campaign run
         already_sent = set(
@@ -81,9 +82,13 @@ def _process_scheduled_campaigns():
         )
         phones = phones - already_sent
 
+        from utils.phone import format_for_api
+
         sent, failed = 0, 0
         for phone in phones:
-            success, resp = provider.send_sms(phone, campaign.message)
+            # Convert to international format (255XXXXXXXXX) for the SMS API
+            api_phone = format_for_api(phone)
+            success, resp = provider.send_sms(api_phone, campaign.message)
             db.session.add(SMSCampaignLog(
                 campaign_id=campaign.id,
                 phone_number=phone,

@@ -241,6 +241,64 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Store Preferences -->
+            <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 md:p-8">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">Store Preferences</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Controls how dates and times are displayed across your admin panel.</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <label for="creator_timezone" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Timezone</label>
+                        <select id="creator_timezone" name="creator_timezone"
+                            class="form-select block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                            <option value="">— Auto-detected —</option>
+                            <optgroup label="Africa">
+                                <option value="Africa/Nairobi" :selected="settings.creator_timezone === 'Africa/Nairobi'">Nairobi (EAT, UTC+3)</option>
+                                <option value="Africa/Dar_es_Salaam" :selected="settings.creator_timezone === 'Africa/Dar_es_Salaam'">Dar es Salaam (EAT, UTC+3)</option>
+                                <option value="Africa/Kampala" :selected="settings.creator_timezone === 'Africa/Kampala'">Kampala (EAT, UTC+3)</option>
+                                <option value="Africa/Lagos" :selected="settings.creator_timezone === 'Africa/Lagos'">Lagos (WAT, UTC+1)</option>
+                                <option value="Africa/Johannesburg" :selected="settings.creator_timezone === 'Africa/Johannesburg'">Johannesburg (SAST, UTC+2)</option>
+                                <option value="Africa/Cairo" :selected="settings.creator_timezone === 'Africa/Cairo'">Cairo (EET, UTC+2)</option>
+                                <option value="Africa/Accra" :selected="settings.creator_timezone === 'Africa/Accra'">Accra (GMT, UTC+0)</option>
+                            </optgroup>
+                            <optgroup label="Europe">
+                                <option value="Europe/London" :selected="settings.creator_timezone === 'Europe/London'">London (GMT/BST)</option>
+                                <option value="Europe/Paris" :selected="settings.creator_timezone === 'Europe/Paris'">Paris (CET, UTC+1)</option>
+                                <option value="Europe/Berlin" :selected="settings.creator_timezone === 'Europe/Berlin'">Berlin (CET, UTC+1)</option>
+                                <option value="Europe/Moscow" :selected="settings.creator_timezone === 'Europe/Moscow'">Moscow (MSK, UTC+3)</option>
+                            </optgroup>
+                            <optgroup label="Americas">
+                                <option value="America/New_York" :selected="settings.creator_timezone === 'America/New_York'">New York (EST/EDT)</option>
+                                <option value="America/Chicago" :selected="settings.creator_timezone === 'America/Chicago'">Chicago (CST/CDT)</option>
+                                <option value="America/Denver" :selected="settings.creator_timezone === 'America/Denver'">Denver (MST/MDT)</option>
+                                <option value="America/Los_Angeles" :selected="settings.creator_timezone === 'America/Los_Angeles'">Los Angeles (PST/PDT)</option>
+                                <option value="America/Sao_Paulo" :selected="settings.creator_timezone === 'America/Sao_Paulo'">São Paulo (BRT, UTC-3)</option>
+                            </optgroup>
+                            <optgroup label="Asia">
+                                <option value="Asia/Dubai" :selected="settings.creator_timezone === 'Asia/Dubai'">Dubai (GST, UTC+4)</option>
+                                <option value="Asia/Kolkata" :selected="settings.creator_timezone === 'Asia/Kolkata'">Mumbai/Delhi (IST, UTC+5:30)</option>
+                                <option value="Asia/Singapore" :selected="settings.creator_timezone === 'Asia/Singapore'">Singapore (SGT, UTC+8)</option>
+                                <option value="Asia/Tokyo" :selected="settings.creator_timezone === 'Asia/Tokyo'">Tokyo (JST, UTC+9)</option>
+                            </optgroup>
+                            <optgroup label="Pacific">
+                                <option value="Pacific/Auckland" :selected="settings.creator_timezone === 'Pacific/Auckland'">Auckland (NZST, UTC+12)</option>
+                                <option value="Australia/Sydney" :selected="settings.creator_timezone === 'Australia/Sydney'">Sydney (AEST, UTC+10)</option>
+                            </optgroup>
+                        </select>
+                        <p class="mt-1.5 text-xs text-gray-500">All dates and times in your admin panel will be shown in this timezone.</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Product Order (Public Page)</label>
+                        <div class="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/30 px-4 py-3">
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                                Manage how your products are ordered on your public page directly from the
+                                <a href="{{ url_for('admin.list_assets') }}" class="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">Assets page</a> —
+                                choose a sort mode, drag to arrange manually, and pin your best sellers.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Appearance Section -->

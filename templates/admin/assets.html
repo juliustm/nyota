@@ -7,9 +7,25 @@
     selectedAssets: [],
     bulkAction: '',
     viewMode: localStorage.getItem('adminAssetsViewMode') || 'list',
-    
+    sortMode: '{{ current_sort_mode }}',
+    sortModeSaved: false,
+
     init() {
         this.$watch('viewMode', value => localStorage.setItem('adminAssetsViewMode', value));
+    },
+
+    async updateSortMode() {
+        try {
+            const res = await fetch('/admin/api/settings/sort-mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: this.sortMode })
+            });
+            if (res.ok) {
+                this.sortModeSaved = true;
+                setTimeout(() => { this.sortModeSaved = false; }, 2000);
+            }
+        } catch (e) { /* non-blocking */ }
     },
 
     toggleSelectAll() {
@@ -70,6 +86,48 @@
                 alert('A server connection error occurred.');
             }
         }
+    },
+
+    async persistOrder(el, itemSelector) {
+        const order = Array.from(el.querySelectorAll(itemSelector)).map(n => parseInt(n.dataset.id));
+        await fetch('/admin/api/assets/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order })
+        });
+    },
+
+    initAssetsSortable() {
+        const el = document.getElementById('assets-sortable');
+        if (!el || typeof Sortable === 'undefined') return;
+        Sortable.create(el, {
+            handle: '.asset-drag-handle',
+            animation: 150,
+            ghostClass: 'opacity-40',
+            onEnd: () => this.persistOrder(el, 'tr[data-id]')
+        });
+    },
+
+    initGridSortable() {
+        const el = document.getElementById('assets-grid-sortable');
+        if (!el || typeof Sortable === 'undefined') return;
+        Sortable.create(el, {
+            handle: '.asset-grid-drag-handle',
+            animation: 150,
+            ghostClass: 'opacity-40',
+            onEnd: () => this.persistOrder(el, '[data-id]')
+        });
+    },
+
+    async togglePin(assetId, btn) {
+        try {
+            const res = await fetch(`/admin/api/assets/${assetId}/pin`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            const data = await res.json();
+            if (!res.ok) { alert(data.message || 'Error pinning asset.'); return; }
+            btn.classList.toggle('text-yellow-500', data.is_pinned);
+            btn.classList.toggle('text-gray-400', !data.is_pinned);
+            btn.title = data.is_pinned ? 'Pinned (click to unpin)' : 'Pin to top';
+        } catch (e) { alert('Connection error.'); }
     }
 }" class="space-y-6">
 
@@ -294,6 +352,41 @@
         {% endif %}
     </div>
 
+    <!-- Arrangement Bar -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-start gap-2.5">
+            <svg class="w-5 h-5 text-indigo-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10M4 18h10" />
+            </svg>
+            <div>
+                <p class="text-sm font-semibold text-gray-900 dark:text-white">Public Page Order</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400" x-show="sortMode === 'manual'">Drag the handles below to arrange. Pinned products always show first.</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400" x-show="sortMode !== 'manual'">Products are auto-sorted on your public page. Pinned products still show first.</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <span x-show="sortModeSaved" x-cloak x-transition class="text-xs font-medium text-green-600 dark:text-green-400 inline-flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                Saved
+            </span>
+            <div class="relative">
+                <select x-model="sortMode" @change="updateSortMode()"
+                    class="pl-3 pr-8 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none">
+                    <option value="manual">Manual (drag order)</option>
+                    <option value="date_listed">Date Listed (newest first)</option>
+                    <option value="date_modified">Date Modified (recently updated)</option>
+                    <option value="sales">Best Sellers (most sales first)</option>
+                    <option value="alphabetical">Alphabetical (A → Z)</option>
+                </select>
+                <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                    <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Assets List/Grid -->
     <div x-show="viewMode === 'list'">
         <!-- List View -->
@@ -302,6 +395,7 @@
                 <table class="w-full text-sm">
                     <thead class="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase text-gray-500 dark:text-gray-400">
                         <tr>
+                            <th class="px-2 py-4 w-6" title="Drag to reorder"></th>
                             <th class="px-6 py-4 w-8">
                                 <input type="checkbox" @change="toggleSelectAll"
                                     :checked="selectedAssets.length > 0 && selectedAssets.length === {{ assets|length }}"
@@ -316,9 +410,14 @@
                             <th class="px-6 py-4 text-right">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tbody id="assets-sortable" x-init="initAssetsSortable()" class="divide-y divide-gray-200 dark:divide-gray-700">
                         {% for asset in assets %}
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <tr data-id="{{ asset.id }}" class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            <td class="px-2 py-4">
+                                <span class="asset-drag-handle cursor-grab text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400" title="Drag to reorder">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z"/></svg>
+                                </span>
+                            </td>
                             <td class="px-6 py-4">
                                 <input type="checkbox" value="{{ asset.id }}" x-model.number="selectedAssets"
                                     class="w-4 h-4 text-indigo-600 bg-gray-100 border-gray-300 rounded focus:ring-indigo-500 dark:focus:ring-indigo-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600">
@@ -358,9 +457,14 @@
                             <td class="px-6 py-4 text-right font-medium text-gray-900 dark:text-white">{{ asset.revenue
                                 | format_currency(currency_symbol) }}</td>
                             <td class="px-6 py-4 text-right text-gray-500 dark:text-gray-400 text-xs">{{
-                                asset.updated_at.strftime('%b %d, %Y') }}</td>
+                                asset.updated_at | local_dt('%b %d, %Y') }}</td>
                             <td class="px-6 py-4 text-right">
                                 <div class="flex items-center justify-end gap-2">
+                                    <button @click="togglePin({{ asset.id }}, $el)"
+                                        class="p-1.5 transition-colors {% if asset.get('is_pinned') %}text-yellow-500{% else %}text-gray-400 hover:text-yellow-500{% endif %}"
+                                        title="{% if asset.get('is_pinned') %}Pinned (click to unpin){% else %}Pin to top{% endif %}">
+                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+                                    </button>
                                     <a href="{{ url_for('admin.asset_edit', asset_id=asset.id) }}"
                                         class="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                                         title="Edit">
@@ -408,24 +512,35 @@
     </div>
 
     <!-- Grid View -->
-    <div x-show="viewMode === 'grid'" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+    <div x-show="viewMode === 'grid'" id="assets-grid-sortable" x-init="initGridSortable()"
+        class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {% for asset in assets %}
-        <div
+        <div data-id="{{ asset.id }}"
             class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-all duration-200">
             <div class="relative aspect-[3/4] bg-gray-100 dark:bg-gray-700">
                 <img src="{{ asset.cover or '/static/images/placeholder-cover.jpg' }}" alt="{{ asset.title }}"
                     class="w-full h-full object-cover">
-                <div class="absolute top-3 right-3 flex gap-1">
-                    <span class="px-2 py-1 rounded-full text-xs font-medium 
+                <div class="absolute top-3 right-3 flex items-center gap-1">
+                    <button @click="togglePin({{ asset.id }}, $el)" type="button"
+                        class="p-1.5 rounded-full bg-white/90 dark:bg-gray-900/80 shadow-sm transition-colors {% if asset.get('is_pinned') %}text-yellow-500{% else %}text-gray-400 hover:text-yellow-500{% endif %}"
+                        title="{% if asset.get('is_pinned') %}Pinned (click to unpin){% else %}Pin to top{% endif %}">
+                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+                    </button>
+                    <span class="px-2 py-1 rounded-full text-xs font-medium
                         {% if asset.status == 'Published' %}bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300
                         {% elif asset.status == 'Draft' %}bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300
                         {% else %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{% endif %}">
                         {{ asset.status }}
                     </span>
                 </div>
-                <div class="absolute top-3 left-3">
+                <div class="absolute top-3 left-3 flex items-center gap-1.5">
                     <input type="checkbox" value="{{ asset.id }}" x-model.number="selectedAssets"
                         class="w-4 h-4 text-indigo-600 bg-white border-gray-300 rounded focus:ring-indigo-500">
+                    <span x-show="sortMode === 'manual'"
+                        class="asset-grid-drag-handle cursor-grab active:cursor-grabbing p-1 rounded-md bg-white/90 dark:bg-gray-900/80 shadow-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                        title="Drag to reorder">
+                        <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z"/></svg>
+                    </span>
                 </div>
             </div>
 
@@ -455,7 +570,7 @@
                 </div>
 
                 <div class="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
-                    <span class="text-xs text-gray-500 dark:text-gray-400">{{ asset.updated_at.strftime('%b %d, %Y')
+                    <span class="text-xs text-gray-500 dark:text-gray-400">{{ asset.updated_at | local_dt('%b %d, %Y')
                         }}</span>
                     <div class="flex gap-1">
                         <a href="{{ url_for('admin.asset_edit', asset_id=asset.id) }}"

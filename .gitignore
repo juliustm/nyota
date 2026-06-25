@@ -209,3 +209,16 @@ __marimo__/
 # User-Uploaded Content
 # Ignore all files inside the uploads folder, but not the folder itself.
 /static/uploads/*
+
+# Claude Code Companion
+.claude/
+
+# macOS system files
+.DS_Store
+**/.DS_Store
+
+# SQLite database
+nyota/db/nyota.db
+
+# Nyota local user uploaded files
+nyota/userdata/

@@ -1827,58 +1827,206 @@ def _get_subscription_phones(asset_filter):
 
 def _resolve_campaign_audience(creator_id, targeting, exclude_buyers_since=None):
     """
-    Returns a deduplicated set of phone numbers matching the targeting config.
+    Returns a deduplicated set of NORMALIZED phone numbers matching the targeting config.
+    
+    All phones (from DB and from imported_phones) are normalized to 0XXXXXXXXX format
+    before any set operations, ensuring proper deduplication.
+
     targeting keys:
-      groups        – list of "past_buyers" | "active_subscribers" | "expired_subscribers"
-      asset_ids     – list of asset IDs (empty = all creator assets)
+      groups         – list of "past_buyers" | "active_subscribers" | "expired_subscribers"
+      asset_ids      – list of asset IDs (empty = all creator assets)
       imported_phones – list of raw phone strings
+      filters        – dict with composable smart filters:
+        payment_status         – "completed" | "pending" | "failed" | "any"
+        min_amount             – minimum purchase amount (inclusive)
+        max_amount             – maximum purchase amount (inclusive)
+        purchased_after        – ISO date string, only purchases after this date
+        purchased_before       – ISO date string, only purchases before this date
+        inactive_days          – int, buyers who have NOT purchased in the last N days
+        specific_asset_buyers  – list of asset IDs, only buyers of these specific assets
+        exclude_asset_buyers   – list of asset IDs, exclude buyers of these specific assets
+    
     exclude_buyers_since – if provided, remove phones that made a purchase after this datetime
 
-    Deduplication is automatic — phones is a Python set, so a number that appears
-    in multiple groups (e.g. past buyer AND active subscriber) is counted only once.
+    Returns a dict with:
+      phones         – set of normalized, deduplicated phone numbers
+      breakdown      – dict with audience composition analytics
     """
+    from utils.phone import normalize_phone_number, normalize_phone_list
+
     phones = set()
     groups = targeting.get('groups', [])
     asset_ids = targeting.get('asset_ids', [])
+    filters = targeting.get('filters', {})
+
+    # Breakdown analytics
+    breakdown = {
+        'from_groups': 0,
+        'from_import': 0,
+        'duplicates_removed': 0,
+        'invalid_phones': 0,
+        'filtered_out': 0,
+    }
 
     if asset_ids:
         asset_filter = (DigitalAsset.creator_id == creator_id) & (DigitalAsset.id.in_(asset_ids))
     else:
         asset_filter = (DigitalAsset.creator_id == creator_id)
 
-    if 'past_buyers' in groups:
-        rows = db.session.query(Customer.whatsapp_number)\
+    # ── Determine purchase status filter ──────────────────────────────
+    payment_status = filters.get('payment_status', 'completed')
+    status_filter_map = {
+        'completed': (Purchase.status == PurchaseStatus.COMPLETED,),
+        'pending':   (Purchase.status == PurchaseStatus.PENDING,),
+        'failed':    (Purchase.status == PurchaseStatus.FAILED,),
+        'any':       (),  # no status filter
+    }
+    status_conditions = status_filter_map.get(payment_status, status_filter_map['completed'])
+
+    # ── Build base purchase query for group-based targeting ───────────
+    def _build_purchase_query():
+        """Build a reusable purchase query with filters applied."""
+        q = db.session.query(Customer.whatsapp_number)\
             .join(Purchase).join(DigitalAsset)\
-            .filter(asset_filter, Purchase.status == PurchaseStatus.COMPLETED)\
-            .distinct().all()
-        phones.update(r[0] for r in rows if r[0])
+            .filter(asset_filter)
+        
+        for cond in status_conditions:
+            q = q.filter(cond)
+
+        # Amount range filters
+        min_amount = filters.get('min_amount')
+        max_amount = filters.get('max_amount')
+        if min_amount is not None and min_amount != '':
+            try:
+                q = q.filter(Purchase.amount_paid >= float(min_amount))
+            except (ValueError, TypeError):
+                pass
+        if max_amount is not None and max_amount != '':
+            try:
+                q = q.filter(Purchase.amount_paid <= float(max_amount))
+            except (ValueError, TypeError):
+                pass
+
+        # Date range filters
+        purchased_after = filters.get('purchased_after')
+        purchased_before = filters.get('purchased_before')
+        if purchased_after:
+            try:
+                q = q.filter(Purchase.purchase_date >= datetime.fromisoformat(purchased_after))
+            except ValueError:
+                pass
+        if purchased_before:
+            try:
+                q = q.filter(Purchase.purchase_date <= datetime.fromisoformat(purchased_before) + timedelta(days=1))
+            except ValueError:
+                pass
+
+        return q
+
+    # ── Resolve audience groups ───────────────────────────────────────
+    if 'past_buyers' in groups:
+        q = _build_purchase_query().distinct()
+        rows = q.all()
+        for r in rows:
+            if r[0]:
+                phones.add(normalize_phone_number(r[0]))
 
     need_sub = 'active_subscribers' in groups or 'expired_subscribers' in groups
     if need_sub:
         active_phones, expired_phones = _get_subscription_phones(asset_filter)
         if 'active_subscribers' in groups:
-            phones.update(active_phones)
+            phones.update(normalize_phone_number(p) for p in active_phones if p)
         if 'expired_subscribers' in groups:
-            phones.update(expired_phones)
+            phones.update(normalize_phone_number(p) for p in expired_phones if p)
 
-    for p in targeting.get('imported_phones', []):
-        cleaned = str(p).strip()
-        if cleaned:
-            phones.add(cleaned)
+    # Discard any empty strings from normalization
+    phones.discard('')
 
+    breakdown['from_groups'] = len(phones)
+
+    # ── Imported phones (with normalization & dedup) ──────────────────
+    raw_imported = targeting.get('imported_phones', [])
+    if raw_imported:
+        result = normalize_phone_list(raw_imported)
+        import_set = set(result['cleaned'])
+        new_from_import = import_set - phones  # only count truly new additions
+        phones.update(import_set)
+        breakdown['from_import'] = len(new_from_import)
+        breakdown['duplicates_removed'] = result['duplicate_count'] + (len(import_set) - len(new_from_import))
+        breakdown['invalid_phones'] = result['invalid_count']
+
+    # ── Apply smart filters (post-group resolution) ───────────────────
+
+    pre_filter_count = len(phones)
+
+    # Inactivity filter: remove anyone who purchased in the last N days
+    inactive_days = filters.get('inactive_days')
+    if inactive_days is not None and inactive_days != '':
+        try:
+            inactive_days = int(inactive_days)
+            if inactive_days > 0:
+                cutoff = datetime.utcnow() - timedelta(days=inactive_days)
+                recent_buyer_phones = set(
+                    normalize_phone_number(r[0]) for r in db.session.query(Customer.whatsapp_number)
+                    .join(Purchase).join(DigitalAsset)
+                    .filter(
+                        DigitalAsset.creator_id == creator_id,
+                        Purchase.status == PurchaseStatus.COMPLETED,
+                        Purchase.purchase_date >= cutoff
+                    ).distinct().all() if r[0]
+                )
+                phones -= recent_buyer_phones
+        except (ValueError, TypeError):
+            pass
+
+    # Specific asset buyers: intersect — only keep phones that also bought these assets
+    specific_assets = filters.get('specific_asset_buyers', [])
+    if specific_assets:
+        specific_assets = [int(a) for a in specific_assets if a]
+        if specific_assets:
+            specific_buyer_phones = set(
+                normalize_phone_number(r[0]) for r in db.session.query(Customer.whatsapp_number)
+                .join(Purchase).join(DigitalAsset)
+                .filter(
+                    DigitalAsset.creator_id == creator_id,
+                    DigitalAsset.id.in_(specific_assets),
+                    Purchase.status == PurchaseStatus.COMPLETED,
+                ).distinct().all() if r[0]
+            )
+            phones = phones & specific_buyer_phones
+
+    # Exclude asset buyers: remove anyone who bought these specific assets
+    exclude_assets = filters.get('exclude_asset_buyers', [])
+    if exclude_assets:
+        exclude_assets = [int(a) for a in exclude_assets if a]
+        if exclude_assets:
+            exclude_buyer_phones = set(
+                normalize_phone_number(r[0]) for r in db.session.query(Customer.whatsapp_number)
+                .join(Purchase).join(DigitalAsset)
+                .filter(
+                    DigitalAsset.creator_id == creator_id,
+                    DigitalAsset.id.in_(exclude_assets),
+                    Purchase.status == PurchaseStatus.COMPLETED,
+                ).distinct().all() if r[0]
+            )
+            phones -= exclude_buyer_phones
+
+    # Smart exclude recent buyers (legacy feature, now with normalization)
     if exclude_buyers_since:
         recent_buyer_phones = set(
-            r[0] for r in db.session.query(Customer.whatsapp_number)
+            normalize_phone_number(r[0]) for r in db.session.query(Customer.whatsapp_number)
             .join(Purchase).join(DigitalAsset)
             .filter(
                 DigitalAsset.creator_id == creator_id,
                 Purchase.status == PurchaseStatus.COMPLETED,
                 Purchase.purchase_date >= exclude_buyers_since
-            ).distinct().all()
+            ).distinct().all() if r[0]
         )
         phones -= recent_buyer_phones
 
-    return phones
+    breakdown['filtered_out'] = pre_filter_count - len(phones)
+
+    return {'phones': phones, 'breakdown': breakdown}
 
 
 @admin_bp.route('/campaigns/sms')
@@ -1944,8 +2092,31 @@ def sms_campaigns():
 @creator_login_required
 def sms_campaign_preview_audience():
     data = request.get_json()
-    phones = _resolve_campaign_audience(g.creator.id, data.get('targeting', {}))
-    return jsonify({'count': len(phones), 'sample': list(phones)[:5]})
+    result = _resolve_campaign_audience(g.creator.id, data.get('targeting', {}))
+    phones = result['phones']
+    # Mask phone numbers in preview for privacy
+    masked = []
+    for p in list(phones)[:5]:
+        if len(p) > 6:
+            masked.append(p[:4] + '****' + p[-4:])
+        else:
+            masked.append(p)
+    return jsonify({
+        'count': len(phones),
+        'sample': masked,
+        'breakdown': result['breakdown'],
+    })
+
+
+@admin_bp.route('/api/campaigns/sms/normalize-phones', methods=['POST'])
+@creator_login_required
+def sms_normalize_phones():
+    """Normalize, validate, and deduplicate a list of phone numbers."""
+    from utils.phone import normalize_phone_list
+    data = request.get_json()
+    raw_phones = data.get('phones', [])
+    result = normalize_phone_list(raw_phones)
+    return jsonify(result)
 
 
 @admin_bp.route('/api/campaigns/sms/save', methods=['POST'])
@@ -2001,7 +2172,8 @@ def sms_campaign_send(campaign_id):
     exclude_since = None
     if campaign.smart_exclude_recent_buyers:
         exclude_since = campaign.scheduled_at or campaign.created_at
-    phones = _resolve_campaign_audience(g.creator.id, campaign.targeting, exclude_buyers_since=exclude_since)
+    result = _resolve_campaign_audience(g.creator.id, campaign.targeting, exclude_buyers_since=exclude_since)
+    phones = result['phones']
     if not phones:
         return jsonify({'success': False, 'message': 'No recipients found for this audience.'}), 400
 
@@ -2021,6 +2193,7 @@ def sms_campaign_send(campaign_id):
         with app.app_context():
             from models.nyota import Creator, SMSCampaign, SMSCampaignLog, db
             from services.sms_service import get_sms_provider
+            from utils.phone import format_for_api
             inner_creator = Creator.query.get(creator_id)
             inner_provider = get_sms_provider(inner_creator)
             inner_campaign = SMSCampaign.query.get(campaign_id_val)
@@ -2028,7 +2201,9 @@ def sms_campaign_send(campaign_id):
                 return
             sent, failed = 0, 0
             for phone in phones_list:
-                success, resp = inner_provider.send_sms(phone, campaign_message)
+                # Convert to international format (255XXXXXXXXX) for the SMS API
+                api_phone = format_for_api(phone)
+                success, resp = inner_provider.send_sms(api_phone, campaign_message)
                 db.session.add(SMSCampaignLog(
                     campaign_id=campaign_id_val,
                     phone_number=phone,
@@ -2202,7 +2377,7 @@ def sms_forecast():
         SMSCampaign.status == SMSCampaignStatus.SCHEDULED,
     ).all()
     campaign_audience = {
-        c.id: len(_resolve_campaign_audience(c.creator_id, c.targeting))
+        c.id: len(_resolve_campaign_audience(c.creator_id, c.targeting)['phones'])
         for c in all_scheduled
     }
 

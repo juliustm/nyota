@@ -2228,4 +2228,137 @@ document.addEventListener('alpine:init', () => {
         }
     }));
 
+    // Supporter detail page: one customer's purchases + questionnaire answers
+    // across all of the creator's products. Mirrors activityFeed but filters by
+    // product instead of activity type, and exports per-supporter.
+    Alpine.data('supporterActivity', (supporterId = null) => ({
+        allItems: [],
+        products: [],
+        supporterId,
+        filters: { productId: 'all', paymentStatus: 'all', questFilled: 'all', dateFrom: '', dateTo: '' },
+        pageSize: 25,
+        currentPage: 1,
+        showFilterPanel: false,
+
+        init() {
+            if (supporterId) {
+                try {
+                    const saved = localStorage.getItem(`supporterFilters_${supporterId}`);
+                    if (saved) this.filters = { ...this.filters, ...JSON.parse(saved) };
+                } catch {}
+            }
+
+            try {
+                const el = document.getElementById('supporter-activity-data');
+                const parsed = el ? JSON.parse(el.textContent || '[]') : [];
+                this.allItems = parsed.sort((a, b) => new Date(b.date) - new Date(a.date));
+            } catch (e) {
+                this.allItems = [];
+                console.error('Error parsing supporter activity data:', e);
+            }
+
+            try {
+                const pel = document.getElementById('supporter-products-data');
+                this.products = pel ? JSON.parse(pel.textContent || '[]') : [];
+            } catch { this.products = []; }
+
+            this.$watch('filters', (val) => {
+                this.currentPage = 1;
+                if (supporterId) {
+                    try { localStorage.setItem(`supporterFilters_${supporterId}`, JSON.stringify(val)); } catch {}
+                }
+            }, { deep: true });
+        },
+
+        get hasActiveFilters() {
+            return this.filters.productId !== 'all'
+                || this.filters.paymentStatus !== 'all'
+                || this.filters.questFilled !== 'all'
+                || !!this.filters.dateFrom
+                || !!this.filters.dateTo;
+        },
+
+        get filteredItems() {
+            return this.allItems.filter(item => {
+                if (this.filters.productId !== 'all' && String(item.asset_id) !== String(this.filters.productId)) return false;
+                if (this.filters.paymentStatus !== 'all' && item.payment_status !== this.filters.paymentStatus) return false;
+                if (this.filters.questFilled === 'filled' && !item.filled) return false;
+                if (this.filters.questFilled === 'pending' && item.filled) return false;
+                if (this.filters.dateFrom && new Date(item.date) < new Date(this.filters.dateFrom)) return false;
+                if (this.filters.dateTo && new Date(item.date) > new Date(this.filters.dateTo + 'T23:59:59')) return false;
+                return true;
+            });
+        },
+
+        get totalPages() {
+            return Math.max(1, Math.ceil(this.filteredItems.length / this.pageSize));
+        },
+
+        get pagedItems() {
+            const start = (this.currentPage - 1) * this.pageSize;
+            return this.filteredItems.slice(start, start + this.pageSize);
+        },
+
+        get exportUrl() {
+            const base = `/admin/supporters/${this.supporterId}/responses/export`;
+            const p = new URLSearchParams();
+            if (this.filters.productId     !== 'all') p.set('asset_id',       this.filters.productId);
+            if (this.filters.paymentStatus !== 'all') p.set('payment_status', this.filters.paymentStatus);
+            if (this.filters.questFilled   !== 'all') p.set('quest_filled',   this.filters.questFilled);
+            if (this.filters.dateFrom) p.set('date_from', this.filters.dateFrom);
+            if (this.filters.dateTo)   p.set('date_to',   this.filters.dateTo);
+            return p.toString() ? `${base}?${p}` : base;
+        },
+
+        get activeFilterChips() {
+            const chips = [];
+            const statusLabels = { COMPLETED: 'Completed', PENDING: 'Pending', FAILED: 'Failed' };
+            const questLabels = { filled: 'Form filled', pending: 'Awaiting form' };
+            if (this.filters.productId !== 'all') {
+                const prod = this.products.find(p => String(p.id) === String(this.filters.productId));
+                chips.push({ key: 'productId', label: prod ? prod.title : 'Product' });
+            }
+            if (this.filters.paymentStatus !== 'all') chips.push({ key: 'paymentStatus', label: statusLabels[this.filters.paymentStatus] || this.filters.paymentStatus });
+            if (this.filters.questFilled   !== 'all') chips.push({ key: 'questFilled',   label: questLabels[this.filters.questFilled]   || this.filters.questFilled });
+            if (this.filters.dateFrom) chips.push({ key: 'dateFrom', label: `From ${this.filters.dateFrom}` });
+            if (this.filters.dateTo)   chips.push({ key: 'dateTo',   label: `To ${this.filters.dateTo}` });
+            return chips;
+        },
+
+        clearChip(key) {
+            if (key === 'dateFrom' || key === 'dateTo') this.filters[key] = '';
+            else this.filters[key] = 'all';
+        },
+
+        prevPage() { if (this.currentPage > 1) this.currentPage--; },
+        nextPage() { if (this.currentPage < this.totalPages) this.currentPage++; },
+
+        resetFilters() {
+            this.filters = { productId: 'all', paymentStatus: 'all', questFilled: 'all', dateFrom: '', dateTo: '' };
+            this.currentPage = 1;
+            if (supporterId) {
+                try { localStorage.removeItem(`supporterFilters_${supporterId}`); } catch {}
+            }
+        },
+
+        statusBadgeClass(status) {
+            if (status === 'COMPLETED') return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
+            if (status === 'PENDING')   return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+            return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
+        },
+
+        statusLabel(status) {
+            return status ? status.charAt(0) + status.slice(1).toLowerCase() : '';
+        },
+
+        formatDate(iso) {
+            try {
+                return new Date(iso).toLocaleString(undefined, {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            } catch { return iso; }
+        }
+    }));
+
 });

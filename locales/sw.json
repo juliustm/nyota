@@ -192,5 +192,17 @@
     "close": "Funga",
     "important_instructions": "Maelekezo Muhimu",
     "open_link": "Fungua Kiungo",
-    "link_instructions": "Bofya kufungua kiungo"
+    "link_instructions": "Bofya kufungua kiungo",
+    "attendee_information_required": "Taarifa Zaidi Zinahitajika",
+    "please_complete_registration": "Tafadhali jaza maelezo hapa chini kukamilisha usajili wako.",
+    "complete_form_to_unlock": "Jaza fomu ili kufungua maudhui yako",
+    "complete_form_to_unlock_sub": "Maudhui yako yapo tayari — jibu maswali hapa chini ili kuyafikia.",
+    "unlock_content": "Fungua Maudhui Yangu",
+    "submit_information": "Wasilisha Taarifa",
+    "your_responses": "Majibu Yako",
+    "your_responses_note": "Umekamilisha fomu hii. Unaweza kusasisha majibu yako wakati wowote.",
+    "edit_responses": "Hariri majibu",
+    "update_responses": "Sasisha majibu",
+    "thank_you": "Asante!",
+    "registration_complete": "Taarifa zako zimehifadhiwa kikamilifu."
 }

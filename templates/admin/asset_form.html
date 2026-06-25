@@ -448,53 +448,6 @@
                                     </div>
                                 </div>
 
-                                <!-- Custom Fields for Events -->
-                                <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
-                                    <div class="flex justify-between items-center mb-4">
-                                        <h3 class="font-medium text-gray-900 dark:text-white">Attendee Information</h3>
-                                        <button type="button" @click="addCustomField()"
-                                            class="text-sm text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
-                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                    d="M12 4v16m8-8H4" />
-                                            </svg>
-                                            Add Question
-                                        </button>
-                                    </div>
-                                    <div class="space-y-3">
-                                        <template x-for="(field, index) in customFields" :key="index">
-                                            <div
-                                                class="flex gap-3 items-center p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                                <select x-model="field.type"
-                                                    class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
-                                                    <option value="text">Text</option>
-                                                    <option value="dropdown">Dropdown</option>
-                                                    <option value="checkbox">Checkbox</option>
-                                                </select>
-                                                <input type="text" x-model="field.question"
-                                                    placeholder="Question (e.g., T-shirt size)"
-                                                    class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
-                                                <div class="flex items-center gap-2">
-                                                    <label
-                                                        class="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
-                                                        <input type="checkbox" x-model="field.required"
-                                                            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                                                        Required
-                                                    </label>
-                                                </div>
-                                                <button type="button" @click="removeCustomField(index)"
-                                                    class="text-red-600 hover:text-red-500">
-                                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
-                                                        stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                                            stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </div>
-
                                 <!-- Post-Purchase Instructions -->
                                 <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
                                     <h3 class="font-medium text-gray-900 dark:text-white mb-2">Post-Purchase
@@ -658,6 +611,79 @@
                                 </div>
                             </div>
                         </template>
+                    </div>
+
+                    <!-- Collect Customer Info — available for all asset types -->
+                    <div x-show="assetType" class="border-t border-gray-200 dark:border-gray-700 pt-6 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h3 class="font-medium text-gray-900 dark:text-white">Collect Customer Info</h3>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Add questions customers must answer after purchasing this product.</p>
+                            </div>
+                            <button type="button" @click="addCustomField()"
+                                class="text-sm text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                                </svg>
+                                Add Question
+                            </button>
+                        </div>
+                        <template x-for="(field, index) in customFields" :key="index">
+                            <div class="p-3 border border-gray-200 dark:border-gray-700 rounded-lg space-y-2">
+                                <div class="flex gap-3 items-center">
+                                    <select x-model="field.type"
+                                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+                                        <option value="text">Short text</option>
+                                        <option value="textarea">Long text</option>
+                                        <option value="email">Email</option>
+                                        <option value="phone">Phone</option>
+                                        <option value="select">Dropdown</option>
+                                        <option value="checkbox">Checkbox</option>
+                                    </select>
+                                    <input type="text" x-model="field.question"
+                                        placeholder="Question (e.g., What's your goal?)"
+                                        class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+                                    <label class="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                        <input type="checkbox" x-model="field.required"
+                                            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                        Required
+                                    </label>
+                                    <button type="button" @click="removeCustomField(index)" class="text-red-500 hover:text-red-700 flex-shrink-0">
+                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <input x-show="field.type === 'select'" type="text" x-model="field._optionsRaw"
+                                    placeholder="Comma-separated options, e.g. Small, Medium, Large"
+                                    class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+                            </div>
+                        </template>
+
+                        <!-- Enforcement mode -->
+                        <div x-show="customFields.length > 0" class="pt-3">
+                            <p class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">When should customers fill this in?</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <button type="button" @click="collectInfoMode = 'optional'"
+                                    :class="collectInfoMode === 'optional' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'"
+                                    class="text-left p-2.5 rounded-lg border text-xs transition-all">
+                                    <span class="block font-semibold">Optional</span>
+                                    <span class="block text-[11px] opacity-80">Can be skipped</span>
+                                </button>
+                                <button type="button" @click="collectInfoMode = 'reminder'"
+                                    :class="collectInfoMode === 'reminder' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'"
+                                    class="text-left p-2.5 rounded-lg border text-xs transition-all">
+                                    <span class="block font-semibold">Reminder</span>
+                                    <span class="block text-[11px] opacity-80">Prompt, content open</span>
+                                </button>
+                                <button type="button" @click="collectInfoMode = 'gate'"
+                                    :class="collectInfoMode === 'gate' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'"
+                                    class="text-left p-2.5 rounded-lg border text-xs transition-all">
+                                    <span class="block font-semibold">Lock content</span>
+                                    <span class="block text-[11px] opacity-80">Until submitted</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="flex justify-between pt-6 border-t border-gray-200 dark:border-gray-700">
@@ -862,6 +888,25 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Position preference (only for new assets) -->
+                    <template x-if="!asset.id">
+                        <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Where should this appear?</label>
+                            <div class="flex gap-3">
+                                <button type="button" @click="positionPreference = 'top'"
+                                    :class="positionPreference === 'top' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'"
+                                    class="flex-1 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-all">
+                                    ↑ Add to Top
+                                </button>
+                                <button type="button" @click="positionPreference = 'bottom'"
+                                    :class="positionPreference === 'bottom' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'"
+                                    class="flex-1 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-all">
+                                    ↓ Add to Bottom
+                                </button>
+                            </div>
+                        </div>
+                    </template>
 
                     <div class="flex justify-between pt-6 border-t border-gray-200 dark:border-gray-700">
                         <button type="button" @click="step = 3"

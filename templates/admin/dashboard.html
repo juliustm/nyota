@@ -99,6 +99,16 @@
                         asset_title }}</option>
                     {% endfor %}
                 </select>
+
+                <select name="refcode" onchange="this.form.submit()"
+                    class="block w-full sm:w-auto rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-sm focus:ring-blue-500 focus:border-blue-500 shadow-sm cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 transition-colors">
+                    <option value="">All Refcodes</option>
+                    {% for stat in refcode_stats %}
+                    <option value="{{ stat.refcode_used }}" {% if current_filters.refcode == stat.refcode_used %}selected{% endif %}>
+                        {{ stat.refcode_used }} ({{ stat.sales }} sales)
+                    </option>
+                    {% endfor %}
+                </select>
                 <!-- Hidden Export Submit Button -->
                 <button type="submit" id="exportSubmitBtn" formaction="{{ url_for('admin.export_dashboard_data') }}"
                     class="hidden"></button>
@@ -162,6 +172,9 @@
                                 class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                 Amount</th>
                             <th scope="col"
+                                class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                Ref</th>
+                            <th scope="col"
                                 class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                 Date</th>
                         </tr>
@@ -200,17 +213,36 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                                 {{ purchase.amount_paid | format_currency(currency_symbol) }}
                             </td>
+                            <td class="px-4 py-4 whitespace-nowrap">
+                                {% if purchase.refcode_used %}
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono font-medium
+                                    {% if purchase.refcode_outcome == 'customer_success' %}
+                                        bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300
+                                    {% elif purchase.refcode_outcome == 'customer_fallback' %}
+                                        bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300
+                                    {% else %}
+                                        bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400
+                                    {% endif %}">
+                                    {% if purchase.refcode_outcome == 'customer_fallback' %}
+                                    <svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01"/></svg>
+                                    {% endif %}
+                                    {{ purchase.refcode_used }}
+                                </span>
+                                {% else %}
+                                <span class="text-xs text-gray-400 dark:text-gray-600">—</span>
+                                {% endif %}
+                            </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 relative">
                                 <span class="cursor-help border-b border-dotted border-gray-400"
                                     onmouseenter="showTooltip(this, 'purchase', {{ purchase.id }})"
                                     onmouseleave="hideTooltip()">
-                                    {{ purchase.purchase_date.strftime('%b %d, %Y %I:%M %p') }}
+                                    {{ purchase.purchase_date | local_dt('%b %d, %Y %I:%M %p') }}
                                 </span>
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="5" class="px-6 py-12 text-center text-sm text-gray-500 dark:text-gray-400">No
+                            <td colspan="6" class="px-6 py-12 text-center text-sm text-gray-500 dark:text-gray-400">No
                                 orders have been placed yet.</td>
                         </tr>
                         {% endfor %}
@@ -299,6 +331,122 @@
             </div>
         </div>
         {% endif %}
+    </div>
+
+    <!-- Referral Attribution Panel -->
+    <div x-data="referralPanel()" x-init="load()" class="mt-8">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Referral Attribution
+            </h2>
+            <button @click="expanded = !expanded"
+                class="text-sm text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1 transition-colors">
+                <span x-text="expanded ? 'Collapse' : 'Show Details'"></span>
+                <svg class="w-4 h-4 transition-transform" :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Summary strip (always visible) -->
+        <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
+                <p class="text-2xl font-bold text-green-600 dark:text-green-400" x-text="stats.active_refcodes"></p>
+                <p class="text-xs text-gray-500 mt-1">Active Refcodes</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
+                <p class="text-2xl font-bold text-amber-500 dark:text-amber-400" x-text="stats.failed_count"></p>
+                <p class="text-xs text-gray-500 mt-1">Unregistered Codes Seen</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
+                <p class="text-2xl font-bold text-gray-900 dark:text-white" x-text="stats.top_refcode || '—'"></p>
+                <p class="text-xs text-gray-500 mt-1">Top Referrer (Period)</p>
+            </div>
+        </div>
+
+        <!-- Expanded content -->
+        <div x-show="expanded" x-collapse class="space-y-6">
+            <!-- Leaderboard -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Refcode Leaderboard</h3>
+                </div>
+                <table class="min-w-full divide-y divide-gray-100 dark:divide-gray-700 text-sm">
+                    <thead class="bg-gray-50 dark:bg-gray-700/20">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Refcode</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sales</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Revenue</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Unique Buyers</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50 dark:divide-gray-700/50">
+                        <template x-for="row in stats.leaderboard" :key="row.refcode">
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/20 cursor-pointer" @click="filterByRefcode(row.refcode)">
+                                <td class="px-4 py-3 font-mono font-semibold text-gray-900 dark:text-white" x-text="row.refcode"></td>
+                                <td class="px-4 py-3 text-gray-700 dark:text-gray-300" x-text="row.sales"></td>
+                                <td class="px-4 py-3 text-gray-700 dark:text-gray-300" x-text="'TZS ' + row.revenue.toLocaleString()"></td>
+                                <td class="px-4 py-3 text-gray-700 dark:text-gray-300" x-text="row.unique_buyers"></td>
+                                <td class="px-4 py-3">
+                                    <span class="px-2 py-0.5 rounded-full text-xs font-medium"
+                                        :class="row.outcome === 'customer_success' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'"
+                                        x-text="row.outcome === 'customer_success' ? 'Affiliate' : 'Default'">
+                                    </span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Failed / Unregistered Codes -->
+            <div x-show="stats.failed && stats.failed.length > 0"
+                class="bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800 overflow-hidden">
+                <div class="px-4 py-3 border-b border-amber-100 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 flex items-center gap-2">
+                    <svg class="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <h3 class="text-sm font-semibold text-amber-900 dark:text-amber-200">Unregistered Referral Codes</h3>
+                    <span class="text-xs text-amber-600 dark:text-amber-400">These codes were used by visitors but rejected by UZA — register them to unlock their sales potential</span>
+                </div>
+                <table class="min-w-full divide-y divide-amber-100 dark:divide-amber-800/30 text-sm">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-amber-700 dark:text-amber-400 uppercase">Code</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-amber-700 dark:text-amber-400 uppercase">Attempts</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-amber-700 dark:text-amber-400 uppercase">Last Seen</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-amber-700 dark:text-amber-400 uppercase">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-amber-50 dark:divide-amber-800/20">
+                        <template x-for="f in stats.failed" :key="f.refcode">
+                            <tr>
+                                <td class="px-4 py-3 font-mono font-semibold text-amber-900 dark:text-amber-200" x-text="f.refcode"></td>
+                                <td class="px-4 py-3 text-amber-700 dark:text-amber-400" x-text="f.attempts"></td>
+                                <td class="px-4 py-3 text-amber-700 dark:text-amber-400 text-xs"
+                                    x-text="f.last_seen ? new Date(f.last_seen).toLocaleDateString() : '—'"></td>
+                                <td class="px-4 py-3">
+                                    <template x-if="!f.is_registered">
+                                        <button @click="noteRefcode(f.refcode)"
+                                            class="px-3 py-1 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors">
+                                            Note It
+                                        </button>
+                                    </template>
+                                    <template x-if="f.is_registered">
+                                        <span class="text-xs text-green-600 dark:text-green-400 font-medium">✓ Noted</span>
+                                    </template>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -407,6 +555,41 @@
 
         tooltipEl.style.top = `${top}px`;
         tooltipEl.style.left = `${left}px`;
+    }
+
+    function referralPanel() {
+        return {
+            expanded: localStorage.getItem('dashReferralExpanded') === 'true',
+            stats: { active_refcodes: 0, failed_count: 0, top_refcode: null, leaderboard: [], failed: [] },
+            async load() {
+                this.$watch('expanded', v => localStorage.setItem('dashReferralExpanded', v));
+                const period = new URLSearchParams(window.location.search).get('period') || '30d';
+                const res = await fetch(`/admin/api/referrals/stats?period=${period}`);
+                const data = await res.json();
+                const leaderboard = data.stats || [];
+                const failed = data.failed || [];
+                this.stats.leaderboard = leaderboard;
+                this.stats.failed = failed;
+                this.stats.active_refcodes = new Set(leaderboard.filter(r => r.outcome === 'customer_success').map(r => r.refcode)).size;
+                this.stats.failed_count = failed.filter(f => !f.is_registered).length;
+                this.stats.top_refcode = leaderboard.find(r => r.outcome === 'customer_success')?.refcode || null;
+            },
+            filterByRefcode(refcode) {
+                const url = new URL(window.location);
+                url.searchParams.set('refcode', refcode);
+                window.location = url.toString();
+            },
+            async noteRefcode(refcode) {
+                await fetch('/admin/api/referrals/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ refcode })
+                });
+                const f = this.stats.failed.find(x => x.refcode === refcode);
+                if (f) f.is_registered = true;
+                this.stats.failed_count = this.stats.failed.filter(x => !x.is_registered).length;
+            }
+        }
     }
 </script>
 {% endblock %}

@@ -1,19 +1,76 @@
 <!-- templates/admin/partials/activity_feed.html -->
+{% set _has_q = has_questionnaire if has_questionnaire is defined else false %}
+{% set _responses = responses if responses is defined else [] %}
 
-<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
-{% if recent_purchases or recent_comments %}
+<div class="flex items-center justify-between gap-3 mb-4">
+    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Recent Activity</h3>
+    {% if _has_q and _responses %}
+    <a href="{{ url_for('admin.export_asset_responses', asset_id=asset.id) }}"
+        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        Export responses
+    </a>
+    {% endif %}
+</div>
+
+{# --- Questionnaire response summary (merged in from the old Responses tab) --- #}
+{% if _has_q %}
+    {% set filled_count = _responses | selectattr('filled') | list | length %}
+    {% set pending_count = _responses | length - filled_count %}
+    <div class="flex flex-wrap items-center gap-2 mb-5">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            {{ filled_count }} filled
+        </span>
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            {{ pending_count }} pending
+        </span>
+    </div>
+{% endif %}
+
+{% set _show_responses = _has_q and _responses %}
+{% if _show_responses or recent_purchases or recent_comments %}
     <ul class="space-y-4">
-        {% for purchase in recent_purchases %}
-        <li class="flex items-start gap-4 text-sm">
-            <span class="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
-                <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1" /></svg>
-            </span>
-            <div class="flex-grow">
-                <p><strong class="font-medium text-gray-800 dark:text-gray-200">{{ purchase.customer.whatsapp_number }}</strong> purchased for <strong class="font-medium">{{ currency_symbol }}{{ "%.2f"|format(purchase.amount_paid) }}</strong>.</p>
-                <time class="text-xs text-gray-500 dark:text-gray-400" datetime="{{ purchase.purchase_date.isoformat() }}">{{ purchase.purchase_date.strftime('%b %d, %Y at %I:%M %p') }}</time>
-            </div>
-        </li>
-        {% endfor %}
+        {% if _show_responses %}
+            {# Completed purchases with their questionnaire answers inline #}
+            {% for r in _responses %}
+            <li class="flex items-start gap-4 text-sm">
+                <span class="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1" /></svg>
+                </span>
+                <div class="flex-grow min-w-0">
+                    <p><strong class="font-medium text-gray-800 dark:text-gray-200">{{ r.customer }}</strong> purchased for <strong class="font-medium">{{ currency_symbol }}{{ "%.2f"|format(r.amount) }}</strong>.</p>
+                    <time class="text-xs text-gray-500 dark:text-gray-400" datetime="{{ r.date.isoformat() }}">{{ r.date | local_dt('%b %d, %Y at %I:%M %p') }}</time>
+                    {% if r.answers %}
+                    <dl class="mt-2 rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/50 px-3 py-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+                        {% for k, v in r.answers.items() %}
+                        <div class="flex gap-2 text-xs">
+                            <dt class="font-medium text-gray-500 dark:text-gray-400 shrink-0">{{ k }}:</dt>
+                            <dd class="text-gray-800 dark:text-gray-200 break-words">{{ v }}</dd>
+                        </div>
+                        {% endfor %}
+                    </dl>
+                    {% else %}
+                    <p class="mt-1.5 text-xs text-amber-600 dark:text-amber-400 italic">Awaiting questionnaire response.</p>
+                    {% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        {% else %}
+            {# No questionnaire on this asset — fall back to the recent purchase feed #}
+            {% for purchase in recent_purchases %}
+            <li class="flex items-start gap-4 text-sm">
+                <span class="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1" /></svg>
+                </span>
+                <div class="flex-grow">
+                    <p><strong class="font-medium text-gray-800 dark:text-gray-200">{{ purchase.customer.whatsapp_number }}</strong> purchased for <strong class="font-medium">{{ currency_symbol }}{{ "%.2f"|format(purchase.amount_paid) }}</strong>.</p>
+                    <time class="text-xs text-gray-500 dark:text-gray-400" datetime="{{ purchase.purchase_date.isoformat() }}">{{ purchase.purchase_date | local_dt('%b %d, %Y at %I:%M %p') }}</time>
+                </div>
+            </li>
+            {% endfor %}
+        {% endif %}
+
         {% for comment in recent_comments %}
         <li class="flex items-start gap-4 text-sm">
             <span class="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
@@ -22,7 +79,7 @@
             <div class="flex-grow">
                 <p><strong class="font-medium text-gray-800 dark:text-gray-200">{{ comment.customer.whatsapp_number }}</strong> left a comment:</p>
                 <blockquote class="mt-1 pl-3 py-1 border-l-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 italic">"{{ comment.body }}"</blockquote>
-                <time class="text-xs text-gray-500 dark:text-gray-400 mt-1" datetime="{{ comment.created_at.isoformat() }}">{{ comment.created_at.strftime('%b %d, %Y at %I:%M %p') }}</time>
+                <time class="text-xs text-gray-500 dark:text-gray-400 mt-1" datetime="{{ comment.created_at.isoformat() }}">{{ comment.created_at | local_dt('%b %d, %Y at %I:%M %p') }}</time>
             </div>
         </li>
         {% endfor %}

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flask db *)",
+      "Bash(python -c \"from app import create_app; app = create_app\\(\\); app.app_context\\(\\).push\\(\\); from models.nyota import db; cols = [c.name for c in db.inspect\\(db.engine\\).get_columns\\('purchase'\\)]; print\\([c for c in cols if 'refcode' in c or 'source' in c]\\)\")",
+      "Bash(python -c \"import sqlite3; conn = sqlite3.connect\\('instance/nyota.db'\\); cur = conn.cursor\\(\\); cur.execute\\('PRAGMA table_info\\(purchase\\)'\\); cols = [r[1] for r in cur.fetchall\\(\\)]; print\\([c for c in cols if 'refcode' in c or 'source' in c or 'outcome' in c]\\)\")",
+      "Bash(python -c \"import sqlite3; conn = sqlite3.connect\\('/Users/julius/Builds/nyota/instance/nyota.db'\\); cur = conn.cursor\\(\\); cur.execute\\('PRAGMA table_info\\(purchase\\)'\\); print\\([r[1] for r in cur.fetchall\\(\\)]\\)\")",
+      "Bash(python -c \"import sqlite3; conn = sqlite3.connect\\('/Users/julius/Builds/nyota/instance/nyota.db'\\); cur = conn.cursor\\(\\); cur.execute\\(\\\\\"SELECT name FROM sqlite_master WHERE type='table'\\\\\"\\); print\\(cur.fetchall\\(\\)\\)\")",
+      "Bash(python -c \"import sqlite3; conn = sqlite3.connect\\('/Users/julius/Builds/nyota/nyota/db/nyota.db'\\); cur = conn.cursor\\(\\); cur.execute\\('PRAGMA table_info\\(purchase\\)'\\); print\\([r[1] for r in cur.fetchall\\(\\)]\\)\")"
+    ]
+  }
+}

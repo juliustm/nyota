@@ -135,6 +135,10 @@
                     </div>
                 </div>
 
+                <input type="text" name="refcode_filter" value="{{ current_filters.refcode_filter }}"
+                    placeholder="Filter by refcode..."
+                    class="pl-3 pr-3 py-2.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-40">
+
                 <div class="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
                     <button type="button" @click="viewMode = 'list'"
                         :class="{ 'bg-white dark:bg-gray-600 shadow-sm text-indigo-600 dark:text-indigo-400': viewMode === 'list' }"
@@ -251,6 +255,14 @@
                                             supporter.name }}</p>
                                         <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ supporter.email
                                             }}</p>
+                                        {% if supporter.acquisition_refcode %}
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 mt-1">
+                                            <svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.1-1.1"/>
+                                            </svg>
+                                            {{ supporter.acquisition_refcode }}
+                                        </span>
+                                        {% endif %}
                                     </div>
                                 </div>
                             </td>

@@ -54,6 +54,18 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
         if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
         return 'other';
     }
+
+    // The dFlip "_df_button" reader tiles are injected by Alpine (x-for/x-if) *after*
+    // dFlip auto-scans the DOM on load, so they never get wired up and tapping does
+    // nothing. Re-scan once the tiles exist (dFlip's CDN script may also still be
+    // loading, hence the retry) so the flipbook reader binds and the PDF opens.
+    function ensureFlipbooks() {
+        if (window.DFLIP && typeof window.DFLIP.parseBooks === 'function') {
+            window.DFLIP.parseBooks();
+        } else {
+            setTimeout(ensureFlipbooks, 150);
+        }
+    }
 </script>
 <!-- dFlip CSS -->
 <link href="https://cdn.jsdelivr.net/npm/@dearhive/dearflip-jquery-flipbook/dflip/css/dflip.min.css" rel="stylesheet"
@@ -72,6 +84,19 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
         }
 
         /* larger touch targets */
+    }
+
+    /* "About this product" disclosure: hide the native marker, rotate our own chevron when open. */
+    .about-disclosure>summary {
+        list-style: none;
+    }
+
+    .about-disclosure>summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .about-disclosure[open] .about-chevron {
+        transform: rotate(180deg);
     }
 </style>
 {% endblock %}
@@ -218,8 +243,8 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
 
         <main class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-16 items-start">
 
-            <!-- LEFT COLUMN: Content -->
-            <div class="lg:col-span-7 space-y-8 md:space-y-12">
+            <!-- LEFT COLUMN: Content (full width once owned — no purchase card needed) -->
+            <div class="{% if status == 'COMPLETED' %}lg:col-span-12 max-w-3xl lg:mx-auto w-full{% else %}lg:col-span-7{% endif %} space-y-8 md:space-y-12">
 
                 <!-- Hero Section -->
                 <section class="fade-in" style="animation-delay: 100ms;">
@@ -246,8 +271,19 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                         </div>
                     </div>
 
+                    {# --- Post-purchase questionnaire (rendered below content so buyers reach their
+                       files first; in gate mode content is hidden, so this still shows first) --- #}
+                    {% set collect_mode = (asset_obj.details or {}).get('collect_info_mode', 'optional') %}
+                    {# An answer is "real" only if it's a non-tier key — tier is internal subscription data. #}
+                    {% set answered_keys = (latest_purchase.ticket_data or {}).keys() | reject('equalto', 'tier') | list %}
+                    {% set info_answered = asset_obj.custom_fields and (answered_keys | length > 0) %}
+                    {% set info_pending = asset_obj.custom_fields and not info_answered %}
+                    {% set info_gate_locked = (collect_mode == 'gate' and info_pending) %}
+
                     <!-- Content Access -->
-                    <section id="content-access-section" class="fade-in mb-4" style="animation-delay: 100ms;">
+                    {% if not info_gate_locked %}
+                    <section id="content-access-section" class="fade-in mb-4" style="animation-delay: 100ms;"
+                        x-init="$nextTick(() => ensureFlipbooks())">
                         <div
                             class="bg-white dark:bg-gray-800 sm:border border-gray-200 dark:border-gray-700 sm:rounded-2xl overflow-hidden shadow-sm">
 
@@ -531,50 +567,99 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                             </div>
                         </div>
                     </section>
+                    {% endif %}{# end content gate #}
 
-                    <!-- Ticket Form -->
-                    {% if asset_obj.asset_type.name == 'TICKET' and asset_obj.custom_fields and not
-                    latest_purchase.ticket_data %}
-                    <section class="fade-in mb-8" style="animation-delay: 150ms;">
-                        <div class="bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900 rounded-2xl shadow-lg overflow-hidden"
-                            x-data="postPurchaseForm({{ asset_obj.id }}, {{ latest_purchase.id }}, {{ asset_obj.custom_fields|tojson|safe }})">
+                    {% if asset_obj.custom_fields %}
+                    <section class="fade-in mb-6" style="animation-delay: 120ms;">
+                        {# Field definitions and existing answers are passed via JSON script tags (not
+                           inline attributes): the JSON's double quotes would otherwise terminate the
+                           enclosing x-data attribute early, breaking Alpine and leaving the form unrendered. #}
+                        <script type="application/json" id="post-purchase-fields-{{ asset_obj.id }}">{{ asset_obj.custom_fields|tojson|safe }}</script>
+                        <script type="application/json" id="post-purchase-answers-{{ asset_obj.id }}">{{ latest_purchase.ticket_data|tojson|safe if latest_purchase.ticket_data else '{}' }}</script>
+                        <div class="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden transition-shadow {% if info_gate_locked %}border-2 border-amber-200 dark:border-amber-900 shadow-lg{% else %}border-indigo-100 dark:border-indigo-900{% endif %}"
+                            {% if not info_gate_locked %}:class="(mode === 'view' && !submitted) ? 'border shadow-sm' : 'border-2 shadow-lg'"{% endif %}
+                            x-data="postPurchaseForm({{ asset_obj.id }}, {{ latest_purchase.id }}, {{ 'true' if info_answered else 'false' }})">
 
-                            <div
-                                class="p-6 md:p-8 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900">
-                                <h2 class="text-xl font-bold text-indigo-900 dark:text-indigo-100 mb-2">
+                            {# View mode: compact, collapsed disclosure so submitted answers never compete with the content above. #}
+                            <button type="button" x-show="mode === 'view' && !submitted" x-cloak @click="open = !open"
+                                class="w-full flex items-center justify-between gap-3 p-4 md:p-5 text-left transition-colors hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10"
+                                :class="open ? 'border-b border-indigo-100 dark:border-indigo-900' : ''">
+                                <span class="flex items-center gap-2 font-bold text-indigo-900 dark:text-indigo-100">
+                                    <svg class="w-5 h-5 shrink-0 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    {{ translate('your_responses') }}
+                                </span>
+                                <svg class="w-5 h-5 text-indigo-400 shrink-0 transition-transform" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+
+                            {# Edit / fill header (prominent — this is the only path to the content in gate mode) #}
+                            <div x-show="mode === 'edit' || submitted" x-cloak class="p-6 md:p-8 border-b {% if info_gate_locked %}bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900{% else %}bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900{% endif %}">
+                                <h2 class="text-xl font-bold mb-2 flex items-center gap-2 {% if info_gate_locked %}text-amber-900 dark:text-amber-100{% else %}text-indigo-900 dark:text-indigo-100{% endif %}">
+                                    {% if info_gate_locked %}
+                                    <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                    {{ translate('complete_form_to_unlock') }}
+                                    {% else %}
                                     {{ translate('attendee_information_required') }}
+                                    {% endif %}
                                 </h2>
-                                <p class="text-indigo-700 dark:text-indigo-300 text-sm">
-                                    {{ translate('please_complete_registration') }}
+                                <p class="text-sm {% if info_gate_locked %}text-amber-700 dark:text-amber-300{% else %}text-indigo-700 dark:text-indigo-300{% endif %}">
+                                    {% if info_gate_locked %}{{ translate('complete_form_to_unlock_sub') }}{% else %}{{ translate('please_complete_registration') }}{% endif %}
                                 </p>
                             </div>
 
-                            <div class="p-6 md:p-8" x-show="!submitted">
+                            {# Read-only summary of submitted answers (revealed when the disclosure is open) #}
+                            <div class="p-6 md:p-8" x-show="mode === 'view' && !submitted && open" x-cloak
+                                x-transition:enter="transition ease-out duration-200"
+                                x-transition:enter-start="opacity-0 -translate-y-2"
+                                x-transition:enter-end="opacity-100 translate-y-0">
+                                <dl class="space-y-3">
+                                    <template x-for="(field, index) in fields" :key="index">
+                                        <div class="flex flex-col sm:flex-row sm:gap-4 pb-3 border-b border-gray-100 dark:border-gray-700 last:border-0 last:pb-0">
+                                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 sm:w-2/5 shrink-0" x-text="field.question"></dt>
+                                            <dd class="text-sm text-gray-900 dark:text-white sm:w-3/5 break-words" x-text="displayValue(field)"></dd>
+                                        </div>
+                                    </template>
+                                </dl>
+                                <button type="button" @click="mode = 'edit'"
+                                    class="mt-6 inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-lg transition-colors">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                    {{ translate('edit_responses') }}
+                                </button>
+                            </div>
+
+                            {# Editable form #}
+                            <div class="p-6 md:p-8" x-show="mode === 'edit' && !submitted" x-cloak>
                                 <form @submit.prevent="submit" class="space-y-6">
-                                    <template x-for="(field, index) in {{ asset_obj.custom_fields|tojson|safe }}"
+                                    <template x-for="(field, index) in fields"
                                         :key="index">
                                         <div>
-                                            <label
-                                                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-                                                x-text="field.question"></label>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                <span x-text="field.question"></span><span x-show="field.required" class="text-red-500 ml-0.5">*</span>
+                                            </label>
 
-                                            <template x-if="field.type === 'text'">
-                                                <input type="text" x-model="formData[field.question]"
-                                                    :required="field.required"
+                                            <template x-if="['text', 'email', 'phone'].includes(field.type) || !field.type">
+                                                <input :type="field.type === 'email' ? 'email' : (field.type === 'phone' ? 'tel' : 'text')"
+                                                    x-model="formData[field.question]" :required="field.required"
                                                     class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500">
                                             </template>
 
-                                            <template x-if="field.type === 'dropdown'">
+                                            <template x-if="field.type === 'textarea'">
+                                                <textarea x-model="formData[field.question]" :required="field.required" rows="3"
+                                                    class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"></textarea>
+                                            </template>
+
+                                            <template x-if="field.type === 'select' || field.type === 'dropdown'">
                                                 <select x-model="formData[field.question]" :required="field.required"
                                                     class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500">
                                                     <option value="">Select an option</option>
+                                                    <template x-for="opt in (field.options || [])" :key="opt">
+                                                        <option :value="opt" x-text="opt"></option>
+                                                    </template>
                                                 </select>
                                             </template>
 
                                             <template x-if="field.type === 'checkbox'">
                                                 <label class="flex items-center gap-3">
-                                                    <input type="checkbox" x-model="formData[field.question]"
-                                                        :required="field.required"
+                                                    <input type="checkbox" x-model="formData[field.question]" :required="field.required"
                                                         class="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
                                                     <span class="text-sm text-gray-600 dark:text-gray-400">Yes</span>
                                                 </label>
@@ -582,32 +667,34 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                                         </div>
                                     </template>
 
-                                    <button type="submit" :disabled="isSubmitting"
-                                        class="w-full py-3 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors disabled:opacity-70 flex justify-center items-center gap-2">
-                                        <span x-show="!isSubmitting">{{ translate('submit_information') }}</span>
-                                        <span x-show="isSubmitting"
-                                            class="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span>
-                                    </button>
+                                    <div class="flex items-center gap-3">
+                                        <button type="submit" :disabled="isSubmitting"
+                                            class="flex-1 py-3 px-6 text-white font-bold rounded-lg transition-colors disabled:opacity-70 flex justify-center items-center gap-2 {% if info_gate_locked %}bg-amber-600 hover:bg-amber-700{% else %}bg-indigo-600 hover:bg-indigo-700{% endif %}">
+                                            <span x-show="!isSubmitting && alreadyAnswered">{{ translate('update_responses') }}</span>
+                                            <span x-show="!isSubmitting && !alreadyAnswered">{% if info_gate_locked %}{{ translate('unlock_content') }}{% else %}{{ translate('submit_information') }}{% endif %}</span>
+                                            <span x-show="isSubmitting" class="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span>
+                                        </button>
+                                        <button type="button" x-show="alreadyAnswered" @click="mode = 'view'"
+                                            class="py-3 px-5 font-semibold rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                                            {{ translate('cancel') }}
+                                        </button>
+                                    </div>
                                 </form>
                             </div>
 
                             <div class="p-8 text-center" x-show="submitted" x-cloak>
-                                <div
-                                    class="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <svg class="w-8 h-8 text-green-600 dark:text-green-400" fill="none"
-                                        viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M5 13l4 4L19 7" />
+                                <div class="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <svg class="w-8 h-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                                     </svg>
                                 </div>
-                                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">{{
-                                    translate('thank_you')
-                                    }}</h3>
+                                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">{{ translate('thank_you') }}</h3>
                                 <p class="text-gray-600 dark:text-gray-400">{{ translate('registration_complete') }}</p>
                             </div>
                         </div>
                     </section>
                     {% endif %}
+
 
                     <!-- Save to Calendar Section -->
                     {% if asset_obj.asset_type.name == 'TICKET' %}
@@ -711,10 +798,17 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                     </section>
                     {% endif %}
 
-                    <!-- Separator & Product Details Header for Owners -->
-                    <div class="mt-12 pt-8 border-t border-gray-100 dark:border-gray-800">
-                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6">{{
-                            translate('about_this_product') }}</h2>
+                    <!-- About this product — collapsed, de-emphasized disclosure at the very bottom. -->
+                    <details class="about-disclosure mt-12 pt-8 border-t border-gray-100 dark:border-gray-800">
+                        <summary
+                            class="flex items-center justify-between gap-3 cursor-pointer select-none py-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+                            <h2 class="text-lg font-bold">{{ translate('about_this_product') }}</h2>
+                            <svg class="about-chevron w-5 h-5 shrink-0 transition-transform" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </summary>
+                        <div class="mt-6">
                         <div
                             class="relative rounded-2xl overflow-hidden shadow-2xl bg-gray-100 dark:bg-gray-800 aspect-[3/4] mb-6">
                             <img :src="asset.cover_image_url" :alt="asset.title" class="w-full h-full object-cover"
@@ -784,7 +878,8 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                             </div>
                         </div>
                         {% endif %}
-                    </div>
+                        </div>
+                    </details>
                     {% endif %}
 
                     {% if status != 'COMPLETED' %}
@@ -896,29 +991,14 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
 
             </div>
 
+            {# Owners get full-width content (top nav already links to the library), so the whole
+               purchase / "Go to My Library" column is dropped once the asset is owned. #}
+            {% if status != 'COMPLETED' %}
             <!-- RIGHT COLUMN: Desktop Purchase -->
             <div class="hidden lg:block lg:col-span-5 relative">
                 <div class="sticky top-24 space-y-6 fade-in">
                     <div
                         class="bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-xl p-8">
-                        {% if status == 'COMPLETED' %}
-                        <div class="text-center py-6">
-                            <div
-                                class="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
-                                <svg class="w-8 h-8 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24"
-                                    stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M5 13l4 4L19 7" />
-                                </svg>
-                            </div>
-                            <h2 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">{{
-                                translate('you_own_this') }}</h2>
-                            <p class="text-gray-500 dark:text-gray-400 mb-4">{{ translate('access_message') }}</p>
-                            <a href="{{ url_for('main.library') }}"
-                                class="block w-full text-center font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-xl">{{
-                                translate('go_to_library') }}</a>
-                        </div>
-                        {% else %}
                         <div class="mb-6">
                             {% if asset_obj.is_subscription and asset_obj.details and
                             asset_obj.details.subscription_tiers %}
@@ -1136,10 +1216,10 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
                                 }}</p>
 
                         </div>
-                        {% endif %}
                     </div>
                 </div>
             </div>
+            {% endif %}{# end purchase column (hidden for owners) #}
         </main>
 
         <!-- Mobile Sticky Footer -->
@@ -1708,7 +1788,8 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
 
                 if (hasMarkdown && this.markedReady && typeof marked !== 'undefined') {
                     try {
-                        return marked.parse(text);
+                        const html = marked.parse(text);
+                        return (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(html) : html;
                     } catch (e) {
                         console.error('Markdown parsing error:', e);
                     }
@@ -1907,6 +1988,7 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
 <script src="https://cdn.jsdelivr.net/npm/@dearhive/dearflip-jquery-flipbook/dflip/js/dflip.min.js"></script>
 <!-- Defer heavy libraries -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
 <script>if (typeof marked !== 'undefined') { marked.setOptions({ breaks: true, gfm: true }); }</script>
 
 <script>

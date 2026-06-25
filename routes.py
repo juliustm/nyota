@@ -38,6 +38,7 @@ from models.nyota import (
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
 from utils.image_utils import optimize_cover_image
+from utils.phone import normalize_phone_number
 from extensions import limiter
 from services.sms_service import get_sms_provider
 
@@ -174,6 +175,7 @@ def creator_dashboard():
     # --- FILTERS ---
     period = request.args.get('period', '30d') # Default to last 30 days
     asset_id = request.args.get('asset_id', type=int)
+    refcode_filter = request.args.get('refcode', '').strip()
     
     start_date = None
     end_date = datetime.utcnow()
@@ -284,6 +286,9 @@ def creator_dashboard():
     if status and status in [s.name for s in PurchaseStatus]:
         activity_query = activity_query.filter(Purchase.status == PurchaseStatus[status])
 
+    if refcode_filter:
+        activity_query = activity_query.filter(Purchase.refcode_used == refcode_filter)
+
     if search:
         activity_query = activity_query.join(Customer).filter(
             or_(
@@ -291,24 +296,53 @@ def creator_dashboard():
                 DigitalAsset.title.ilike(f"%{search}%")
             )
         )
-        
+
     recent_activity = activity_query.order_by(Purchase.purchase_date.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
-    
+
     # Fetch all assets for the filter dropdown
     all_assets = DigitalAsset.query.filter_by(creator_id=g.creator.id).with_entities(DigitalAsset.id, DigitalAsset.title).all()
 
+    # Top 10 refcodes by completed sales (for filter dropdown + attribution panel)
+    refcode_stats_q = db.session.query(
+        Purchase.refcode_used,
+        func.count(Purchase.id).label('sales'),
+        func.sum(Purchase.amount_paid).label('revenue')
+    ).join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.status == PurchaseStatus.COMPLETED,
+        Purchase.refcode_used.isnot(None)
+    )
+    if start_date:
+        refcode_stats_q = refcode_stats_q.filter(Purchase.purchase_date >= start_date)
+    refcode_stats = refcode_stats_q.group_by(Purchase.refcode_used)\
+        .order_by(func.count(Purchase.id).desc()).limit(10).all()
+
+    # Unregistered codes: visitor brought one but UZA rejected it
+    failed_refcodes = db.session.query(
+        Purchase.visitor_refcode,
+        func.count(Purchase.id).label('attempts')
+    ).join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.refcode_outcome == 'customer_fallback',
+        Purchase.visitor_refcode.isnot(None)
+    ).group_by(Purchase.visitor_refcode)\
+     .order_by(func.count(Purchase.id).desc()).limit(20).all()
+
     return render_template(
-        'admin/dashboard.html', 
-        stats=stats, 
+        'admin/dashboard.html',
+        stats=stats,
         activity=recent_activity,
         assets=all_assets,
+        refcode_stats=refcode_stats,
+        failed_refcodes=failed_refcodes,
         current_filters={
             'period': period,
             'asset_id': asset_id,
             'search': search,
-            'status': status
+            'status': status,
+            'refcode': refcode_filter
         }
     )
 
@@ -322,6 +356,7 @@ def export_dashboard_data():
     asset_id = request.args.get('asset_id', type=int)
     search = request.args.get('search', '').strip()
     status = request.args.get('status', '').strip()
+    refcode_filter = request.args.get('refcode', '').strip()
     
     start_date = None
     end_date = datetime.utcnow()
@@ -357,42 +392,50 @@ def export_dashboard_data():
         
     if status and status in [s.name for s in PurchaseStatus]:
         query = query.filter(Purchase.status == PurchaseStatus[status])
-        
+
+    if refcode_filter:
+        query = query.filter(Purchase.refcode_used == refcode_filter)
+
     # Order by date desc
     purchases = query.order_by(Purchase.purchase_date.desc()).all()
-    
+
     # Generate CSV
     si = io.StringIO()
     cw = csv.writer(si)
-    
+
     # Headers
     headers = [
-        'Order ID', 'Date', 'Time', 'Customer Phone', 'Asset', 'Status', 'Amount', 
-        'Past Purchase 1 (Date - Asset - Amount)', 
-        'Past Purchase 2 (Date - Asset - Amount)'
+        'Order ID', 'Date', 'Time', 'Customer Phone', 'Asset', 'Status', 'Amount',
+        'Refcode Used', 'Source Used', 'Visitor Refcode', 'Refcode Outcome',
+        'Past Purchase 1 (Date - Asset - Amount)',
+        'Past Purchase 2 (Date - Asset - Amount)',
+        'Customer Fields'
     ]
     cw.writerow(headers)
-    
+
     for p in purchases:
-        # Creative Stats: Fetch up to 2 past purchases for this customer, BEFORE this purchase
         past_purchases = Purchase.query.filter(
             Purchase.customer_id == p.customer_id,
-            Purchase.id < p.id, # Strictly before this purchase
-            Purchase.status == PurchaseStatus.COMPLETED # Only count completed past purchases? Or all? Usually Completed is more relevant for value.
+            Purchase.id < p.id,
+            Purchase.status == PurchaseStatus.COMPLETED
         ).order_by(Purchase.purchase_date.desc()).limit(2).all()
-        
+
         past_1_str = "N/A"
         if len(past_purchases) > 0:
             pp1 = past_purchases[0]
             asset_title = pp1.asset.title if pp1.asset else "Unknown Asset"
             past_1_str = f"{pp1.purchase_date.strftime('%Y-%m-%d')} - {asset_title} - {pp1.amount_paid}"
-            
+
         past_2_str = "N/A"
         if len(past_purchases) > 1:
             pp2 = past_purchases[1]
             asset_title = pp2.asset.title if pp2.asset else "Unknown Asset"
             past_2_str = f"{pp2.purchase_date.strftime('%Y-%m-%d')} - {asset_title} - {pp2.amount_paid}"
-            
+
+        # Collect custom field responses, excluding internal 'tier' key
+        custom_fields_data = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+        custom_fields_str = '; '.join(f"{k}: {v}" for k, v in custom_fields_data.items()) if custom_fields_data else ''
+
         cw.writerow([
             p.id,
             p.purchase_date.strftime('%Y-%m-%d'),
@@ -401,16 +444,87 @@ def export_dashboard_data():
             p.asset.title,
             p.status.name,
             p.amount_paid,
+            p.refcode_used or '',
+            p.source_used or '',
+            p.visitor_refcode or '',
+            p.refcode_outcome or '',
             past_1_str,
-            past_2_str
+            past_2_str,
+            custom_fields_str
         ])
         
     output = si.getvalue()
-    
+
     return Response(
         output,
         mimetype="text/csv",
         headers={"Content-disposition": f"attachment; filename=orders_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"}
+    )
+
+
+@admin_bp.route('/assets/<int:asset_id>/responses/export')
+@creator_login_required
+def export_asset_responses(asset_id):
+    """Export one asset's completed purchases with one CSV column per questionnaire question.
+
+    Unlike the dashboard export (which spans many assets and packs all answers into a single
+    cell), this is scoped to a single asset so each question becomes its own analysable column.
+    """
+    asset = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
+
+    # Question columns: definition order first, then any stray keys still present in the data
+    # (e.g. questions that were renamed/removed after some buyers had already answered).
+    questions = []
+    for f in (asset.custom_fields or []):
+        q = f.get('question') if isinstance(f, dict) else None
+        if q and q not in questions:
+            questions.append(q)
+
+    purchases = Purchase.query.filter_by(
+        asset_id=asset.id, status=PurchaseStatus.COMPLETED
+    ).order_by(Purchase.purchase_date.desc()).all()
+
+    answer_rows = []
+    extra_keys = []
+    for p in purchases:
+        answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+        for k in answers:
+            if k not in questions and k not in extra_keys:
+                extra_keys.append(k)
+        answer_rows.append((p, answers))
+
+    question_cols = questions + extra_keys
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(
+        ['Order ID', 'Date', 'Time', 'Customer Phone', 'Status', 'Amount',
+         'Refcode Used', 'Source Used'] + question_cols
+    )
+
+    for p, answers in answer_rows:
+        row = [
+            p.id,
+            p.purchase_date.strftime('%Y-%m-%d'),
+            p.purchase_date.strftime('%H:%M:%S'),
+            p.customer.whatsapp_number if p.customer else '',
+            p.status.name,
+            p.amount_paid,
+            p.refcode_used or '',
+            p.source_used or '',
+        ]
+        for col in question_cols:
+            v = answers.get(col, '')
+            if isinstance(v, bool):
+                v = 'Yes' if v else 'No'
+            row.append(v)
+        cw.writerow(row)
+
+    fname = f"responses_{asset.slug}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        si.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-disposition": f"attachment; filename={fname}"}
     )
 
 @admin_bp.route('/assets')
@@ -430,22 +544,28 @@ def list_assets():
     if status and status in [s.value for s in AssetStatus]:
         query = query.filter(DigitalAsset.status == AssetStatus(status))
     
-    pagination = query.order_by(DigitalAsset.updated_at.desc()).paginate(
-        page=page, per_page=per_page, error_out=False
-    )
+    # Admin list reflects the manual arrangement: pinned first, then display_order.
+    # (The public-page ordering is governed separately by 'asset_sort_mode'.)
+    pagination = query.order_by(
+        DigitalAsset.is_pinned.desc(),
+        DigitalAsset.display_order.asc(),
+        DigitalAsset.updated_at.desc()
+    ).paginate(page=page, per_page=per_page, error_out=False)
     
     creator_assets = pagination.items
 
     assets_data = [{
-        'id': a.id, 
-        'title': a.title, 
-        'description': a.description, 
-        'cover': a.cover_image_url, 
-        'type': a.asset_type.name, 
-        'status': a.status.value, 
-        'sales': a.total_sales, 
-        'revenue': float(a.total_revenue), 
-        'updated_at': a.updated_at
+        'id': a.id,
+        'title': a.title,
+        'description': a.description,
+        'cover': a.cover_image_url,
+        'type': a.asset_type.name,
+        'status': a.status.value,
+        'sales': a.total_sales,
+        'revenue': float(a.total_revenue),
+        'updated_at': a.updated_at,
+        'is_pinned': a.is_pinned,
+        'display_order': a.display_order,
     } for a in creator_assets]
     
     # --- STATS ---
@@ -457,12 +577,13 @@ def list_assets():
     }
 
     return render_template(
-        'admin/assets.html', 
+        'admin/assets.html',
         assets_json=json.dumps(assets_data, default=json_serial),
         assets=assets_data,
         pagination=pagination,
         stats=stats,
-        current_filters={'search': search, 'status': status}
+        current_filters={'search': search, 'status': status},
+        current_sort_mode=(g.creator.get_setting('asset_sort_mode') or 'manual')
     )
 
 @admin_bp.route('/assets/new', methods=['GET', 'POST'])
@@ -487,7 +608,36 @@ def asset_edit(asset_id):
     asset = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
     recent_purchases = Purchase.query.filter_by(asset_id=asset.id).order_by(Purchase.purchase_date.desc()).limit(5).all()
     recent_comments = Comment.query.filter_by(asset_id=asset.id).order_by(Comment.created_at.desc()).limit(5).all()
-    return render_template('admin/asset_view.html', asset=asset, recent_purchases=recent_purchases, recent_comments=recent_comments, statuses=[s.value for s in AssetStatus])
+
+    # --- Questionnaire responses (for the "Responses" tab) ---
+    # Only meaningful when the asset collects custom info. We list completed
+    # purchases and whether each buyer has filled the questionnaire.
+    has_questionnaire = bool(asset.custom_fields)
+    responses = []
+    if has_questionnaire:
+        completed = Purchase.query.filter_by(
+            asset_id=asset.id, status=PurchaseStatus.COMPLETED
+        ).order_by(Purchase.purchase_date.desc()).all()
+        for p in completed:
+            answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+            responses.append({
+                'purchase_id': p.id,
+                'customer': p.customer.whatsapp_number if p.customer else 'Unknown',
+                'date': p.purchase_date,
+                'amount': float(p.amount_paid or 0),
+                'answers': answers,
+                'filled': bool(answers),
+            })
+
+    return render_template(
+        'admin/asset_view.html',
+        asset=asset,
+        recent_purchases=recent_purchases,
+        recent_comments=recent_comments,
+        statuses=[s.value for s in AssetStatus],
+        responses=responses,
+        has_questionnaire=has_questionnaire,
+    )
 
 @admin_bp.route('/api/assets/<int:asset_id>/update', methods=['POST'])
 @creator_login_required
@@ -664,7 +814,17 @@ def serve_content(file_id):
             if not is_active:
                 flash(f"Your subscription expired on {expiry_date.strftime('%Y-%m-%d')}. Please renew to access this content.", "warning")
                 return redirect(url_for('main.asset_detail', slug=purchase.asset.slug))
-        
+
+        # --- Questionnaire gate enforcement ---
+        # When the creator chose to lock content until the post-purchase form is
+        # filled, block delivery until the buyer has submitted their answers.
+        _asset = purchase.asset
+        if (_asset.details or {}).get('collect_info_mode') == 'gate' and _asset.custom_fields:
+            _answered = {k: v for k, v in (purchase.ticket_data or {}).items() if k != 'tier'}
+            if not _answered:
+                flash("Please complete the short form to unlock your content.", "info")
+                return redirect(url_for('main.asset_detail', slug=_asset.slug))
+
     # --- Content Date Enforcement ---
     # Check publish date and expiry date encoded in the file's description
     if not is_creator and asset_file.description:
@@ -690,9 +850,16 @@ def serve_content(file_id):
     # Serve the file
     # storage_path is stored as "secure_uploads/filename"
     if asset_file.storage_path.startswith('secure_uploads/'):
+        import mimetypes
         filename = asset_file.storage_path.replace('secure_uploads/', '')
         directory = current_app.config['SECURE_UPLOADS_DIR']
-        return send_from_directory(directory, filename)
+        # Serve inline with an explicit content type so PDFs/media render in the
+        # browser (and the dFlip reader) instead of triggering a download.
+        guessed_type, _ = mimetypes.guess_type(filename)
+        return send_from_directory(
+            directory, filename,
+            mimetype=guessed_type or 'application/octet-stream'
+        )
     else:
         # It's an external link, redirect to it
         return redirect(asset_file.storage_path)
@@ -819,23 +986,47 @@ def save_asset_from_form(asset, req):
     if asset.is_subscription:
         asset.details['subscription_tiers'] = pricing_data.get('tiers', [])
 
+    # Custom fields are available for all asset types
+    asset.custom_fields = form_data.get('customFields', [])
+
+    # Per-asset questionnaire enforcement mode: 'optional' | 'reminder' | 'gate'
+    collect_info_mode = form_data.get('collect_info_mode', 'optional')
+    if collect_info_mode not in ('optional', 'reminder', 'gate'):
+        collect_info_mode = 'optional'
+    asset.details['collect_info_mode'] = collect_info_mode
+
     if asset.asset_type == AssetType.TICKET:
         event_details = form_data.get('eventDetails', {})
-        asset.event_location, asset.custom_fields = event_details.get('link'), form_data.get('customFields', [])
+        asset.event_location = event_details.get('link')
         if event_details.get('date') and event_details.get('time'):
             try: asset.event_date = datetime.strptime(f"{event_details['date']} {event_details['time']}", '%Y-%m-%d %H:%M')
             except (ValueError, TypeError): asset.event_date = None
         asset.max_attendees = int(event_details.get('maxAttendees')) if event_details.get('maxAttendees') else None
-        
+
         # Store post-purchase instructions
         asset.details['postPurchaseInstructions'] = event_details.get('postPurchaseInstructions', '')
-        
-    elif asset.asset_type == AssetType.SUBSCRIPTION: 
+
+    elif asset.asset_type == AssetType.SUBSCRIPTION:
         # Merge existing details with subscription details
         asset.details.update(form_data.get('subscriptionDetails', {}))
-    elif asset.asset_type == AssetType.NEWSLETTER: 
+    elif asset.asset_type == AssetType.NEWSLETTER:
         # Merge existing details with newsletter details
         asset.details.update(form_data.get('newsletterDetails', {}))
+
+    # Position preference: place new assets at top or bottom of the manual order
+    if not asset.id:
+        position_pref = form_data.get('position_preference', 'bottom')
+        if position_pref == 'top':
+            # Shift all existing assets down by 1
+            db.session.query(DigitalAsset).filter_by(creator_id=asset.creator_id).update(
+                {DigitalAsset.display_order: DigitalAsset.display_order + 1}
+            )
+            asset.display_order = 0
+        else:
+            max_order = db.session.query(func.max(DigitalAsset.display_order)).filter_by(
+                creator_id=asset.creator_id
+            ).scalar() or 0
+            asset.display_order = max_order + 1
     
     # Explicitly flag details as modified to ensure SQLAlchemy saves the JSON changes
     flag_modified(asset, 'details')
@@ -973,6 +1164,75 @@ def duplicate_asset(asset_id):
     except Exception as e:
         db.session.rollback(); current_app.logger.error(f"Duplication error: {e}"); return jsonify({'success': False, 'message': 'A server error occurred.'}), 500
 
+@admin_bp.route('/api/assets/reorder', methods=['POST'])
+@creator_login_required
+def reorder_assets():
+    """Bulk-update display_order for assets based on drag-drop order from admin UI."""
+    data = request.get_json()
+    order = data.get('order', [])
+    if not order:
+        return jsonify({'success': False, 'message': 'No order provided.'}), 400
+    try:
+        for i, asset_id in enumerate(order):
+            DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).update({'display_order': i})
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Reorder error: {e}")
+        return jsonify({'success': False, 'message': 'Server error.'}), 500
+
+@admin_bp.route('/api/assets/<int:asset_id>/pin', methods=['POST'])
+@creator_login_required
+def toggle_asset_pin(asset_id):
+    """Toggle is_pinned on an asset; at most 3 assets can be pinned at once."""
+    asset = DigitalAsset.query.filter_by(id=asset_id, creator_id=g.creator.id).first_or_404()
+    try:
+        if asset.is_pinned:
+            asset.is_pinned = False
+        else:
+            pinned_count = DigitalAsset.query.filter_by(creator_id=g.creator.id, is_pinned=True).count()
+            if pinned_count >= 3:
+                return jsonify({'success': False, 'message': 'You can pin at most 3 assets.'}), 422
+            asset.is_pinned = True
+        db.session.commit()
+        return jsonify({'success': True, 'is_pinned': asset.is_pinned})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Pin toggle error: {e}")
+        return jsonify({'success': False, 'message': 'Server error.'}), 500
+
+@admin_bp.route('/api/settings/timezone', methods=['POST'])
+@creator_login_required
+def save_timezone_auto():
+    """Lightweight endpoint to auto-save browser-detected timezone if not already set."""
+    tz = request.get_json(silent=True, force=True) or {}
+    tz_str = tz.get('timezone', '').strip()
+    if not tz_str:
+        return jsonify({'success': False}), 400
+    try:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        ZoneInfo(tz_str)  # validate
+    except (ZoneInfoNotFoundError, KeyError):
+        return jsonify({'success': False, 'message': 'Invalid timezone.'}), 400
+    if not g.creator.get_setting('creator_timezone'):
+        g.creator.set_setting('creator_timezone', tz_str)
+        db.session.commit()
+    return jsonify({'success': True})
+
+@admin_bp.route('/api/settings/sort-mode', methods=['POST'])
+@creator_login_required
+def save_asset_sort_mode():
+    """Save the public-page asset sort mode (managed from the Assets list page)."""
+    data = request.get_json(silent=True, force=True) or {}
+    mode = (data.get('mode') or '').strip()
+    allowed = {'manual', 'date_listed', 'date_modified', 'sales', 'alphabetical'}
+    if mode not in allowed:
+        return jsonify({'success': False, 'message': 'Invalid sort mode.'}), 400
+    g.creator.set_setting('asset_sort_mode', mode)
+    db.session.commit()
+    return jsonify({'success': True, 'mode': mode})
+
 @admin_bp.route('/supporters')
 @creator_login_required
 def supporters():
@@ -982,20 +1242,22 @@ def supporters():
     page = request.args.get('page', 1, type=int)
     search = request.args.get('search', '').strip()
     asset_id = request.args.get('asset_id', type=int)
+    refcode_filter = request.args.get('refcode_filter', '').strip()
     per_page = 20
 
     # 1. Base Query to Find Supporter IDs (Efficient Filtering)
-    # Start with Customer to facilitate search on phone number
     query = db.session.query(Customer.id).distinct().join(Purchase).join(DigitalAsset).filter(
         DigitalAsset.creator_id == g.creator.id
     )
 
     if search:
-        # Search by phone number (whatsapp_number)
         query = query.filter(Customer.whatsapp_number.ilike(f"%{search}%"))
-        
+
     if asset_id:
         query = query.filter(Purchase.asset_id == asset_id)
+
+    if refcode_filter:
+        query = query.filter(Purchase.refcode_used == refcode_filter)
 
     # 2. Get TOTAL COUNT for pagination (before slicing logic, but wait, distinct makes count tricky)
     # The clean way with distinct is query.count() which SQLAlchemy handles well usually, 
@@ -1075,13 +1337,13 @@ def supporters():
     }
 
     return render_template(
-        'admin/supporters.html', 
+        'admin/supporters.html',
         supporters_json=json.dumps(supporters_data, default=json_serial),
         supporters=supporters_data,
         pagination=pagination,
         assets=all_assets,
         stats=stats,
-        current_filters={'search': search, 'asset_id': asset_id}
+        current_filters={'search': search, 'asset_id': asset_id, 'refcode_filter': refcode_filter}
     )
 
 @admin_bp.route('/supporters/<int:id>')
@@ -1098,18 +1360,28 @@ def supporter_detail(id):
     total_spent = sum(p.amount_paid for p in purchases if p.status == PurchaseStatus.COMPLETED)
     purchase_count = len([p for p in purchases if p.status == PurchaseStatus.COMPLETED])
     avg_order = (total_spent / purchase_count) if purchase_count > 0 else 0
-    
+
     stats = {
         'total_spent': total_spent,
         'purchase_count': purchase_count,
         'avg_order': avg_order
     }
-    
+
+    sorted_purchases = sorted(purchases, key=lambda x: x.purchase_date)
+    acquisition_refcode = next(
+        (p.refcode_used for p in sorted_purchases if p.refcode_outcome == 'customer_success'), None
+    )
+    acquisition_source = next(
+        (p.source_used for p in sorted_purchases if p.source_used), None
+    )
+
     return render_template(
         'admin/supporter_detail.html',
         supporter=customer,
         purchases=purchases,
-        stats=stats
+        stats=stats,
+        acquisition_refcode=acquisition_refcode,
+        acquisition_source=acquisition_source
     )
 
 # --- TOOLTIP API ENDPOINTS ---
@@ -1132,14 +1404,23 @@ def tooltip_customer(id):
     )
     
     total_spent, count, last_active = query.first()
-    
+
+    first_refcode_row = db.session.query(Purchase.refcode_used).join(DigitalAsset).filter(
+        Purchase.customer_id == id,
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.refcode_outcome == 'customer_success',
+        Purchase.refcode_used.isnot(None)
+    ).order_by(Purchase.purchase_date.asc()).first()
+    first_refcode = first_refcode_row[0] if first_refcode_row else '—'
+
     return jsonify({
         'title': customer.whatsapp_number,
         'items': [
             {'label': 'Joined', 'value': customer.created_at.strftime('%b %Y')},
             {'label': 'Total Spent', 'value': f"{currency_symbol} {total_spent:,.2f}" if total_spent else f"{currency_symbol} 0.00"},
             {'label': 'Purchases', 'value': str(count or 0)},
-            {'label': 'Last Active', 'value': last_active.strftime('%b %d') if last_active else 'N/A'}
+            {'label': 'Last Active', 'value': last_active.strftime('%b %d') if last_active else 'N/A'},
+            {'label': 'Via Referral', 'value': first_refcode}
         ]
     })
 
@@ -1176,9 +1457,85 @@ def tooltip_purchase(id):
             {'label': 'Date', 'value': purchase.purchase_date.strftime('%b %d, %I:%M %p')},
             {'label': 'Gateway Ref', 'value': purchase.payment_gateway_ref or 'N/A'},
             {'label': 'Status', 'value': purchase.status.value},
+            {'label': 'Refcode', 'value': purchase.refcode_used or '—'},
+            {'label': 'Source', 'value': purchase.source_used or '—'},
             {'label': 'Transaction', 'value': purchase.transaction_token[:8] + '...'}
         ]
     })
+
+@admin_bp.route('/api/referrals/register', methods=['POST'])
+@creator_login_required
+def register_refcode():
+    """Notes a visitor-provided refcode so the admin can track it."""
+    data = request.get_json()
+    code = str(data.get('refcode', '')).strip()
+    if not code:
+        return jsonify({'success': False, 'message': 'No refcode provided.'}), 400
+
+    existing = g.creator.get_setting('registered_refcodes', [])
+    if not isinstance(existing, list):
+        existing = []
+    if code not in existing:
+        existing.append(code)
+        g.creator.set_setting('registered_refcodes', existing)
+        db.session.commit()
+    return jsonify({'success': True, 'message': f'Refcode {code} noted.'})
+
+
+@admin_bp.route('/api/referrals/stats')
+@creator_login_required
+def referral_stats_api():
+    """Returns per-refcode stats for the attribution panel, with same period filter as dashboard."""
+    period = request.args.get('period', '30d')
+    now = datetime.utcnow()
+    period_map = {'7d': 7, '30d': 30, '90d': 90, '1y': 365}
+    start_date = now - timedelta(days=period_map[period]) if period in period_map else None
+
+    q = db.session.query(
+        Purchase.refcode_used,
+        Purchase.refcode_outcome,
+        func.count(Purchase.id).label('sales'),
+        func.sum(Purchase.amount_paid).label('revenue'),
+        func.count(distinct(Purchase.customer_id)).label('unique_buyers')
+    ).join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.status == PurchaseStatus.COMPLETED,
+    )
+    if start_date:
+        q = q.filter(Purchase.purchase_date >= start_date)
+    rows = q.group_by(Purchase.refcode_used, Purchase.refcode_outcome)\
+             .order_by(func.count(Purchase.id).desc()).all()
+
+    failed_q = db.session.query(
+        Purchase.visitor_refcode,
+        func.count(Purchase.id).label('attempts'),
+        func.max(Purchase.purchase_date).label('last_seen')
+    ).join(DigitalAsset).filter(
+        DigitalAsset.creator_id == g.creator.id,
+        Purchase.refcode_outcome == 'customer_fallback',
+        Purchase.visitor_refcode.isnot(None)
+    ).group_by(Purchase.visitor_refcode)\
+     .order_by(func.count(Purchase.id).desc()).all()
+
+    registered = g.creator.get_setting('registered_refcodes', []) or []
+
+    return jsonify({
+        'stats': [{
+            'refcode': r.refcode_used or '—',
+            'outcome': r.refcode_outcome,
+            'sales': r.sales,
+            'revenue': float(r.revenue or 0),
+            'unique_buyers': r.unique_buyers
+        } for r in rows],
+        'failed': [{
+            'refcode': f.visitor_refcode,
+            'attempts': f.attempts,
+            'last_seen': f.last_seen.isoformat() if f.last_seen else None,
+            'is_registered': f.visitor_refcode in registered
+        } for f in failed_q]
+    })
+
+
 @admin_bp.route('/settings', methods=['GET', 'POST'])
 @creator_login_required
 def manage_settings():
@@ -1230,7 +1587,13 @@ def manage_settings():
 
             # Marketing & Analytics
             'marketing_meta_pixel_enabled', 'marketing_meta_pixel_id',
-            'marketing_ga_enabled', 'marketing_ga_measurement_id'
+            'marketing_ga_enabled', 'marketing_ga_measurement_id',
+
+            # Store Preferences
+            'creator_timezone',
+            # NOTE: 'asset_sort_mode' is intentionally NOT here — it is managed
+            # from the Assets list page via /admin/api/settings/sort-mode so that
+            # saving the main Settings form never wipes it.
         ]
 
         # Iterate and save each setting
@@ -1857,6 +2220,12 @@ def landing_page():
         # Redirect to admin setup if store is not initialized
         return redirect(url_for('admin.admin_home'))
 
+    # Capture visitor_source from ?src= if not already set via /b/ route
+    incoming_src = request.args.get('src', '').strip()
+    if incoming_src and 'visitor_source' not in session:
+        session['visitor_source'] = incoming_src
+        session.modified = True
+
     # Get query parameters for search and filter
     search_query = request.args.get('q', '').strip()
     filter_type = request.args.get('type', '').strip().upper()
@@ -1911,31 +2280,35 @@ def landing_page():
                 elif p.status == PurchaseStatus.FAILED and current_status not in ['COMPLETED', 'PENDING']:
                     user_purchases[p.asset_id] = 'FAILED'
 
-    # Smart Sorting Logic in Python (easier to handle complex custom weights)
-    # Priority:
-    # 1. Subscriptions (is_subscription=True)
-    # 2. Unpurchased Items (not in purchased_asset_ids)
-    # 3. Recency (created_at desc) - Assuming ID is a proxy for recency or added date
-    
-    def sort_key(asset):
-        # Higher score = appears first
-        score = 0
-        
-        # 1. Subscription Priority
-        if asset.is_subscription:
-            score += 1000
-            
-        # 2. Unpurchased Priority
-        if asset.id not in purchased_asset_ids:
-            score += 100
-            
-        # 3. Recency (using ID as proxy for now, assuming auto-increment)
-        # Normalize ID to a small fraction to break ties without overriding main priorities
-        score += (asset.id or 0) / 100000.0
-        
-        return score
+    # Sorting: pinned assets always first (up to 3), remainder sorted by creator's chosen mode.
+    sort_mode = creator.get_setting('asset_sort_mode') or 'manual'
 
-    sorted_assets = sorted(all_assets, key=sort_key, reverse=True)
+    def public_sort_key(asset):
+        # Pinned assets get the top slots
+        pin_score = 0 if asset.is_pinned else 1
+        if sort_mode == 'manual':
+            secondary = asset.display_order
+            reverse_secondary = False
+        elif sort_mode == 'sales':
+            secondary = asset.total_sales or 0
+            reverse_secondary = True
+        elif sort_mode == 'date_modified':
+            secondary = asset.updated_at.timestamp() if asset.updated_at else 0
+            reverse_secondary = True
+        elif sort_mode == 'alphabetical':
+            secondary = asset.title.lower() if asset.title else ''
+            reverse_secondary = False
+        else:  # date_listed (default)
+            secondary = asset.created_at.timestamp() if asset.created_at else 0
+            reverse_secondary = True
+
+        # For reverse modes negate numeric values; string keys handled by tuple sort
+        if reverse_secondary and isinstance(secondary, (int, float)):
+            secondary = -secondary
+
+        return (pin_score, secondary)
+
+    sorted_assets = sorted(all_assets, key=public_sort_key)
 
     # --- Pre-fetch Asset File Metadata (Count & Types) ---
     # Avoid N+1 queries by fetching all file info for these assets in one go
@@ -2046,6 +2419,30 @@ def landing_page():
         meta_description=meta_description,
         meta_image=meta_image
     )
+
+@main_bp.route('/b/<refcode>')
+@limiter.limit("30 per minute")
+def referral_landing(refcode):
+    """Captures visitor refcode + optional source into session, then redirects."""
+    clean_refcode = str(refcode).strip()
+    if clean_refcode and not clean_refcode.startswith('#'):
+        clean_refcode = f'#{clean_refcode}'
+
+    visitor_source = request.args.get('src', '').strip()
+
+    session['visitor_refcode'] = clean_refcode
+    if visitor_source:
+        session['visitor_source'] = visitor_source
+    session.modified = True
+
+    next_slug = request.args.get('next', '').strip()
+    if next_slug:
+        asset = DigitalAsset.query.filter_by(slug=next_slug, status=AssetStatus.PUBLISHED).first()
+        if asset:
+            return redirect(url_for('main.asset_detail', slug=next_slug))
+
+    return redirect(url_for('main.landing_page'))
+
 
 @main_bp.route('/set-language/<lang_code>')
 def set_language(lang_code):
@@ -2284,6 +2681,39 @@ def checkout(slug):
     creator = Creator.query.first()
     return render_template('user/checkout.html', asset=asset.to_dict(), channel_id=str(uuid.uuid4()), creator=creator, store_name=creator.store_name if creator else 'Nyota')
 
+def _build_uza_refcode(creator, visitor_refcode):
+    """Returns final refcode with # prefix, falling back to admin default."""
+    if visitor_refcode:
+        code = str(visitor_refcode).strip()
+        if not code.startswith('#'):
+            code = f'#{code}'
+        return code
+    code = creator.get_setting('payment_uza_refcode', '#web') or '#web'
+    if not str(code).startswith('#'):
+        code = f'#{code}'
+    return code
+
+
+def _build_uza_source(creator, visitor_source):
+    """Returns source tag, falling back to admin default."""
+    if visitor_source:
+        return str(visitor_source).strip()
+    return creator.get_setting('payment_uza_source', '#nyota') or '#nyota'
+
+
+def _get_customer_cached_refcode(customer_id, creator_id):
+    """Returns the most recent customer_success refcode within 99 days, or None."""
+    cutoff = datetime.utcnow() - timedelta(days=99)
+    recent = Purchase.query.join(DigitalAsset).filter(
+        Purchase.customer_id == customer_id,
+        DigitalAsset.creator_id == creator_id,
+        Purchase.refcode_outcome == 'customer_success',
+        Purchase.refcode_used.isnot(None),
+        Purchase.purchase_date >= cutoff
+    ).order_by(Purchase.purchase_date.desc()).first()
+    return recent.refcode_used if recent else None
+
+
 @main_bp.route('/api/initiate-payment', methods=['POST'])
 @limiter.limit("10 per minute")
 def initiate_payment():
@@ -2292,7 +2722,7 @@ def initiate_payment():
     Creates a pending purchase record and calls the UZA payment gateway API.
     """
     data = request.get_json()
-    phone_number = str(data.get('phone_number', '')).strip() # Cast to string and strip
+    phone_number = normalize_phone_number(data.get('phone_number', ''))  # Normalize to canonical 0XXXXXXXXX format
     asset_id = data.get('asset_id')
     channel_id = data.get('channel_id') # The unique ID for the user's browser tab
     channel_id = data.get('channel_id') # The unique ID for the user's browser tab
@@ -2572,6 +3002,25 @@ def initiate_payment():
         
         # Only call UZA if both PK and product ID are configured
         if uza_pk and uza_product_id:
+            # Read visitor attribution from session
+            session_refcode = session.get('visitor_refcode')
+            session_source  = session.get('visitor_source')
+            effective_refcode = session_refcode or _get_customer_cached_refcode(customer.id, creator.id)
+            final_refcode = _build_uza_refcode(creator, effective_refcode)
+            final_source  = _build_uza_source(creator, session_source)
+
+            # Record attribution on purchase before UZA call
+            purchase.visitor_refcode = session_refcode
+            purchase.visitor_source  = session_source
+            purchase.refcode_used    = final_refcode
+            purchase.source_used     = final_source
+            purchase.refcode_outcome = 'free'
+            db.session.commit()
+
+            # Clear session attribution after first purchase
+            session.pop('visitor_refcode', None)
+            session.pop('visitor_source', None)
+
             try:
                 uza_payload = {
                     "products": [{"id": uza_product_id, "name": asset.title, "quantity": 1, "price": 0}],
@@ -2581,8 +3030,8 @@ def initiate_payment():
                     "totalAmount": "0",
                     "currency": creator.get_setting('payment_uza_currency', 'TZS'),
                     "meta": {
-                        "refcode": creator.get_setting('payment_uza_refcode', '#web'),
-                        "source": creator.get_setting('payment_uza_source', '#nyota')
+                        "refcode": final_refcode,
+                        "source": final_source
                     }
                 }
                 current_app.logger.info(f"UZA API (Free) Request Payload: {json.dumps(uza_payload, indent=2)}")
@@ -2669,60 +3118,97 @@ def initiate_payment():
     if not uza_product_id:
         uza_product_id = 8069  # Default fallback ID
     
-    # 4. Construct the payload for the UZA API
-    uza_payload = {
-        "products": [{"id": uza_product_id, "name": asset.title, "quantity": 1, "price": float(amount)}],
-        "payment": {"type": "payby.selcom", "walletid": phone_number},
-        "reference": purchase.transaction_token, # Our internal unique ID
-        "pk": uza_pk,
-        "totalAmount": str(amount),
-        "currency": creator.get_setting('payment_uza_currency', 'TZS'),
-        "meta": {
-            "refcode": creator.get_setting('payment_uza_refcode', '#web'), 
-            "source": creator.get_setting('payment_uza_source', '#nyota')
+    # 4. Build UZA payload with dynamic refcode/source attribution + retry logic
+    session_refcode   = session.get('visitor_refcode')
+    session_source    = session.get('visitor_source')
+    candidate_refcode = session_refcode or _get_customer_cached_refcode(customer.id, creator.id)
+    admin_refcode     = _build_uza_refcode(creator, None)
+    admin_source      = _build_uza_source(creator, None)
+    final_refcode     = _build_uza_refcode(creator, candidate_refcode)
+    final_source      = _build_uza_source(creator, session_source)
+
+    def _build_payload(refcode, source):
+        return {
+            "products": [{"id": uza_product_id, "name": asset.title, "quantity": 1, "price": float(amount)}],
+            "payment": {"type": "payby.selcom", "walletid": phone_number},
+            "reference": purchase.transaction_token,
+            "pk": uza_pk,
+            "totalAmount": str(amount),
+            "currency": creator.get_setting('payment_uza_currency', 'TZS'),
+            "meta": {"refcode": refcode, "source": source}
         }
-    }
-    
-    # Log the request payload for debugging
-    current_app.logger.info(f"UZA API Request Payload: {json.dumps(uza_payload, indent=2)}")
 
-    # 5. Call the UZA API and handle the response
+    used_visitor_code = bool(candidate_refcode)
+
+    # 5. Call UZA; retry with admin defaults if visitor refcode is rejected
     try:
-        response = requests.post("https://uza.co.tz/api/interface/embeddable/order", json=uza_payload, timeout=30)
-        
-        # Log response for debugging
-        current_app.logger.info(f"UZA API Response Status: {response.status_code}")
-        current_app.logger.info(f"UZA API Response Body: {response.text}")
-        
-        response.raise_for_status() # Raise an exception for HTTP error codes (4xx or 5xx)
-        response_data = response.json()
-        
-        if 'data' in response_data and 'order' in response_data['data']:
-            # Capture the `deal_id` from UZA's successful response
-            uza_deal_id = response_data['data']['order'].get('id')
-            if not uza_deal_id:
-                raise Exception("UZA API response did not contain a 'deal_id'.")
+        first_payload = _build_payload(final_refcode, final_source)
+        current_app.logger.info(f"UZA Attempt 1 — refcode: {final_refcode}, source: {final_source}")
+        response = requests.post("https://uza.co.tz/api/interface/embeddable/order", json=first_payload, timeout=30)
+        current_app.logger.info(f"UZA Response 1: {response.status_code} — {response.text[:300]}")
 
-            # Link our purchase record to UZA's deal_id
-            purchase.payment_gateway_ref = uza_deal_id
-            db.session.commit()
+        response_data = None
+        uza_deal_id   = None
+        used_fallback = False
 
-            # Respond to the user's browser
-            return jsonify({
-                'success': True,
-                'message': response_data['data']['order'].get('payment_message', 'Check your phone to complete payment.'),
-                'purchase_id': purchase.id,
-                'deal_id': uza_deal_id
-            })
-        else: 
-            # Handle cases where UZA returns a 200 OK but with an error message
-            raise Exception(response_data.get('message', 'Unknown UZA API error'))
+        if response.status_code == 200:
+            response_data = response.json()
+            uza_deal_id = (response_data.get('data') or {}).get('order', {}).get('id')
+
+        if not uza_deal_id and used_visitor_code:
+            current_app.logger.info(
+                f"UZA Attempt 1 failed with visitor refcode '{final_refcode}'. "
+                f"Retrying with admin defaults: {admin_refcode}"
+            )
+            retry_payload = _build_payload(admin_refcode, admin_source)
+            response = requests.post("https://uza.co.tz/api/interface/embeddable/order", json=retry_payload, timeout=30)
+            current_app.logger.info(f"UZA Response 2: {response.status_code} — {response.text[:300]}")
+            if response.status_code == 200:
+                response_data = response.json()
+                uza_deal_id = (response_data.get('data') or {}).get('order', {}).get('id')
+                used_fallback = True
+
+        if not uza_deal_id:
+            raise Exception(response_data.get('message', 'Unknown UZA error') if response_data else 'No response')
+
+        # Determine and record attribution outcome
+        if used_visitor_code and not used_fallback:
+            outcome          = 'customer_success'
+            recorded_refcode = final_refcode
+            recorded_source  = final_source
+        elif used_visitor_code and used_fallback:
+            outcome          = 'customer_fallback'
+            recorded_refcode = admin_refcode
+            recorded_source  = admin_source
+        else:
+            outcome          = 'default'
+            recorded_refcode = admin_refcode
+            recorded_source  = admin_source
+
+        purchase.visitor_refcode    = session_refcode
+        purchase.visitor_source     = session_source
+        purchase.refcode_used       = recorded_refcode
+        purchase.source_used        = recorded_source
+        purchase.refcode_outcome    = outcome
+        purchase.payment_gateway_ref = uza_deal_id
+        db.session.commit()
+
+        session.pop('visitor_refcode', None)
+        session.pop('visitor_source', None)
+
+        return jsonify({
+            'success': True,
+            'message': (response_data.get('data') or {}).get('order', {}).get(
+                'payment_message', 'Check your phone to complete payment.'
+            ),
+            'purchase_id': purchase.id,
+            'deal_id': uza_deal_id
+        })
 
     except Exception as e:
-        # If the API call fails, mark our purchase record as FAILED
         purchase.status = PurchaseStatus.FAILED
         db.session.commit()
-        current_app.logger.error(f"UZA API call failed for transaction {purchase.transaction_token}: {e}")
+        current_app.logger.error(f"UZA API call failed for {purchase.transaction_token}: {e}")
         return jsonify({'success': False, 'message': 'Could not connect to the payment provider. Please try again.'}), 500
 
 @main_bp.route('/api/retry-payment', methods=['POST'])
@@ -3119,7 +3605,7 @@ def library():
     
     if request.method == 'POST':
         # Get form data
-        form_phone = request.form.get('phone_number', '').strip()
+        form_phone = normalize_phone_number(request.form.get('phone_number', ''))  # Normalize to match DB format
         purchase_date_str = request.form.get('purchase_date', '').strip()
         
         # Get requester IP for rate limiting
@@ -3200,7 +3686,7 @@ def library():
         db.session.add(attempt)
         
         session.permanent = True
-        session['customer_phone'] = form_phone
+        session['customer_phone'] = form_phone  # Already normalized above
         session['customer_id'] = matching_purchases[0].customer_id
         session['is_verified'] = True # Grant full access
         # Clear unverified constraints since session is now fully verified
@@ -3333,5 +3819,34 @@ def cancel_payment():
         session.pop('customer_phone', None)
         session.pop('customer_id', None)
         return jsonify({'success': True, 'message': 'Payment cancelled and session cleared.'})
-    
+
     return jsonify({'success': True, 'message': 'Payment cancelled.'})
+
+@main_bp.route('/api/purchases/<int:purchase_id>/ticket-data', methods=['POST'])
+def save_purchase_custom_data(purchase_id):
+    """Save custom field responses submitted after a purchase."""
+    customer_phone = session.get('customer_phone') if session.get('is_verified') else None
+    if not customer_phone:
+        return jsonify({'success': False, 'message': 'Not authenticated.'}), 401
+
+    purchase = Purchase.query.get_or_404(purchase_id)
+    customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
+    if not customer or purchase.customer_id != customer.id:
+        return jsonify({'success': False, 'message': 'Unauthorized.'}), 403
+
+    data = request.get_json(silent=True) or {}
+    # The client may wrap answers as { "ticket_data": {...} } or send them flat.
+    if isinstance(data.get('ticket_data'), dict):
+        data = data['ticket_data']
+    if not data:
+        return jsonify({'success': False, 'message': 'No data provided.'}), 400
+
+    # Merge into ticket_data, preserving internal keys like 'tier'
+    existing = dict(purchase.ticket_data or {})
+    for key, value in data.items():
+        if key != 'tier':  # never overwrite internal tier data
+            existing[key] = value
+    purchase.ticket_data = existing
+    flag_modified(purchase, 'ticket_data')
+    db.session.commit()
+    return jsonify({'success': True})

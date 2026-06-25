@@ -168,6 +168,11 @@ class CreatorSetting(db.Model):
 # 'marketing_meta_pixel_id': (string) Facebook/Meta Pixel ID (e.g. "1234567890")
 # 'marketing_ga_enabled': (boolean)
 # 'marketing_ga_measurement_id': (string) Google Analytics 4 Measurement ID (e.g. "G-XXXXXXXXXX")
+#
+# --- Store Preferences ---
+# 'creator_timezone': (string) IANA timezone name, e.g. "Africa/Nairobi" or "Europe/London"
+# 'asset_sort_mode': (string) How assets are ordered on public page:
+#                   "manual" | "date_listed" | "date_modified" | "sales" | "alphabetical"
 # ==============================================================================
 
 # --- Core Models ---
@@ -251,6 +256,21 @@ class Customer(db.Model):
         # Determine status (e.g., is they an active subscriber?)
         is_subscriber = any(s.status == 'active' for s in self.subscriptions)
 
+        # Determine how this customer was first acquired
+        first_successful_refcode = None
+        first_source = None
+        for p in sorted(self.purchases, key=lambda x: x.purchase_date):
+            if not p.asset:
+                continue
+            if creator_id and p.asset.creator_id != creator_id:
+                continue
+            if p.status == PurchaseStatus.COMPLETED and p.refcode_outcome == 'customer_success':
+                if first_successful_refcode is None:
+                    first_successful_refcode = p.refcode_used
+            if p.status == PurchaseStatus.COMPLETED and p.source_used:
+                if first_source is None:
+                    first_source = p.source_used
+
         return {
             'id': self.id,
             'name': self.whatsapp_number, # Using phone number as name for now
@@ -262,9 +282,10 @@ class Customer(db.Model):
             'purchases': purchase_count,
             'is_affiliate': self.ambassador_profile is not None,
             'is_subscriber': is_subscriber,
-            # Add more fields as needed, e.g., location, notes
-            'location': 'Unknown', 
+            'location': 'Unknown',
             'notes': '',
+            'acquisition_refcode': first_successful_refcode,
+            'acquisition_source': first_source,
         }
 
 # ... The rest of the models (DigitalAsset, AssetFile, Purchase, etc.) are unchanged ...
@@ -308,6 +329,10 @@ class DigitalAsset(db.Model):
     ai_summary = db.Column(db.Text, nullable=True)
     ai_tags = db.Column(JSON, nullable=True)
 
+    # Ordering & Pinning
+    display_order = db.Column(db.Integer, default=0, nullable=False)
+    is_pinned = db.Column(db.Boolean, default=False, nullable=False)
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -342,6 +367,9 @@ class DigitalAsset(db.Model):
             'total_sales': self.total_sales or 0,
             'total_revenue': float(self.total_revenue or 0.0),
             'created_at': self.created_at.isoformat() if self.created_at else None,
+            'display_order': self.display_order or 0,
+            'is_pinned': self.is_pinned or False,
+            'custom_fields': self.custom_fields or [],
             'uza_product_id': (self.details or {}).get('uza_product_id', ''),
             
             # Use the to_dict method from AssetFile for clean serialization
@@ -436,6 +464,12 @@ class Purchase(db.Model):
     sse_channel_id = db.Column(db.String(36), nullable=True, index=True)
     ticket_status = db.Column(db.Enum(TicketStatus), nullable=True)
     ticket_data = db.Column(JSON, nullable=True)
+    # Referral & Source Attribution — all nullable to preserve existing records
+    visitor_refcode  = db.Column(db.String(100), nullable=True, index=True)
+    visitor_source   = db.Column(db.String(100), nullable=True)
+    refcode_used     = db.Column(db.String(100), nullable=True, index=True)
+    source_used      = db.Column(db.String(100), nullable=True)
+    refcode_outcome  = db.Column(db.String(20), nullable=True)
     customer = db.relationship('Customer', back_populates='purchases')
     asset = db.relationship('DigitalAsset', back_populates='purchases')
     def to_dict(self):

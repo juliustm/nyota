@@ -36,8 +36,7 @@
 
             <div>
                 <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ supporter.whatsapp_number }}</h1>
-                <p class="text-sm text-gray-500 dark:text-gray-400">Customer since {{ supporter.created_at.strftime('%B
-                    %Y') }}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Customer since {{ supporter.created_at | local_dt('%B %Y') }}</p>
             </div>
         </div>
 
@@ -71,6 +70,31 @@
         </div>
     </div>
 
+    {% if acquisition_refcode or acquisition_source %}
+    <!-- Acquisition Attribution -->
+    <div class="bg-indigo-50 dark:bg-indigo-900/10 rounded-xl border border-indigo-200 dark:border-indigo-800 p-5 flex items-start gap-4">
+        <svg class="w-5 h-5 text-indigo-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.1-1.1m2.929-2.929a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+        </svg>
+        <div>
+            <p class="text-sm font-semibold text-indigo-900 dark:text-indigo-200">Acquired via referral</p>
+            <div class="flex flex-wrap gap-3 mt-2">
+                {% if acquisition_refcode %}
+                <a href="{{ url_for('admin.creator_dashboard', refcode=acquisition_refcode) }}"
+                    class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 transition-colors">
+                    {{ acquisition_refcode }}
+                </a>
+                {% endif %}
+                {% if acquisition_source %}
+                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                    src: {{ acquisition_source }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Purchase History -->
     <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -88,6 +112,8 @@
                             Date</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
                             Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">
+                            Refcode</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -101,7 +127,7 @@
                             {{ purchase.amount_paid | format_currency(currency_symbol) }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                            {{ purchase.purchase_date.strftime('%b %d, %Y') }}
+                            {{ purchase.purchase_date | local_dt('%b %d, %Y') }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             {% if purchase.status.name == 'COMPLETED' %}
@@ -115,10 +141,43 @@
                                 class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300">Failed</span>
                             {% endif %}
                         </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if purchase.refcode_used %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-medium
+                                {% if purchase.refcode_outcome == 'customer_success' %}bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300
+                                {% elif purchase.refcode_outcome == 'customer_fallback' %}bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300
+                                {% else %}bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400{% endif %}">
+                                {{ purchase.refcode_used }}
+                            </span>
+                            {% else %}
+                            <span class="text-xs text-gray-400">—</span>
+                            {% endif %}
+                        </td>
                     </tr>
+                    {% if purchase.ticket_data %}
+                        {% set ns = namespace(has_custom=false) %}
+                        {% for k in purchase.ticket_data %}{% if k != 'tier' %}{% set ns.has_custom = true %}{% endif %}{% endfor %}
+                        {% if ns.has_custom %}
+                    <tr>
+                        <td colspan="5" class="px-6 pb-3 pt-0">
+                            <div class="bg-indigo-50 dark:bg-indigo-900/10 rounded-lg p-3 border border-indigo-100 dark:border-indigo-800">
+                                <p class="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Customer Info Collected</p>
+                                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+                                    {% for k, v in purchase.ticket_data.items() %}{% if k != 'tier' %}
+                                    <div class="flex gap-2 text-xs">
+                                        <dt class="font-medium text-gray-600 dark:text-gray-400 flex-shrink-0">{{ k }}:</dt>
+                                        <dd class="text-gray-800 dark:text-gray-200">{{ v }}</dd>
+                                    </div>
+                                    {% endif %}{% endfor %}
+                                </dl>
+                            </div>
+                        </td>
+                    </tr>
+                        {% endif %}
+                    {% endif %}
                     {% else %}
                     <tr>
-                        <td colspan="4" class="px-6 py-4 text-center text-sm text-gray-500">No purchases found.</td>
+                        <td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">No purchases found.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

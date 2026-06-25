@@ -179,7 +179,7 @@
                         <template x-if="purchase.status === 'COMPLETED'">
                             <div>
                                 <template x-if="purchase.subscription && !purchase.subscription.is_active">
-                                    <a :href="'/' + purchase.asset.slug"
+                                    <a :href="'/' + purchase.asset.slug + '?renew=1'"
                                         class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors">
                                         {{ translate('renew_subscription') or 'Renew Subscription' }}
                                     </a>

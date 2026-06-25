@@ -935,8 +935,9 @@ def serve_content(file_id):
         if not purchase:
             abort(403)
             
-        # Check subscription status
-        if purchase.asset.is_subscription:
+        # Check subscription status — covers is_subscription assets AND one-time
+        # assets bought on a recurring tier (so expiry is enforced on both).
+        if is_subscription_purchase(purchase):
             is_active, expiry_date = check_subscription_status(purchase)
             if not is_active:
                 flash(f"Your subscription expired on {expiry_date.strftime('%Y-%m-%d')}. Please renew to access this content.", "warning")
@@ -1044,6 +1045,27 @@ def check_subscription_status(purchase):
     expiry_date = start_date + delta
     is_active = datetime.utcnow() < expiry_date
     return is_active, expiry_date
+
+def is_subscription_purchase(purchase):
+    """True if the purchase is subscription-based (asset flag OR a recurring tier)."""
+    if not purchase:
+        return False
+    if purchase.asset and purchase.asset.is_subscription:
+        return True
+    tier = (purchase.ticket_data or {}).get('tier')
+    return bool(isinstance(tier, dict) and tier.get('interval'))
+
+def purchase_grants_access(purchase):
+    """A COMPLETED purchase grants access unless it's an expired subscription.
+
+    Single source of truth for "can this customer access the asset right now?".
+    Reuses check_subscription_status, which returns (True, None) for non-subscriptions
+    and correctly accounts for expiry on both is_subscription assets and recurring tiers.
+    """
+    if not purchase or purchase.status != PurchaseStatus.COMPLETED:
+        return False
+    is_active, _ = check_subscription_status(purchase)
+    return is_active
 
 def save_asset_from_form(asset, req):
     if 'asset_data' not in req.form: raise ValueError("Form submission incomplete. Please try again.")
@@ -2877,10 +2899,9 @@ def asset_detail(slug):
         if not is_creator:
             return render_not_found()
             
-    asset_json = json.dumps(asset_obj.to_dict(), default=json_serial)
     creator = Creator.query.get(asset_obj.creator_id)
     latest_purchase = None
-    
+
     if customer_phone:
         customer = Customer.query.filter_by(whatsapp_number=customer_phone).first()
         if customer:
@@ -2897,6 +2918,36 @@ def asset_detail(slug):
                     customer_id=customer.id,
                     asset_id=asset_obj.id
                 ).order_by(Purchase.purchase_date.desc()).first()
+
+    # --- Access entitlement (the security gate for content display) ---
+    # A COMPLETED purchase grants access UNLESS it's an expired subscription. Never
+    # trust purchase.status alone, otherwise a lapsed subscriber keeps the
+    # "You Own This" view and the real file URLs embedded in the page.
+    is_entitled = purchase_grants_access(latest_purchase)
+    subscription_expired = bool(
+        latest_purchase
+        and latest_purchase.status == PurchaseStatus.COMPLETED
+        and is_subscription_purchase(latest_purchase)
+        and not is_entitled
+    )
+    expiry_date = check_subscription_status(latest_purchase)[1] if subscription_expired else None
+    # The tier the customer was on, so renewal can pre-select the same plan.
+    renewal_tier_name = None
+    if subscription_expired:
+        _tier = (latest_purchase.ticket_data or {}).get('tier')
+        if isinstance(_tier, dict):
+            renewal_tier_name = _tier.get('name')
+
+    # Serialize the asset. Strip the real file locations (link + storage_path) for
+    # anyone not currently entitled so non-buyers and expired subscribers can never
+    # read external-link destinations straight out of the page source. Counts/types
+    # for the "what's included" preview come from asset_meta (a separate query).
+    asset_dict = asset_obj.to_dict()
+    if not is_entitled:
+        for f in asset_dict.get('files', []):
+            f['link'] = None
+            f['storage_path'] = None
+    asset_json = json.dumps(asset_dict, default=json_serial)
 
     # --- Construct Asset Metadata (Files & Types) ---
     asset_meta = {'total_files': 0, 'types': set()}
@@ -2968,7 +3019,11 @@ def asset_detail(slug):
         asset_obj=asset_obj,
         asset_meta=asset_meta, # Pass metadata
         asset_json=asset_json,
-        latest_purchase=latest_purchase, 
+        latest_purchase=latest_purchase,
+        is_entitled=is_entitled,
+        subscription_expired=subscription_expired,
+        expiry_date=expiry_date,
+        renewal_tier_name=renewal_tier_name,
         store_name=store_name,
         creator=creator, # Pass creator for base.html branding
         meta_title=meta_title,
@@ -3086,17 +3141,19 @@ def initiate_payment():
 
     # =========================================================================
     # == DUPLICATE PURCHASE GUARD
-    # == If this phone already has a COMPLETED purchase for this asset, skip
-    # == creating a new Purchase record and either restore the session (free)
-    # == or send a magic-link SMS (paid) so they can re-access their content.
+    # == If this phone already OWNS this asset, skip creating a new Purchase and
+    # == either restore the session (free) or send a magic-link SMS (paid) so they
+    # == can re-access their content.
+    # == An EXPIRED subscription does NOT count as ownership: we fall through to
+    # == create a fresh purchase so the customer can renew (new period).
     # =========================================================================
     existing_completed = Purchase.query.filter_by(
         customer_id=customer.id,
         asset_id=asset.id,
         status=PurchaseStatus.COMPLETED
-    ).first()
+    ).order_by(Purchase.purchase_date.desc()).first()
 
-    if existing_completed:
+    if existing_completed and purchase_grants_access(existing_completed):
         creator = asset.creator
         lang = (customer.language or 'sw')[:2].lower()
 
@@ -4024,9 +4081,12 @@ def library():
                     
                 is_active = True
                 expiry_date = None
-                if purchase.asset.is_subscription:
+                # Treat recurring-tier purchases as subscriptions too, so expiry
+                # shows and gates consistently with /content and the asset page.
+                is_sub = is_subscription_purchase(purchase)
+                if is_sub:
                     is_active, expiry_date = check_subscription_status(purchase)
-                
+
                 purchases_data.append({
                     'id': purchase.id,
                     'status': purchase.status.name,
@@ -4041,7 +4101,7 @@ def library():
                     'subscription': {
                         'is_active': is_active,
                         'expiry_date': expiry_date.isoformat() if expiry_date else None
-                    } if purchase.asset.is_subscription else None
+                    } if is_sub else None
                 })
     
     creator = Creator.query.first()

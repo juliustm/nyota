@@ -105,11 +105,22 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
 <!-- Data Loading -->
 <script type="application/json" id="asset-data">{{ asset_json|safe }}</script>
 <script type="application/json" id="purchase-data">
-    {{ latest_purchase.to_dict()|tojson|safe if latest_purchase else 'null' }}
+    {{ latest_purchase.to_dict()|tojson|safe if (latest_purchase and not subscription_expired) else 'null' }}
+</script>
+{# Renewal context for a lapsed subscriber: pre-select the prior plan and (when they
+   arrived via the "Renew" button, ?renew) open the checkout automatically. #}
+<script type="application/json" id="renewal-data">
+{%- if subscription_expired -%}
+{{ {'tier_name': renewal_tier_name, 'auto_open': (request.args.get('renew') is not none)}|tojson|safe }}
+{%- else -%}
+null
+{%- endif -%}
 </script>
 
 <!-- Main Container: px-0 on mobile for edge-to-edge PDF, padding restored on inner elements -->
-{% set status = latest_purchase.status.name if latest_purchase else 'NONE' %}
+{# An expired subscription must NOT read as COMPLETED — force the buy/renew flow so the
+   customer can pay again. is_entitled is the server-side access gate (see asset_detail). #}
+{% set status = 'NONE' if subscription_expired else (latest_purchase.status.name if latest_purchase else 'NONE') %}
 <div x-data="assetDetail('{{ currency_symbol }}')" x-init="init()" @retry-started.window="isRetrying = true"
     @retry-completed.window="isRetrying = false"
     @show-toast.window="showToast($event.detail.message, $event.detail.type)"
@@ -251,6 +262,25 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
 
                     <h1 class="text-2xl md:text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight leading-tight mb-4"
                         x-text="asset.title"></h1>
+
+                    {% if subscription_expired %}
+                    <div
+                        class="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-800 rounded-xl p-3 mb-4 flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-700">
+                        <div
+                            class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center text-red-600 dark:text-red-400 shrink-0">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-sm text-red-900 dark:text-red-100">{{ translate('subscription_expired') or 'Subscription expired' }}</h3>
+                            <p class="text-xs text-red-700 dark:text-red-300">
+                                {{ translate('subscription_expired_renew') or 'Your subscription has ended' }}{% if expiry_date %} ({{ expiry_date.strftime('%Y-%m-%d') }}){% endif %}. {{ translate('renew_to_regain_access') or 'Renew below to regain access to this content.' }}
+                            </p>
+                        </div>
+                    </div>
+                    {% endif %}
 
                     {% if status == 'COMPLETED' %}
 

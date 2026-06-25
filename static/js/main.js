@@ -1168,6 +1168,8 @@ document.addEventListener('alpine:init', () => {
         asset: asset,
         currency: currencySymbol,
         paymentUrl: paymentUrl,
+        renewalTierName: null,
+        autoOpenRenew: false,
         phoneNumber: localStorage.getItem('nyota_phone') || '',
         status: 'ready',
         errorMessage: '',
@@ -1193,6 +1195,18 @@ document.addEventListener('alpine:init', () => {
         },
 
         init() {
+            // Renewal context — set by the server when a lapsed subscriber lands here.
+            try {
+                const rd = document.getElementById('renewal-data');
+                if (rd && rd.textContent.trim()) {
+                    const parsed = JSON.parse(rd.textContent);
+                    if (parsed) {
+                        this.renewalTierName = parsed.tier_name || null;
+                        this.autoOpenRenew = !!parsed.auto_open;
+                    }
+                }
+            } catch (e) { /* no renewal context */ }
+
             this.$watch('isOpen', value => {
                 if (!value) {
                     this.clearModalTimeout();
@@ -1243,6 +1257,11 @@ document.addEventListener('alpine:init', () => {
                     this.checkPaymentStatus();
                 }
             });
+
+            // Arrived here via "Renew Subscription" (?renew=1) — open checkout straight away.
+            if (this.autoOpenRenew && !pendingData) {
+                this.$nextTick(() => this.openModal());
+            }
         },
 
         openModal(prefillNumber = null, autoRetry = false) {
@@ -1265,7 +1284,12 @@ document.addEventListener('alpine:init', () => {
 
             // Initialize tiers if available
             this.tiers = this.asset.details?.subscription_tiers || [];
-            this.selectedTier = this.tiers.length > 0 ? this.tiers[0] : null;
+            // On renewal, pre-select the plan the customer was previously on (by name);
+            // otherwise default to the first tier.
+            const priorTier = this.renewalTierName
+                ? this.tiers.find(t => t.name === this.renewalTierName)
+                : null;
+            this.selectedTier = priorTier || (this.tiers.length > 0 ? this.tiers[0] : null);
 
             this.$nextTick(() => { if (this.$refs.phoneInput) this.$refs.phoneInput.focus(); });
 

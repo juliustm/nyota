@@ -215,5 +215,13 @@
     "tz_behind": "you're {d} behind",
     "tz_your_time": "your time",
     "tz_hour_short": "h",
-    "tz_min_short": "m"
+    "tz_min_short": "m",
+    "donation_title": "Add a donation?",
+    "donation_hint_optional": "Support the creator — pick an amount, or continue without donating.",
+    "donation_hint_mandatory": "A donation is required to continue.",
+    "donation_min_note": "Min:",
+    "donation_amount_ph": "Or enter an amount",
+    "continue_without_donating": "Continue without Donating",
+    "donate_cta": "Donate",
+    "donations_welcome": "Donations welcome"
 }

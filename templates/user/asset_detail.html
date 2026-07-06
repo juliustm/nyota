@@ -1253,10 +1253,25 @@ null
                             </div>
                             {% else %}
                             {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
+                            {% set _don = asset_obj.details.donation if asset_obj.details and asset_obj.details.donation and asset_obj.details.donation.enabled else None %}
+                            {% if _don and _don.mandatory and (_don.min_amount|float > 0) %}
+                            <p class="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">{{ translate('starts_at') }}</p>
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-4xl font-extrabold text-gray-900 dark:text-white break-words"
+                                    x-text="currency + formatCurrency({{ _don.min_amount }})"></span>
+                            </div>
+                            {% elif _don %}
+                            <div class="flex flex-col">
+                                <span class="text-4xl font-extrabold text-green-600 dark:text-green-400">{{
+                                    translate('free') or 'Free' }}</span>
+                                <span class="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mt-1">{{ translate('donations_welcome') }}</span>
+                            </div>
+                            {% else %}
                             <div class="flex items-baseline gap-2">
                                 <span class="text-4xl font-extrabold text-green-600 dark:text-green-400">{{
                                     translate('free') or 'Free' }}</span>
                             </div>
+                            {% endif %}
                             {% else %}
                             <div class="flex items-baseline gap-2">
                                 <span class="text-4xl font-extrabold text-gray-900 dark:text-white break-words"
@@ -1619,9 +1634,22 @@ null
                             </p>
                             {% else %}
                             {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
+                            {% set _don = asset_obj.details.donation if asset_obj.details and asset_obj.details.donation and asset_obj.details.donation.enabled else None %}
+                            {% if _don and _don.mandatory and (_don.min_amount|float > 0) %}
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide font-bold">{{ translate('starts_at') }}</p>
+                            <p class="font-extrabold text-xl text-gray-900 dark:text-white truncate">
+                                <span x-text="currency"></span><span x-text="formatCurrency({{ _don.min_amount }})"></span>
+                            </p>
+                            {% elif _don %}
                             <p class="font-extrabold text-xl text-green-600 dark:text-green-400 truncate">
                                 {{ translate('free') or 'Free' }}
                             </p>
+                            <p class="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold truncate">{{ translate('donations_welcome') }}</p>
+                            {% else %}
+                            <p class="font-extrabold text-xl text-green-600 dark:text-green-400 truncate">
+                                {{ translate('free') or 'Free' }}
+                            </p>
+                            {% endif %}
                             {% else %}
                             <p class="font-extrabold text-xl text-gray-900 dark:text-white truncate">
                                 <span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span>
@@ -1708,17 +1736,63 @@ null
                             <span x-show="isFree">{{ translate('inst_free_' ~ asset_type_key) }}</span>
                             <span x-show="!isFree">{{ translate('inst_paid_' ~ asset_type_key) }}</span>
                         </p>
+
                         <form @submit.prevent="initiatePayment()">
-                            <div class="mb-6"><input type="tel" x-ref="phoneInput" x-model="phoneNumber"
+                            <!-- 1) Phone number first — quick entry -->
+                            <div class="mb-5"><input type="tel" x-ref="phoneInput" x-model="phoneNumber"
                                     @input="formatPhoneNumber()" placeholder="07XX XXX XXX"
                                     class="input-field pl-4 text-lg font-mono" required></div>
+
+                            <!-- 2) Then ask about the donation -->
+                            <div x-show="isDonation" x-cloak
+                                class="mb-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+                                <div class="flex items-baseline justify-between mb-1">
+                                    <span class="text-sm font-bold text-gray-800 dark:text-gray-200">{{ translate('donation_title') }}</span>
+                                    <span x-show="donationMin > 0" class="text-xs text-gray-500 dark:text-gray-400"
+                                        x-text="'{{ translate('donation_min_note') }} ' + currency + formatCurrency(donationMin)"></span>
+                                </div>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                                    <span x-show="!donationCfg.mandatory">{{ translate('donation_hint_optional') }}</span>
+                                    <span x-show="donationCfg.mandatory">{{ translate('donation_hint_mandatory') }}</span>
+                                </p>
+
+                                <!-- Quick-pick amounts (toggle off to clear when optional) -->
+                                <div x-show="donationCfg.suggested_amounts && donationCfg.suggested_amounts.length"
+                                    class="flex flex-wrap gap-2 mb-3">
+                                    <template x-for="amt in (donationCfg.suggested_amounts || [])" :key="amt">
+                                        <button type="button"
+                                            @click="contribution = (!donationCfg.mandatory && contributionAmount === parseFloat(amt)) ? '' : String(amt)"
+                                            class="px-3.5 py-2 rounded-lg border-2 text-sm font-semibold transition-all"
+                                            :class="contributionAmount === parseFloat(amt) ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-400 dark:text-indigo-300' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-indigo-300'"
+                                            x-text="currency + formatCurrency(amt)"></button>
+                                    </template>
+                                </div>
+
+                                <!-- Free-form amount -->
+                                <div class="relative">
+                                    <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-500 dark:text-gray-400 font-medium pointer-events-none"
+                                        x-text="currency"></span>
+                                    <input type="number" inputmode="decimal" min="0" step="any"
+                                        x-model="contribution" :placeholder="'{{ translate('donation_amount_ph') }}'"
+                                        class="input-field pl-10 text-lg font-mono">
+                                </div>
+                            </div>
+
                             <p x-show="errorMessage" x-text="errorMessage"
                                 class="p-3 mb-6 bg-red-50 text-red-600 rounded-lg text-sm text-center"></p>
+
+                            <!-- 3) Smart submit button that states the choice -->
                             <button type="submit"
                                 class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl text-lg hover:scale-[1.01] transition-transform">
-                                <span x-show="isFree">{{ translate('cta_free_' ~ asset_type_key) }}</span>
-                                <span x-show="!isFree"
-                                    x-text="selectedTier ? '{{ translate('cta_paid_' ~ asset_type_key) }} • ' + currency + formatCurrency(selectedTier.price) : '{{ translate('cta_paid_' ~ asset_type_key) }} • ' + currency + formatCurrency(asset.price)"></span>
+                                <!-- Non-donation assets -->
+                                <span x-show="!isDonation && isFree">{{ translate('cta_free_' ~ asset_type_key) }}</span>
+                                <span x-show="!isDonation && !isFree"
+                                    x-text="'{{ translate('cta_paid_' ~ asset_type_key) }} • ' + currency + formatCurrency(selectedTier ? selectedTier.price : asset.price)"></span>
+                                <!-- Donation assets: communicate whether they're donating -->
+                                <span x-show="isDonation && contributionAmount > 0"
+                                    x-text="'{{ translate('donate_cta') }} ' + currency + formatCurrency(contributionAmount)"></span>
+                                <span x-show="isDonation && contributionAmount === 0 && !donationCfg.mandatory">{{ translate('continue_without_donating') }}</span>
+                                <span x-show="isDonation && contributionAmount === 0 && donationCfg.mandatory">{{ translate('donate_cta') }}</span>
                             </button>
                         </form>
                     </div>

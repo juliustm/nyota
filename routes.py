@@ -1175,6 +1175,43 @@ def save_asset_from_form(asset, req):
     if uza_product_id:
         asset.details['uza_product_id'] = uza_product_id
 
+    # --- Donation / flexible-amount ("pay-what-you-want") config ---
+    # Only valid for free, one-time (non-subscription) assets. When enabled we
+    # coerce the base price to 0: the supporter-chosen contribution becomes the
+    # charge and is sent to UZA as quantity (with the linked product priced at 1).
+    donation_in = form_data.get('donation') or {}
+    if isinstance(donation_in, dict) and donation_in.get('enabled') and not asset.is_subscription:
+        try:
+            min_amount = float(donation_in.get('min_amount') or 0)
+        except (ValueError, TypeError):
+            min_amount = 0.0
+        min_amount = max(0.0, min_amount)
+
+        # Sanitize suggested preset amounts: positive numbers only, de-duplicated, sorted.
+        raw_suggested = donation_in.get('suggested_amounts') or []
+        suggested = []
+        if isinstance(raw_suggested, list):
+            for v in raw_suggested:
+                try:
+                    n = float(v)
+                except (ValueError, TypeError):
+                    continue
+                if n > 0 and n not in suggested:
+                    suggested.append(n)
+        # Normalize whole numbers (5000.0 -> 5000) for clean display/serialization.
+        def _norm(n):
+            return int(n) if float(n).is_integer() else float(n)
+        asset.details['donation'] = {
+            'enabled': True,
+            'min_amount': _norm(min_amount),
+            'mandatory': bool(donation_in.get('mandatory')),
+            'suggested_amounts': sorted(_norm(n) for n in suggested),
+        }
+        # A donation asset is always free at base — the contribution is the charge.
+        asset.price = decimal.Decimal('0')
+    else:
+        asset.details.pop('donation', None)
+
     # --- Slug Editing ---
     new_slug = asset_details.get('slug', '').strip()
     if new_slug and asset.id:
@@ -3307,11 +3344,11 @@ def initiate_payment():
     tier = data.get('tier')  # Extract selected tier
 
     asset = DigitalAsset.query.get_or_404(asset_id)
-    
+
     # Determine price based on tier
     amount = asset.price
     ticket_data = {}
-    
+
     if tier:
         # Get tier price and validate it
         tier_price = tier.get('price')
@@ -3326,8 +3363,49 @@ def initiate_payment():
             except (decimal.InvalidOperation, ValueError):
                 # If conversion fails, use asset price as fallback
                 amount = asset.price
-    
-            
+
+    # --- Donation / flexible-amount ("pay-what-you-want") resolution ---
+    # A donation asset is free at base; the supporter-chosen contribution IS the
+    # charge. Donation never applies when a subscription tier is being purchased.
+    donation_cfg = (asset.details or {}).get('donation')
+    is_donation = bool(donation_cfg and donation_cfg.get('enabled')) and not tier
+    if is_donation:
+        try:
+            min_amount = decimal.Decimal(str(donation_cfg.get('min_amount') or 0))
+        except (decimal.InvalidOperation, ValueError, TypeError):
+            min_amount = decimal.Decimal('0')
+        mandatory = bool(donation_cfg.get('mandatory'))
+
+        raw_contribution = data.get('contribution', data.get('amount'))
+        try:
+            contribution = decimal.Decimal(str(raw_contribution).strip()) if raw_contribution not in (None, '') else decimal.Decimal('0')
+        except (decimal.InvalidOperation, ValueError, TypeError):
+            contribution = decimal.Decimal('0')
+        if contribution < 0:
+            contribution = decimal.Decimal('0')
+
+        currency = asset.creator.get_setting('payment_uza_currency', 'TZS') if asset.creator else 'TZS'
+
+        def _fmt(d):
+            # Whole numbers show without decimals; keep it clean for TZS/KES.
+            return f"{int(d):,}" if d == d.to_integral_value() else f"{d:,.2f}"
+
+        if mandatory:
+            floor = min_amount if min_amount > 0 else decimal.Decimal('0.01')
+            if contribution < floor:
+                return jsonify({
+                    'success': False,
+                    'message': f'A contribution of at least {currency} {_fmt(min_amount if min_amount > 0 else floor)} is required.'
+                }), 400
+        elif contribution > 0 and contribution < min_amount:
+            return jsonify({
+                'success': False,
+                'message': f'The minimum contribution is {currency} {_fmt(min_amount)}.'
+            }), 400
+
+        amount = contribution
+
+
     # Create a pending purchase
     customer = Customer.query.filter_by(whatsapp_number=phone_number).first()
     if not customer:
@@ -3354,7 +3432,11 @@ def initiate_payment():
         status=PurchaseStatus.COMPLETED
     ).order_by(Purchase.purchase_date.desc()).first()
 
-    if existing_completed and purchase_grants_access(existing_completed):
+    # A supporter who already has access may still make a NEW paid contribution
+    # (repeat donation). Only a zero-contribution return restores their session.
+    donation_repeat = is_donation and float(amount) > 0
+
+    if existing_completed and purchase_grants_access(existing_completed) and not donation_repeat:
         creator = asset.creator
         lang = (customer.language or 'sw')[:2].lower()
 
@@ -3647,10 +3729,21 @@ def initiate_payment():
             except (ValueError, TypeError):
                 current_app.logger.warning(f"Invalid asset UZA Product ID: {uza_product_id_str}")
     
-    # If no UZA Product ID is configured, use a default/placeholder
+    # If no UZA Product ID is configured, use a default/placeholder.
+    # NOTE: donation assets should link their OWN product priced at 1 unit — the
+    # contribution is sent below as quantity. We still send price/total explicitly
+    # so the charge equals the contribution regardless of the product's stored price.
     if not uza_product_id:
         uza_product_id = 8069  # Default fallback ID
-    
+
+    # Donation assets bill as: unit price 1 × quantity <contribution> = <contribution>.
+    # Fixed-price assets keep the classic quantity 1 × price <amount>.
+    if is_donation:
+        qty = int(amount) if amount == amount.to_integral_value() else float(amount)
+        product_line = {"id": uza_product_id, "name": asset.title, "quantity": qty, "price": 1}
+    else:
+        product_line = {"id": uza_product_id, "name": asset.title, "quantity": 1, "price": float(amount)}
+
     # 4. Build UZA payload with dynamic refcode/source attribution + retry logic
     session_refcode   = session.get('visitor_refcode')
     session_source    = session.get('visitor_source')
@@ -3662,7 +3755,7 @@ def initiate_payment():
 
     def _build_payload(refcode, source):
         return {
-            "products": [{"id": uza_product_id, "name": asset.title, "quantity": 1, "price": float(amount)}],
+            "products": [dict(product_line)],
             "payment": {"type": "payby.selcom", "walletid": phone_number},
             "reference": purchase.transaction_token,
             "pk": uza_pk,

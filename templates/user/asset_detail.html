@@ -2097,11 +2097,10 @@ null
             },
             renderMarkdown(text) {
                 if (!text) return '';
-                // Smart detection: check if text contains markdown syntax
-                const mdPattern = /(?:^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|\*\*.+\*\*|__.+__|`.+`|\[.+\]\(.+\)|^>\s|^```|!\[)/m;
-                const hasMarkdown = mdPattern.test(text);
-
-                if (hasMarkdown && this.markedReady && typeof marked !== 'undefined') {
+                // Always parse: plain prose is valid Markdown, and parsing it is what
+                // wraps paragraphs in <p> so the typography (spacing, line-height) applies.
+                // Previously plain text skipped marked and came out as one <br>-joined blob.
+                if (this.markedReady && typeof marked !== 'undefined') {
                     try {
                         const html = marked.parse(text);
                         return (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(html) : html;

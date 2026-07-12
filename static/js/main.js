@@ -1,5 +1,41 @@
 // static/js/main.js
 
+// Every admin field whose value is rendered as Markdown to buyers gets the same
+// editor: same toolbar, same preview styling (.editor-preview reuses the public
+// .prose rules), same single-line-break behaviour as the public renderer, which
+// parses with marked({ breaks: true }).
+function mountMarkdownEditor(element, { minHeight = '160px', placeholder = '' } = {}) {
+    if (typeof EasyMDE === 'undefined' || !element || element._mde) return null;
+    const mde = new EasyMDE({
+        element,
+        placeholder: placeholder || element.getAttribute('placeholder') || '',
+        minHeight,
+        spellChecker: false,
+        status: false,
+        autosave: { enabled: false },
+        renderingConfig: { singleLineBreaks: true },
+        toolbar: [
+            'bold', 'italic', 'heading', '|',
+            'quote', 'unordered-list', 'ordered-list', '|',
+            'link', 'image', '|',
+            'preview', 'side-by-side', 'guide'
+        ]
+    });
+    element._mde = mde;
+    return mde;
+}
+
+// Wire a mounted editor to Alpine state in both directions on mount, then keep
+// state in sync as the creator types.
+function bindMarkdownEditor(element, opts, getValue, setValue) {
+    const mde = mountMarkdownEditor(element, opts);
+    if (!mde) return null;
+    const initial = getValue();
+    if (initial) mde.value(initial);
+    mde.codemirror.on('change', () => setValue(mde.value()));
+    return mde;
+}
+
 document.addEventListener('alpine:init', () => {
 
     // ========================================================================
@@ -646,22 +682,16 @@ document.addEventListener('alpine:init', () => {
         },
 
         _initMDEditors() {
-            if (typeof EasyMDE === 'undefined') return;
-            const toolbar = ['bold', 'italic', 'heading', '|', 'quote', 'unordered-list', 'ordered-list', '|', 'link', '|', 'preview'];
-            const descEl = document.getElementById('description');
-            if (descEl && !descEl._mde) {
-                const mde = new EasyMDE({ element: descEl, toolbar, minHeight: '80px', spellChecker: false, status: false });
-                mde.codemirror.on('change', () => { this.asset.description = mde.value(); });
-                if (this.asset.description) mde.value(this.asset.description);
-                descEl._mde = mde;
-            }
-            const storyEl = document.getElementById('story');
-            if (storyEl && !storyEl._mde) {
-                const mde = new EasyMDE({ element: storyEl, toolbar, minHeight: '140px', spellChecker: false, status: false });
-                mde.codemirror.on('change', () => { this.asset.story_snippet = mde.value(); });
-                if (this.asset.story_snippet) mde.value(this.asset.story_snippet);
-                storyEl._mde = mde;
-            }
+            bindMarkdownEditor(
+                document.getElementById('description'), { minHeight: '110px' },
+                () => this.asset.description,
+                v => { this.asset.description = v; }
+            );
+            bindMarkdownEditor(
+                document.getElementById('story'), { minHeight: '260px' },
+                () => this.asset.story_snippet,
+                v => { this.asset.story_snippet = v; }
+            );
         },
         setAssetType(type) { this.assetType = type; this.assetTypeEnum = this.mapFormTypeToEnumType(type); },
         addContentItem(defaultType = 'upload') { this.contentItems.push({ type: defaultType, title: '', link: '', description: '' }); },
@@ -1026,8 +1056,30 @@ document.addEventListener('alpine:init', () => {
             }
 
             this.applyUtilityClasses();
+            this.$nextTick(() => this._initMDEditors());
         },
 
+        _initMDEditors() {
+            this._mdEditors = [
+                bindMarkdownEditor(
+                    document.getElementById('description'), { minHeight: '110px' },
+                    () => this.editableAsset.description,
+                    v => { this.editableAsset.description = v; }
+                ),
+                bindMarkdownEditor(
+                    document.getElementById('story'), { minHeight: '340px' },
+                    () => this.editableAsset.story,
+                    v => { this.editableAsset.story = v; }
+                )
+            ].filter(Boolean);
+
+            // CodeMirror measures 0px while its tab is display:none, so an editor
+            // mounted under a restored non-General tab renders blank until refreshed.
+            this.$watch('activeTab', tab => {
+                if (tab !== 'general') return;
+                this.$nextTick(() => this._mdEditors.forEach(mde => mde.codemirror.refresh()));
+            });
+        },
 
         handleCoverSelect(event) {
             const file = event.target.files[0];

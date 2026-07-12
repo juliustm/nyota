@@ -61,3 +61,317 @@ textarea {
     -ms-user-select: auto;
     user-select: auto;
 }
+
+/* --- Rich text (Markdown) typography ---------------------------------------
+   Tailwind is loaded from the Play CDN without the @tailwindcss/typography
+   plugin, so `prose` is an inert class and preflight strips every margin off
+   headings, paragraphs and lists. These rules are the typography layer, and
+   they also style the EasyMDE preview in the admin so creators see exactly
+   what buyers see. Class selectors (0,1,1) always outrank preflight (0,0,1),
+   so load order against the CDN's injected <style> does not matter.
+   Sizing leans large: this content is read by people of every age on phones. */
+:is(.prose, .editor-preview, .editor-preview-side) {
+    font-size: 1.0625rem;
+    line-height: 1.75;
+    color: #374151;
+    /* gray-700 */
+    word-break: break-word;
+}
+
+:is(.prose-lg) {
+    font-size: 1.1875rem;
+    line-height: 1.8;
+}
+
+.dark :is(.prose, .editor-preview, .editor-preview-side) {
+    color: #d1d5db;
+    /* gray-300 */
+}
+
+/* Rhythm: every block gets breathing room, but never leading/trailing gaps. */
+:is(.prose, .editor-preview, .editor-preview-side) p {
+    margin: 1.25em 0;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) :first-child {
+    margin-top: 0;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) :last-child {
+    margin-bottom: 0;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) :is(h1, h2, h3, h4, h5, h6) {
+    color: #111827;
+    /* gray-900 */
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    margin: 2em 0 0.75em;
+    scroll-margin-top: 5rem;
+}
+
+.dark :is(.prose, .editor-preview, .editor-preview-side) :is(h1, h2, h3, h4, h5, h6) {
+    color: #f9fafb;
+    /* gray-50 */
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) h1 {
+    font-size: 1.875em;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) h2 {
+    font-size: 1.5em;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) h3 {
+    font-size: 1.25em;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) :is(h4, h5, h6) {
+    font-size: 1.0625em;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) :is(ul, ol) {
+    margin: 1.25em 0;
+    padding-left: 1.6em;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) ul {
+    list-style: disc;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) ol {
+    list-style: decimal;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) :is(ul, ol) :is(ul, ol) {
+    margin: 0.5em 0;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) li {
+    margin: 0.5em 0;
+    padding-left: 0.35em;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) li::marker {
+    color: #6366f1;
+    /* indigo-500 */
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) :is(strong, b) {
+    font-weight: 700;
+    color: #111827;
+}
+
+.dark :is(.prose, .editor-preview, .editor-preview-side) :is(strong, b) {
+    color: #f9fafb;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) :is(em, i) {
+    font-style: italic;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) a {
+    color: #4f46e5;
+    /* indigo-600 */
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) a:hover {
+    color: #4338ca;
+}
+
+.dark :is(.prose, .editor-preview, .editor-preview-side) a {
+    color: #a5b4fc;
+    /* indigo-300 */
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) blockquote {
+    margin: 1.75em 0;
+    padding: 0.25em 0 0.25em 1.25em;
+    border-left: 3px solid #c7d2fe;
+    /* indigo-200 */
+    color: #4b5563;
+    font-style: italic;
+}
+
+.dark :is(.prose, .editor-preview, .editor-preview-side) blockquote {
+    border-left-color: #4f46e5;
+    color: #9ca3af;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+    background: #f3f4f6;
+    padding: 0.15em 0.4em;
+    border-radius: 0.375rem;
+}
+
+.dark :is(.prose, .editor-preview, .editor-preview-side) code {
+    background: #374151;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) pre {
+    margin: 1.5em 0;
+    padding: 1em 1.25em;
+    background: #111827;
+    color: #f9fafb;
+    border-radius: 0.75rem;
+    overflow-x: auto;
+    line-height: 1.6;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) img {
+    margin: 1.75em 0;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.75rem;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) hr {
+    margin: 2.5em 0;
+    border: 0;
+    border-top: 1px solid #e5e7eb;
+}
+
+.dark :is(.prose, .editor-preview, .editor-preview-side) hr {
+    border-top-color: #374151;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) table {
+    display: block;
+    width: 100%;
+    margin: 1.5em 0;
+    overflow-x: auto;
+    border-collapse: collapse;
+    font-size: 0.95em;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) :is(th, td) {
+    padding: 0.6em 0.9em;
+    border: 1px solid #e5e7eb;
+    text-align: left;
+}
+
+.dark :is(.prose, .editor-preview, .editor-preview-side) :is(th, td) {
+    border-color: #374151;
+}
+
+:is(.prose, .editor-preview, .editor-preview-side) th {
+    background: #f9fafb;
+    font-weight: 600;
+}
+
+.dark :is(.prose, .editor-preview, .editor-preview-side) th {
+    background: #1f2937;
+}
+
+/* The opening "lead" paragraph sets its own colour/size via utilities. */
+:is(.prose, .editor-preview, .editor-preview-side) .lead {
+    line-height: 1.7;
+}
+
+/* --- EasyMDE (admin markdown editor) ---------------------------------------
+   Matches the .input-field look and follows the admin's class-based dark mode. */
+.EasyMDEContainer .CodeMirror {
+    border: 1px solid #d1d5db;
+    border-top: 0;
+    border-radius: 0 0 0.5rem 0.5rem;
+    background: #fff;
+    color: #111827;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    padding: 0.75rem 0.5rem;
+}
+
+.EasyMDEContainer .editor-toolbar {
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem 0.5rem 0 0;
+    background: #f9fafb;
+    opacity: 1;
+}
+
+.EasyMDEContainer .editor-toolbar button {
+    color: #4b5563;
+    border-radius: 0.375rem;
+}
+
+.EasyMDEContainer .editor-toolbar button:hover,
+.EasyMDEContainer .editor-toolbar button.active {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #4f46e5;
+}
+
+.EasyMDEContainer .CodeMirror-cursor {
+    border-left-color: #4f46e5;
+}
+
+.EasyMDEContainer .editor-preview,
+.EasyMDEContainer .editor-preview-side {
+    padding: 1.25rem 1.5rem;
+    background: #fff;
+}
+
+.dark .EasyMDEContainer .CodeMirror {
+    background: #1f2937;
+    color: #f9fafb;
+    border-color: #4b5563;
+}
+
+.dark .EasyMDEContainer .editor-toolbar {
+    background: #111827;
+    border-color: #4b5563;
+}
+
+.dark .EasyMDEContainer .editor-toolbar button {
+    color: #d1d5db;
+}
+
+.dark .EasyMDEContainer .editor-toolbar button:hover,
+.dark .EasyMDEContainer .editor-toolbar button.active {
+    background: #312e81;
+    border-color: #4f46e5;
+    color: #e0e7ff;
+}
+
+.dark .EasyMDEContainer .editor-toolbar i.separator {
+    border-left-color: #4b5563;
+    border-right-color: #374151;
+}
+
+.dark .EasyMDEContainer .CodeMirror-selected {
+    background: #374151;
+}
+
+.dark .EasyMDEContainer .editor-preview,
+.dark .EasyMDEContainer .editor-preview-side {
+    background: #1f2937;
+    border-color: #4b5563;
+}
+
+.dark .EasyMDEContainer .cm-s-easymde .cm-header,
+.dark .EasyMDEContainer .cm-s-easymde .cm-strong {
+    color: #fff;
+}
+
+.dark .EasyMDEContainer .cm-s-easymde .cm-link,
+.dark .EasyMDEContainer .cm-s-easymde .cm-url {
+    color: #a5b4fc;
+}
+
+.dark .EasyMDEContainer .cm-s-easymde .cm-comment {
+    background: #374151;
+    color: #e5e7eb;
+}

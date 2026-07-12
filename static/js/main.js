@@ -1,5 +1,41 @@
 // static/js/main.js
 
+// Every admin field whose value is rendered as Markdown to buyers gets the same
+// editor: same toolbar, same preview styling (.editor-preview reuses the public
+// .prose rules), same single-line-break behaviour as the public renderer, which
+// parses with marked({ breaks: true }).
+function mountMarkdownEditor(element, { minHeight = '160px', placeholder = '' } = {}) {
+    if (typeof EasyMDE === 'undefined' || !element || element._mde) return null;
+    const mde = new EasyMDE({
+        element,
+        placeholder: placeholder || element.getAttribute('placeholder') || '',
+        minHeight,
+        spellChecker: false,
+        status: false,
+        autosave: { enabled: false },
+        renderingConfig: { singleLineBreaks: true },
+        toolbar: [
+            'bold', 'italic', 'heading', '|',
+            'quote', 'unordered-list', 'ordered-list', '|',
+            'link', 'image', '|',
+            'preview', 'side-by-side', 'guide'
+        ]
+    });
+    element._mde = mde;
+    return mde;
+}
+
+// Wire a mounted editor to Alpine state in both directions on mount, then keep
+// state in sync as the creator types.
+function bindMarkdownEditor(element, opts, getValue, setValue) {
+    const mde = mountMarkdownEditor(element, opts);
+    if (!mde) return null;
+    const initial = getValue();
+    if (initial) mde.value(initial);
+    mde.codemirror.on('change', () => setValue(mde.value()));
+    return mde;
+}
+
 document.addEventListener('alpine:init', () => {
 
     // ========================================================================
@@ -586,6 +622,7 @@ document.addEventListener('alpine:init', () => {
         subscriptionDetails: { welcomeContent: '', benefits: '' },
         newsletterDetails: { welcomeFile: null, welcomeDescription: '', frequency: 'monthly' },
         pricing: { type: 'one-time', amount: null, billingCycle: 'monthly', tiers: [] },
+        donation: { enabled: false, min_amount: 0, mandatory: false, _suggestedRaw: '' },
         positionPreference: 'bottom',
         collectInfoMode: 'optional',
         steps: [{ number: 1, title: 'Type', subtitle: 'Choose content format' }, { number: 2, title: 'Details', subtitle: 'Describe your asset' }, { number: 3, title: 'Content', subtitle: 'Add files/links' }, { number: 4, title: 'Pricing', subtitle: 'Set your price' }],
@@ -628,6 +665,16 @@ document.addEventListener('alpine:init', () => {
                     this.subscriptionDetails = existing.details.welcomeContent ? existing.details : this.subscriptionDetails;
                     this.newsletterDetails = existing.details.frequency ? existing.details : this.newsletterDetails;
                 }
+
+                // Initialize donation / flexible-amount config
+                const dExisting = existing.details?.donation || {};
+                this.donation = {
+                    enabled: !!dExisting.enabled,
+                    min_amount: dExisting.min_amount || 0,
+                    mandatory: !!dExisting.mandatory,
+                    _suggestedRaw: Array.isArray(dExisting.suggested_amounts) ? dExisting.suggested_amounts.join(', ') : ''
+                };
+
                 // FIX: Only jump to step 2 if we are EDITING an existing asset (has ID)
                 this.step = existing.id ? 2 : 1;
             }
@@ -635,22 +682,16 @@ document.addEventListener('alpine:init', () => {
         },
 
         _initMDEditors() {
-            if (typeof EasyMDE === 'undefined') return;
-            const toolbar = ['bold', 'italic', 'heading', '|', 'quote', 'unordered-list', 'ordered-list', '|', 'link', '|', 'preview'];
-            const descEl = document.getElementById('description');
-            if (descEl && !descEl._mde) {
-                const mde = new EasyMDE({ element: descEl, toolbar, minHeight: '80px', spellChecker: false, status: false });
-                mde.codemirror.on('change', () => { this.asset.description = mde.value(); });
-                if (this.asset.description) mde.value(this.asset.description);
-                descEl._mde = mde;
-            }
-            const storyEl = document.getElementById('story');
-            if (storyEl && !storyEl._mde) {
-                const mde = new EasyMDE({ element: storyEl, toolbar, minHeight: '140px', spellChecker: false, status: false });
-                mde.codemirror.on('change', () => { this.asset.story_snippet = mde.value(); });
-                if (this.asset.story_snippet) mde.value(this.asset.story_snippet);
-                storyEl._mde = mde;
-            }
+            bindMarkdownEditor(
+                document.getElementById('description'), { minHeight: '110px' },
+                () => this.asset.description,
+                v => { this.asset.description = v; }
+            );
+            bindMarkdownEditor(
+                document.getElementById('story'), { minHeight: '260px' },
+                () => this.asset.story_snippet,
+                v => { this.asset.story_snippet = v; }
+            );
         },
         setAssetType(type) { this.assetType = type; this.assetTypeEnum = this.mapFormTypeToEnumType(type); },
         addContentItem(defaultType = 'upload') { this.contentItems.push({ type: defaultType, title: '', link: '', description: '' }); },
@@ -675,6 +716,18 @@ document.addEventListener('alpine:init', () => {
                 return out;
             }).filter(f => f.question.trim());
 
+            // Sanitize donation config (only for one-time / non-subscription assets).
+            const donationEnabled = !!this.donation.enabled && this.pricing.type !== 'recurring';
+            const donation = {
+                enabled: donationEnabled,
+                min_amount: parseFloat(this.donation.min_amount) || 0,
+                mandatory: !!this.donation.mandatory,
+                suggested_amounts: (this.donation._suggestedRaw || '')
+                    .split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0)
+            };
+            // A donation asset is always free at base — the contribution is the charge.
+            const pricing = donationEnabled ? { ...this.pricing, amount: 0 } : this.pricing;
+
             // Prepare data for submission
             const allData = {
                 action: action,
@@ -686,7 +739,8 @@ document.addEventListener('alpine:init', () => {
                 eventDetails: this.eventDetails,
                 subscriptionDetails: this.subscriptionDetails,
                 newsletterDetails: { ...this.newsletterDetails, welcomeFile: null },
-                pricing: this.pricing,
+                donation: donation,
+                pricing: pricing,
                 position_preference: this.positionPreference || 'bottom'
             };
 
@@ -925,6 +979,19 @@ document.addEventListener('alpine:init', () => {
                 this.editableAsset.uza_product_id = this.asset.details?.uza_product_id || '';
             }
 
+            // Initialize donation / flexible-amount ("pay-what-you-want") config.
+            if (!this.editableAsset.donation) {
+                const d = this.asset.details?.donation || {};
+                this.editableAsset.donation = {
+                    enabled: !!d.enabled,
+                    min_amount: d.min_amount || 0,
+                    mandatory: !!d.mandatory,
+                    suggested_amounts: Array.isArray(d.suggested_amounts) ? d.suggested_amounts.slice() : [],
+                    // Editor-only helper: comma-separated string for the presets input.
+                    _suggestedRaw: Array.isArray(d.suggested_amounts) ? d.suggested_amounts.join(', ') : ''
+                };
+            }
+
             // Initialize pricing tiers
             if (!this.editableAsset.details.subscription_tiers) {
                 this.editableAsset.details.subscription_tiers = this.asset.details?.subscription_tiers || [];
@@ -989,8 +1056,30 @@ document.addEventListener('alpine:init', () => {
             }
 
             this.applyUtilityClasses();
+            this.$nextTick(() => this._initMDEditors());
         },
 
+        _initMDEditors() {
+            this._mdEditors = [
+                bindMarkdownEditor(
+                    document.getElementById('description'), { minHeight: '110px' },
+                    () => this.editableAsset.description,
+                    v => { this.editableAsset.description = v; }
+                ),
+                bindMarkdownEditor(
+                    document.getElementById('story'), { minHeight: '340px' },
+                    () => this.editableAsset.story,
+                    v => { this.editableAsset.story = v; }
+                )
+            ].filter(Boolean);
+
+            // CodeMirror measures 0px while its tab is display:none, so an editor
+            // mounted under a restored non-General tab renders blank until refreshed.
+            this.$watch('activeTab', tab => {
+                if (tab !== 'general') return;
+                this.$nextTick(() => this._mdEditors.forEach(mde => mde.codemirror.refresh()));
+            });
+        },
 
         handleCoverSelect(event) {
             const file = event.target.files[0];
@@ -1142,6 +1231,19 @@ document.addEventListener('alpine:init', () => {
                 return out;
             }).filter(f => f.question.trim());
 
+            // Sanitize donation config (only meaningful for non-subscription assets).
+            const donationSrc = this.editableAsset.donation || {};
+            const donationEnabled = !!donationSrc.enabled && !this.editableAsset.is_subscription;
+            const donation = {
+                enabled: donationEnabled,
+                min_amount: parseFloat(donationSrc.min_amount) || 0,
+                mandatory: !!donationSrc.mandatory,
+                suggested_amounts: (donationSrc._suggestedRaw || '')
+                    .split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0)
+            };
+            // A donation asset is always free at base — the contribution is the charge.
+            const effectivePrice = donationEnabled ? 0 : this.editableAsset.price;
+
             const assetData = {
                 action: this.editableAsset.status === 'Draft' ? 'draft' : 'publish',
                 asset: {
@@ -1168,8 +1270,9 @@ document.addEventListener('alpine:init', () => {
                     benefits: this.editableAsset.details?.benefits || ''
                 },
                 labels: this.editableAsset.details?.labels || {},
+                donation: donation,
                 pricing: {
-                    amount: this.editableAsset.price,
+                    amount: effectivePrice,
                     type: this.editableAsset.is_subscription ? 'recurring' : 'one-time',
                     billingCycle: (this.editableAsset.subscription_interval || 'monthly').toLowerCase(),
                     tiers: this.editableAsset.details?.subscription_tiers || []
@@ -1259,6 +1362,7 @@ document.addEventListener('alpine:init', () => {
         eventSource: null,
         selectedTier: null,
         tiers: [],
+        contribution: '', // Donor-chosen amount for pay-what-you-want assets
         purchaseId: null,
         dealId: null,
         pollingInterval: null,
@@ -1267,7 +1371,37 @@ document.addEventListener('alpine:init', () => {
         modalTimeout: null, // Timeout for modal auto-refresh
         _trackPurchaseOnce: false, // Prevent duplicate purchase events from SSE+polling
 
+        // --- Donation / flexible-amount ("pay-what-you-want") helpers ---
+        get donationCfg() {
+            const d = this.asset.details && this.asset.details.donation;
+            return (d && d.enabled) ? d : null;
+        },
+        get isDonation() {
+            // Donation never applies while a subscription tier is selected.
+            return !!this.donationCfg && !this.selectedTier;
+        },
+        get donationMin() {
+            return this.donationCfg ? parseFloat(this.donationCfg.min_amount || 0) : 0;
+        },
+        get contributionAmount() {
+            const n = parseFloat(this.contribution);
+            return isNaN(n) || n < 0 ? 0 : n;
+        },
+        formatCurrency(amount) {
+            return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0);
+        },
+        // The amount actually being charged — used for the CTA label and analytics.
+        get effectiveAmount() {
+            if (this.isDonation) return this.contributionAmount;
+            if (this.selectedTier) return parseFloat(this.selectedTier.price || 0);
+            return parseFloat(this.asset.price || 0);
+        },
+
         get isFree() {
+            // Donation assets are free unless the supporter chooses to contribute.
+            if (this.isDonation) {
+                return this.contributionAmount === 0;
+            }
             // Check if this is a free asset (no tier selected or tier price is 0)
             if (this.selectedTier && this.selectedTier.price) {
                 return parseFloat(this.selectedTier.price) === 0;
@@ -1372,6 +1506,15 @@ document.addEventListener('alpine:init', () => {
                 : null;
             this.selectedTier = priorTier || (this.tiers.length > 0 ? this.tiers[0] : null);
 
+            // Donation assets: reset the amount. If a contribution is mandatory,
+            // prefill with the minimum (or first suggested amount) so the CTA is valid.
+            this.contribution = '';
+            const dc = this.donationCfg;
+            if (dc && dc.mandatory) {
+                const preset = (dc.suggested_amounts && dc.suggested_amounts[0]) || dc.min_amount || '';
+                this.contribution = preset ? String(preset) : '';
+            }
+
             this.$nextTick(() => { if (this.$refs.phoneInput) this.$refs.phoneInput.focus(); });
 
             if (autoRetry) {
@@ -1405,7 +1548,7 @@ document.addEventListener('alpine:init', () => {
             if (this._trackPurchaseOnce) return;
             this._trackPurchaseOnce = true;
             try {
-                var price = this.selectedTier ? parseFloat(this.selectedTier.price || 0) : parseFloat(this.asset.price || 0);
+                var price = this.effectiveAmount;
                 if (typeof window.nyotaTrack === 'function') {
                     window.nyotaTrack('purchase',
                         { transaction_id: String(this.purchaseId || ''), currency: currencySymbol, value: price, items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: price, quantity: 1 }] },
@@ -1439,6 +1582,24 @@ document.addEventListener('alpine:init', () => {
                 this.errorMessage = 'Please enter a valid phone number.';
                 return;
             }
+
+            // Donation validation (mirrored server-side): mandatory needs >= min;
+            // optional allows 0 or >= min, but never a sub-minimum non-zero amount.
+            if (this.isDonation) {
+                const amt = this.contributionAmount;
+                const min = this.donationMin;
+                if (this.donationCfg.mandatory && amt < Math.max(min, 0.01)) {
+                    this.errorMessage = min > 0
+                        ? `Please contribute at least ${this.currency}${formatCurrency(min)}.`
+                        : `A contribution is required to continue.`;
+                    return;
+                }
+                if (amt > 0 && amt < min) {
+                    this.errorMessage = `The minimum contribution is ${this.currency}${formatCurrency(min)}.`;
+                    return;
+                }
+            }
+
             this.status = 'initiating';
             this.errorMessage = '';
             localStorage.setItem('nyota_phone', this.phoneNumber);
@@ -1452,6 +1613,7 @@ document.addEventListener('alpine:init', () => {
                         asset_id: this.asset.id,
                         channel_id: this.channelId,
                         tier: this.selectedTier,
+                        contribution: this.isDonation ? this.contributionAmount : undefined,
                         language: navigator.language || 'en'
                     })
                 });
@@ -1484,7 +1646,7 @@ document.addEventListener('alpine:init', () => {
 
                     // Analytics: add_payment_info (phone submitted successfully)
                     try {
-                        var payPrice = this.selectedTier ? parseFloat(this.selectedTier.price || 0) : parseFloat(this.asset.price || 0);
+                        var payPrice = this.effectiveAmount;
                         if (typeof window.nyotaTrack === 'function') {
                             window.nyotaTrack('add_payment_info',
                                 { currency: currencySymbol, value: payPrice, payment_type: 'mobile_money', items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: payPrice, quantity: 1 }] },
@@ -1752,13 +1914,32 @@ document.addEventListener('alpine:init', () => {
         maxPolls: 120,
         eventSource: null,
         selectedTier: null,
+        contribution: '', // Donor-chosen amount for pay-what-you-want assets
         _trackPurchaseOnce: false,
 
         get paymentUrl() {
             return this.$el.dataset.paymentUrl || '/api/initiate-payment';
         },
 
+        get donationCfg() {
+            const d = this.asset.details && this.asset.details.donation;
+            return (d && d.enabled) ? d : null;
+        },
+        get isDonation() {
+            return !!this.donationCfg && !this.selectedTier;
+        },
+        get donationMin() {
+            return this.donationCfg ? parseFloat(this.donationCfg.min_amount || 0) : 0;
+        },
+        get contributionAmount() {
+            const n = parseFloat(this.contribution);
+            return isNaN(n) || n < 0 ? 0 : n;
+        },
+
         get totalPrice() {
+            if (this.isDonation) {
+                return this.contributionAmount;
+            }
             if (this.selectedTier && this.selectedTier.price !== undefined) {
                 return parseFloat(this.selectedTier.price) || 0;
             }
@@ -1767,6 +1948,11 @@ document.addEventListener('alpine:init', () => {
 
         init() {
             this.selectedTier = (this.asset.details?.subscription_tiers || [])[0] || null;
+            const dc = this.donationCfg;
+            if (dc && dc.mandatory) {
+                const preset = (dc.suggested_amounts && dc.suggested_amounts[0]) || dc.min_amount || '';
+                this.contribution = preset ? String(preset) : '';
+            }
 
             // Resume a pending payment if one was stored (e.g. page refresh)
             const pendingData = localStorage.getItem(`nyota_purchase_${this.asset.id}`);
@@ -1791,6 +1977,18 @@ document.addEventListener('alpine:init', () => {
                 this.errorMessage = 'Please enter a valid phone number.';
                 return;
             }
+            if (this.isDonation) {
+                const amt = this.contributionAmount;
+                const min = this.donationMin;
+                if (this.donationCfg.mandatory && amt < Math.max(min, 0.01)) {
+                    this.errorMessage = min > 0 ? `Please contribute at least ${min}.` : `A contribution is required to continue.`;
+                    return;
+                }
+                if (amt > 0 && amt < min) {
+                    this.errorMessage = `The minimum contribution is ${min}.`;
+                    return;
+                }
+            }
             this.state = 'waiting';
             this.statusMessage = 'Initiating payment...';
             this.errorMessage = '';
@@ -1805,6 +2003,7 @@ document.addEventListener('alpine:init', () => {
                         asset_id: this.asset.id,
                         channel_id: this.channelId,
                         tier: this.selectedTier,
+                        contribution: this.isDonation ? this.contributionAmount : undefined,
                         language: navigator.language || 'en'
                     })
                 });

@@ -220,7 +220,7 @@
                                     class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
                                     placeholder="Briefly describe what people will get"></textarea>
                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Appears in search results and
-                                    preview cards</p>
+                                    preview cards. Supports Markdown.</p>
                             </div>
 
                             <div class="md:col-span-2">
@@ -266,7 +266,7 @@
                                     class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
                                     placeholder="Tell the full story behind your content..."></textarea>
                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">This is your chance to connect
-                                    with your audience</p>
+                                    with your audience. Supports Markdown — use headings and lists to break it up.</p>
                             </div>
                         </div>
                     </div>
@@ -856,6 +856,51 @@
                                     </div>
                                 </div>
                             </template>
+                        </div>
+
+                        <!-- Contributions / Pay-What-You-Want (one-time assets only) -->
+                        <div x-show="pricing.type === 'one-time'"
+                            class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <span class="flex flex-col pr-3">
+                                    <span class="text-sm font-semibold text-gray-900 dark:text-white">Accept contributions</span>
+                                    <span class="text-[11px] text-gray-500 dark:text-gray-400">Pay-what-you-want: the item is
+                                        free, supporters may add a contribution.</span>
+                                </span>
+                                <button type="button" @click="donation.enabled = !donation.enabled"
+                                    :class="donation.enabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'"
+                                    class="relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                    <span aria-hidden="true"
+                                        :class="donation.enabled ? 'translate-x-5' : 'translate-x-0'"
+                                        class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"></span>
+                                </button>
+                            </div>
+
+                            <div x-show="donation.enabled" x-cloak class="space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Minimum
+                                            contribution ({{ currency_symbol }})</label>
+                                        <input type="number" min="0" step="0.01" x-model="donation.min_amount"
+                                            placeholder="0"
+                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Suggested
+                                            amounts (comma-separated)</label>
+                                        <input type="text" x-model="donation._suggestedRaw" placeholder="5000, 10000, 20000"
+                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+                                    </div>
+                                </div>
+                                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" x-model="donation.mandatory"
+                                        class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                    Require a contribution (no free option)
+                                </label>
+                                <p class="text-[11px] text-amber-600 dark:text-amber-400">Base price is forced to Free. Set the
+                                    linked UZA product's price to <strong>1 {{ currency_symbol }}</strong> — the contribution is
+                                    sent as the quantity.</p>
+                            </div>
                         </div>
 
                         <!-- Delivery Options -->

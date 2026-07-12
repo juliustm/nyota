@@ -235,8 +235,20 @@
                         </div>
 
                         <div>
-                            <label for="description" class="input-label">Short Description</label>
-                            <p class="text-xs text-gray-500 mb-2">Shown on listing cards and social previews.</p>
+                            <div class="flex items-center justify-between gap-3 flex-wrap">
+                                <label for="description" class="input-label">Short Description</label>
+                                <span
+                                    class="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">
+                                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M4 6h16M4 12h10M4 18h6" />
+                                    </svg>
+                                    Markdown
+                                </span>
+                            </div>
+                            <p class="text-xs text-gray-500 mb-2">Shown on listing cards, social previews, and as the
+                                opening paragraph on the public page.</p>
                             <textarea id="description" rows="3" x-model="editableAsset.description" class="input-field"
                                 placeholder="Briefly describe what this is..."></textarea>
                         </div>
@@ -258,11 +270,23 @@
                         </div>
 
                         <div>
-                            <label for="story" class="input-label">Full Story / Landing Page</label>
+                            <div class="flex items-center justify-between gap-3 flex-wrap">
+                                <label for="story" class="input-label">Full Story / Landing Page</label>
+                                <span
+                                    class="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">
+                                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M4 6h16M4 12h10M4 18h6" />
+                                    </svg>
+                                    Markdown
+                                </span>
+                            </div>
                             <p class="text-xs text-gray-500 mb-2">The main content shown to users before they purchase.
-                                Supports Markdown.</p>
-                            <textarea id="story" rows="12" x-model="editableAsset.story"
-                                class="input-field font-mono text-sm" placeholder="# About this asset..."></textarea>
+                                Use headings, lists and bold text to break it up — the preview button shows it exactly
+                                as buyers will see it.</p>
+                            <textarea id="story" rows="12" x-model="editableAsset.story" class="input-field"
+                                placeholder="# About this asset..."></textarea>
                         </div>
 
                         <div>
@@ -273,6 +297,11 @@
                                 tracking and analytics.</p>
                             <input type="text" id="uza_product_id" x-model="editableAsset.uza_product_id"
                                 class="input-field font-mono" placeholder="e.g., prod_abc123xyz">
+                            <p x-show="editableAsset.donation && editableAsset.donation.enabled" x-cloak
+                                class="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+                                Contributions enabled — set this UZA product's price to <strong>1 {{ currency_symbol }}</strong>;
+                                the contribution is sent as the quantity.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -875,8 +904,70 @@
                     <!-- Base Price (Shown if NOT subscription/tiers) -->
                     <div x-show="!editableAsset.is_subscription">
                         <label class="input-label">Price ({{ currency_symbol }})</label>
-                        <input type="number" x-model="editableAsset.price" class="input-field" placeholder="0.00"
-                            min="0" step="0.01">
+                        <input x-show="!editableAsset.donation.enabled" type="number" x-model="editableAsset.price"
+                            class="input-field" placeholder="0.00" min="0" step="0.01">
+                        <p x-show="editableAsset.donation.enabled" x-cloak
+                            class="text-sm text-green-600 dark:text-green-400 font-medium py-2">
+                            Free — supporters choose their own contribution below.
+                        </p>
+                    </div>
+
+                    <!-- Contributions / Pay-What-You-Want (one-time assets only) -->
+                    <div x-show="!editableAsset.is_subscription"
+                        class="border-t border-gray-200 dark:border-gray-700 pt-3 mt-2">
+                        <div class="flex items-center justify-between py-1">
+                            <span class="flex-grow flex flex-col pr-3">
+                                <span class="text-sm font-medium text-gray-900 dark:text-white">Accept contributions</span>
+                                <span class="text-xs text-gray-500">Pay-what-you-want: the item is free, supporters may add a
+                                    contribution.</span>
+                            </span>
+                            <button type="button" @click="editableAsset.donation.enabled = !editableAsset.donation.enabled"
+                                :class="editableAsset.donation.enabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'"
+                                class="relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                <span aria-hidden="true"
+                                    :class="editableAsset.donation.enabled ? 'translate-x-5' : 'translate-x-0'"
+                                    class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"></span>
+                            </button>
+                        </div>
+
+                        <div x-show="editableAsset.donation.enabled" x-cloak class="space-y-4 mt-3">
+                            <div>
+                                <label class="input-label">Minimum contribution ({{ currency_symbol }})</label>
+                                <p class="text-xs text-gray-500 mb-1.5">The smallest amount a supporter may contribute (0 =
+                                    no minimum).</p>
+                                <input type="number" x-model="editableAsset.donation.min_amount" class="input-field"
+                                    placeholder="0" min="0" step="0.01">
+                            </div>
+
+                            <div class="flex items-center justify-between py-1">
+                                <span class="flex-grow flex flex-col pr-3">
+                                    <span class="text-sm font-medium text-gray-900 dark:text-white">Require a contribution</span>
+                                    <span class="text-xs text-gray-500">Supporters must contribute at least the minimum (no
+                                        free option).</span>
+                                </span>
+                                <button type="button"
+                                    @click="editableAsset.donation.mandatory = !editableAsset.donation.mandatory"
+                                    :class="editableAsset.donation.mandatory ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'"
+                                    class="relative inline-flex flex-shrink-0 h-6 w-11 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                    <span aria-hidden="true"
+                                        :class="editableAsset.donation.mandatory ? 'translate-x-5' : 'translate-x-0'"
+                                        class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"></span>
+                                </button>
+                            </div>
+
+                            <div>
+                                <label class="input-label">Suggested amounts</label>
+                                <p class="text-xs text-gray-500 mb-1.5">Comma-separated quick-pick chips, e.g. 5000, 10000,
+                                    20000.</p>
+                                <input type="text" x-model="editableAsset.donation._suggestedRaw" class="input-field"
+                                    placeholder="5000, 10000, 20000">
+                            </div>
+
+                            <p class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 leading-relaxed">
+                                <strong>UZA billing:</strong> set the linked UZA product's price to <strong>1 {{ currency_symbol }}</strong>.
+                                The contribution is sent as the quantity (amount × 1 = total).
+                            </p>
+                        </div>
                     </div>
 
                     <!-- Allow Download Toggle -->

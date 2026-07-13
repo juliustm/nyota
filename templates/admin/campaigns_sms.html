@@ -320,6 +320,10 @@
                         <div x-show="scheduleEnabled" x-cloak class="mt-1">
                             <input type="datetime-local" x-model="form.scheduled_at"
                                 class="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <p class="mt-1 text-xs text-gray-500">
+                                Time is in your store timezone ({{ creator_timezone }}).
+                                <a href="{{ url_for('admin.manage_settings') }}" class="text-indigo-500 hover:underline">Change</a>
+                            </p>
                         </div>
                     </div>
 
@@ -1118,9 +1122,12 @@ function smsCampaigns() {
                     this.setFeedback('Draft saved.', true);
                     // Update local list without full reload
                     const existing = this.campaigns.findIndex(c => c.id === d.id);
-                    const updated = { ...this.form, id: d.id, status: 'Draft', status_name: 'DRAFT',
+                    const scheduled = this.scheduleEnabled && !!this.form.scheduled_at;
+                    const updated = { ...this.form, id: d.id,
+                        status: scheduled ? 'Scheduled' : 'Draft',
+                        status_name: scheduled ? 'SCHEDULED' : 'DRAFT',
                         sent_count: 0, failed_count: 0, total_recipients: 0,
-                        sent_at: null, scheduled_at: this.scheduleEnabled ? this.form.scheduled_at : null,
+                        sent_at: null, scheduled_at: scheduled ? this.form.scheduled_at : null,
                         created_at: new Date().toISOString() };
                     if (existing >= 0) this.campaigns[existing] = updated;
                     else this.campaigns.unshift(updated);

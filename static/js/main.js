@@ -826,6 +826,21 @@ document.addEventListener('alpine:init', () => {
         metaPixelEnabled: false,
         gaEnabled: false,
 
+        // Footer: links and opening hours are edited as structures and posted as
+        // JSON in a single hidden field each (see the footer section of settings.html).
+        footerLinks: [],
+        businessHours: {},
+        weekdays: [
+            { key: 'mon', label: 'Monday' },
+            { key: 'tue', label: 'Tuesday' },
+            { key: 'wed', label: 'Wednesday' },
+            { key: 'thu', label: 'Thursday' },
+            { key: 'fri', label: 'Friday' },
+            { key: 'sat', label: 'Saturday' },
+            { key: 'sun', label: 'Sunday' },
+        ],
+        maxFooterLinks: 3,
+
         init() {
             // Populate state from the initial settings object
             this.storeLogo = this.settings.store_logo_url || '';
@@ -837,8 +852,39 @@ document.addEventListener('alpine:init', () => {
             this.metaPixelEnabled = this.settings.marketing_meta_pixel_enabled || false;
             this.gaEnabled = this.settings.marketing_ga_enabled || false;
 
+            // Footer defaults. A store that has never opened this tab has no rows at
+            // all, so seed the selects (an unmatched x-model would render blank) and
+            // switch on the two things every store wants.
+            ['footer_about_visibility', 'footer_contact_visibility', 'footer_address_visibility', 'footer_hours_visibility']
+                .forEach(key => {
+                    if (!this.settings[key]) this.settings[key] = 'public';
+                });
+            if (this.settings.footer_enabled === undefined) this.settings.footer_enabled = true;
+            if (this.settings.footer_credit_enabled === undefined) this.settings.footer_credit_enabled = true;
+
+            // Footer structures. Both are stored as JSON in CreatorSetting.value, but
+            // tolerate a string in case an older row was written as text.
+            this.footerLinks = this.parseStructure(this.settings.footer_links, []);
+            if (!Array.isArray(this.footerLinks)) this.footerLinks = [];
+            this.footerLinks = this.footerLinks.slice(0, this.maxFooterLinks).map(link => ({
+                title: link.title || '',
+                description: link.description || '',
+                url: link.url || '',
+            }));
+
+            const savedHours = this.parseStructure(this.settings.business_hours, {}) || {};
+            this.businessHours = {};
+            this.weekdays.forEach(day => {
+                const entry = savedHours[day.key] || {};
+                this.businessHours[day.key] = {
+                    closed: !!entry.closed,
+                    open: entry.open || '',
+                    close: entry.close || '',
+                };
+            });
+
             // Restore the last-open tabs so a refresh returns to the same view.
-            const validMainTabs = ['storeProfile', 'appearance', 'integrations'];
+            const validMainTabs = ['storeProfile', 'appearance', 'footer', 'integrations'];
             const validIntegrationTabs = ['notifications', 'payments', 'marketing'];
             const savedMainTab = localStorage.getItem('adminSettingsMainTab');
             const savedIntegrationTab = localStorage.getItem('adminSettingsIntegrationTab');
@@ -855,6 +901,41 @@ document.addEventListener('alpine:init', () => {
         setTheme(newTheme) {
             // This method updates the LIVE theme, not the saved setting
             this.$dispatch('set-theme', newTheme);
+        },
+
+        // --- Footer helpers ---
+
+        parseStructure(value, fallback) {
+            if (value === null || value === undefined || value === '') return fallback;
+            if (typeof value === 'object') return value;
+            try {
+                return JSON.parse(value);
+            } catch (e) {
+                console.warn('[Nyota] Ignoring unreadable footer setting:', e);
+                return fallback;
+            }
+        },
+
+        addFooterLink() {
+            if (this.footerLinks.length >= this.maxFooterLinks) return;
+            this.footerLinks.push({ title: '', description: '', url: '' });
+        },
+
+        removeFooterLink(index) {
+            this.footerLinks.splice(index, 1);
+        },
+
+        // Copy one day's hours down to every other open day — the common case is
+        // the same window Mon–Fri.
+        applyHoursToAll(sourceKey) {
+            const source = this.businessHours[sourceKey];
+            if (!source) return;
+            this.weekdays.forEach(day => {
+                if (day.key === sourceKey) return;
+                if (this.businessHours[day.key].closed) return;
+                this.businessHours[day.key].open = source.open;
+                this.businessHours[day.key].close = source.close;
+            });
         },
 
         previewStoreLogo(event) {
@@ -1055,7 +1136,6 @@ document.addEventListener('alpine:init', () => {
                 });
             }
 
-            this.applyUtilityClasses();
             this.$nextTick(() => this._initMDEditors());
         },
 
@@ -1092,6 +1172,23 @@ document.addEventListener('alpine:init', () => {
         get publicUrl() {
             // Guard against a null asset object here as well.
             return `${window.location.origin}/${this.editableAsset.slug || this.asset.slug || ''}`;
+        },
+
+        linkCopied: false,
+        async copyPublicUrl() {
+            try {
+                await navigator.clipboard.writeText(this.publicUrl);
+            } catch (e) {
+                // Clipboard API needs a secure context; fall back to a temp input.
+                const tmp = document.createElement('input');
+                tmp.value = this.publicUrl;
+                document.body.appendChild(tmp);
+                tmp.select();
+                document.execCommand('copy');
+                document.body.removeChild(tmp);
+            }
+            this.linkCopied = true;
+            setTimeout(() => { this.linkCopied = false; }, 2000);
         },
 
         addContentItem(position = 'bottom') {
@@ -1233,7 +1330,7 @@ document.addEventListener('alpine:init', () => {
 
             // Sanitize donation config (only meaningful for non-subscription assets).
             const donationSrc = this.editableAsset.donation || {};
-            const donationEnabled = !!donationSrc.enabled && !this.editableAsset.is_subscription;
+            const donationEnabled = !!donationSrc.enabled && !this.asset.is_subscription;
             const donation = {
                 enabled: donationEnabled,
                 min_amount: parseFloat(donationSrc.min_amount) || 0,
@@ -1246,6 +1343,9 @@ document.addEventListener('alpine:init', () => {
 
             const assetData = {
                 action: this.editableAsset.status === 'Draft' ? 'draft' : 'publish',
+                // Send the exact status too — 'action' alone cannot express
+                // Unlisted/Archived and the server would fall back to Published.
+                status: this.editableAsset.status,
                 asset: {
                     id: this.asset.id,
                     title: this.editableAsset.title,
@@ -1272,9 +1372,11 @@ document.addEventListener('alpine:init', () => {
                 labels: this.editableAsset.details?.labels || {},
                 donation: donation,
                 pricing: {
+                    // The billing model is fixed at creation; the server ignores this on
+                    // updates. Sent only so the payload stays consistent with the asset.
                     amount: effectivePrice,
-                    type: this.editableAsset.is_subscription ? 'recurring' : 'one-time',
-                    billingCycle: (this.editableAsset.subscription_interval || 'monthly').toLowerCase(),
+                    type: this.asset.is_subscription ? 'recurring' : 'one-time',
+                    billingCycle: (this.asset.subscription_interval || 'monthly').toLowerCase(),
                     tiers: this.editableAsset.details?.subscription_tiers || []
                 }
             };
@@ -1328,22 +1430,6 @@ document.addEventListener('alpine:init', () => {
 
         hideNotification() {
             this.notification.show = false;
-        },
-
-
-
-        applyUtilityClasses() {
-            const map = {
-                '.input-label': 'block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5',
-                '.input-field': 'w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow shadow-sm placeholder-gray-400 dark:placeholder-gray-500',
-            };
-            document.querySelectorAll(Object.keys(map).join(',')).forEach(el => {
-                for (const selector in map) {
-                    if (el.matches(selector)) {
-                        el.className = map[selector];
-                    }
-                }
-            });
         }
     }));
 

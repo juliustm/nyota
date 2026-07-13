@@ -49,6 +49,16 @@
                     </svg>
                     Appearance
                 </button>
+                <button @click.prevent="mainTab = 'footer'"
+                    :class="mainTab === 'footer' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'"
+                    class="group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors">
+                    <svg :class="mainTab === 'footer' ? 'text-indigo-500 dark:text-indigo-400' : 'text-gray-400 group-hover:text-gray-500'"
+                        class="-ml-0.5 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 10h16M4 14h16M4 18h7" />
+                    </svg>
+                    Footer
+                </button>
                 <button @click.prevent="mainTab = 'integrations'"
                     :class="mainTab === 'integrations' ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'"
                     class="group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors">
@@ -381,6 +391,481 @@
                             </svg>
                         </div>
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer & Trust Section -->
+        <div x-show="mainTab === 'footer'" x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
+            x-cloak class="space-y-6">
+
+            <!-- Master toggle -->
+            <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all duration-200"
+                :class="settings.footer_enabled ? 'ring-1 ring-indigo-500 border-indigo-500' : ''">
+                <div class="flex items-center gap-4">
+                    <div class="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-full shrink-0">
+                        <svg class="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h7" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-white">Rich Footer</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Replace the minimal footer with a full trust
+                            footer. Everything you publish here is also emitted as
+                            search-engine structured data.</p>
+                    </div>
+                </div>
+                <button type="button"
+                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                    :class="settings.footer_enabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'" role="switch"
+                    @click="settings.footer_enabled = !settings.footer_enabled">
+                    <input type="checkbox" name="footer_enabled" class="hidden" x-model="settings.footer_enabled">
+                    <span
+                        class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                        :class="settings.footer_enabled ? 'translate-x-5' : 'translate-x-0'"></span>
+                </button>
+            </div>
+
+            <div x-show="settings.footer_enabled" x-collapse>
+                <div class="space-y-6">
+
+                    <!-- Privacy note -->
+                    <div
+                        class="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 p-4 flex gap-3">
+                        <svg class="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <p class="text-sm text-amber-800 dark:text-amber-200">
+                            <strong class="font-semibold">Visibility affects SEO.</strong> Search engines browse
+                            anonymously, so anything you restrict to a session is
+                            withheld from both the page and the structured data. Keep your address and hours
+                            <strong>Public</strong> if you want them to earn local search results.
+                        </p>
+                    </div>
+
+                    <!-- Brand & tagline -->
+                    <div
+                        class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Brand Line</h3>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Footer
+                                tagline</label>
+                            <input type="text" name="footer_tagline" :value="settings.footer_tagline" maxlength="140"
+                                placeholder="e.g. Practical design resources, delivered instantly."
+                                class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                            <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">One sentence under your logo.
+                                Says what you do and for whom.</p>
+                        </div>
+
+                        <label class="flex items-center gap-3 pt-2">
+                            <input type="checkbox" name="footer_social_enabled" x-model="settings.footer_social_enabled"
+                                class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                            <span class="text-sm text-gray-700 dark:text-gray-300">Show social links (uses the profiles
+                                from <button type="button" @click="mainTab = 'storeProfile'"
+                                    class="text-indigo-500 hover:underline">Store Profile</button>). Also published as
+                                <code class="text-xs">sameAs</code> markup, which helps Google connect your
+                                accounts.</span>
+                        </label>
+
+                        <label class="flex items-center gap-3">
+                            <input type="checkbox" name="footer_credit_enabled" x-model="settings.footer_credit_enabled"
+                                class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                            <span class="text-sm text-gray-700 dark:text-gray-300">Show "Powered by Nyota ✨"</span>
+                        </label>
+                    </div>
+
+                    <!-- About / bio -->
+                    <div
+                        class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">About Blurb</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">A short "who we are" paragraph.
+                                    Falls back to your store bio.</p>
+                            </div>
+                            <label class="flex items-center gap-2 shrink-0">
+                                <input type="checkbox" name="footer_about_enabled"
+                                    x-model="settings.footer_about_enabled"
+                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Show</span>
+                            </label>
+                        </div>
+                        <div x-show="settings.footer_about_enabled" x-collapse class="space-y-4">
+                            <textarea name="footer_about_text" x-text="settings.footer_about_text" rows="3"
+                                maxlength="300" placeholder="Leave blank to reuse your store bio."
+                                class="form-textarea block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-3"></textarea>
+                            <div>
+                                <label
+                                    class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Visible
+                                    to</label>
+                                <select name="footer_about_visibility" x-model="settings.footer_about_visibility"
+                                    class="form-select block w-full sm:w-64 rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                    <option value="public">Everyone (indexed by search engines)</option>
+                                    <option value="session">Readers with an active session</option>
+                                    <option value="verified">Verified customers only</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Custom links -->
+                    <div
+                        class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Footer Links</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Up to three. Give each a clear
+                                    title and one line of context — descriptive
+                                    anchor text is what search engines weigh.</p>
+                            </div>
+                            <label class="flex items-center gap-2 shrink-0">
+                                <input type="checkbox" name="footer_links_enabled"
+                                    x-model="settings.footer_links_enabled"
+                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Show</span>
+                            </label>
+                        </div>
+
+                        <div x-show="settings.footer_links_enabled" x-collapse>
+                            <!-- Posted as one JSON field; parsed and validated server-side. -->
+                            <input type="hidden" name="footer_links" :value="JSON.stringify(footerLinks)">
+
+                            <div class="space-y-3">
+                                <template x-for="(link, index) in footerLinks" :key="index">
+                                    <div
+                                        class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+                                        <div class="flex items-center justify-between mb-3">
+                                            <span
+                                                class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500"
+                                                x-text="'Link ' + (index + 1)"></span>
+                                            <button type="button" @click="removeFooterLink(index)"
+                                                class="text-xs font-medium text-red-500 hover:text-red-600">Remove</button>
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <input type="text" x-model="link.title" maxlength="60"
+                                                placeholder="Title, e.g. Refund Policy"
+                                                class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                            <input type="text" x-model="link.url"
+                                                placeholder="URL, e.g. https://… or /page"
+                                                class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                        </div>
+                                        <input type="text" x-model="link.description" maxlength="120"
+                                            placeholder="Short description, e.g. 14-day no-questions refunds."
+                                            class="form-input mt-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                    </div>
+                                </template>
+
+                                <p x-show="footerLinks.length === 0"
+                                    class="text-sm text-gray-400 dark:text-gray-500 italic py-2">No links yet. Policies,
+                                    an FAQ, or an About page all build buyer confidence.</p>
+
+                                <button type="button" @click="addFooterLink()"
+                                    x-show="footerLinks.length < maxFooterLinks"
+                                    class="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    Add link
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Contact -->
+                    <div
+                        class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Contact</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Uses the email and phone from Store
+                                    Profile. A reachable seller is a trusted seller.</p>
+                            </div>
+                            <label class="flex items-center gap-2 shrink-0">
+                                <input type="checkbox" name="footer_contact_enabled"
+                                    x-model="settings.footer_contact_enabled"
+                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Show</span>
+                            </label>
+                        </div>
+                        <div x-show="settings.footer_contact_enabled" x-collapse class="space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">WhatsApp
+                                        number</label>
+                                    <input type="text" name="footer_contact_whatsapp"
+                                        :value="settings.footer_contact_whatsapp" placeholder="+255…"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Adds a one-tap chat
+                                        link.</p>
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Visible
+                                        to</label>
+                                    <select name="footer_contact_visibility"
+                                        x-model="settings.footer_contact_visibility"
+                                        class="form-select block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                        <option value="public">Everyone (indexed by search engines)</option>
+                                        <option value="session">Readers with an active session</option>
+                                        <option value="verified">Verified customers only</option>
+                                    </select>
+                                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Restricting this hides
+                                        your number from scrapers — and from Google.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Address -->
+                    <div
+                        class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Address</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">A public address upgrades your
+                                    markup to <code class="text-xs">LocalBusiness</code>, which is what makes you
+                                    eligible for local search results and the map pack.</p>
+                            </div>
+                            <label class="flex items-center gap-2 shrink-0">
+                                <input type="checkbox" name="footer_address_enabled"
+                                    x-model="settings.footer_address_enabled"
+                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Show</span>
+                            </label>
+                        </div>
+                        <div x-show="settings.footer_address_enabled" x-collapse class="space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="md:col-span-2">
+                                    <label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Street</label>
+                                    <input type="text" name="business_street" :value="settings.business_street"
+                                        placeholder="e.g. 12 Ali Hassan Mwinyi Rd"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">City</label>
+                                    <input type="text" name="business_city" :value="settings.business_city"
+                                        placeholder="Dar es Salaam"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Region
+                                        / State</label>
+                                    <input type="text" name="business_region" :value="settings.business_region"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Postal
+                                        code</label>
+                                    <input type="text" name="business_postal_code"
+                                        :value="settings.business_postal_code"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Country</label>
+                                    <input type="text" name="business_country" :value="settings.business_country"
+                                        placeholder="Tanzania"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Map
+                                        link</label>
+                                    <input type="url" name="business_map_url" :value="settings.business_map_url"
+                                        placeholder="https://maps.google.com/…"
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Visible
+                                        to</label>
+                                    <select name="footer_address_visibility"
+                                        x-model="settings.footer_address_visibility"
+                                        class="form-select block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                        <option value="public">Everyone (indexed by search engines)</option>
+                                        <option value="session">Readers with an active session</option>
+                                        <option value="verified">Verified customers only</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Opening hours -->
+                    <div
+                        class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Opening Hours</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">When you answer messages. Published
+                                    as <code class="text-xs">openingHoursSpecification</code>, which Google can show
+                                    directly in results. Leave a day blank to omit it.</p>
+                            </div>
+                            <label class="flex items-center gap-2 shrink-0">
+                                <input type="checkbox" name="footer_hours_enabled"
+                                    x-model="settings.footer_hours_enabled"
+                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Show</span>
+                            </label>
+                        </div>
+                        <div x-show="settings.footer_hours_enabled" x-collapse class="space-y-4">
+                            <!-- Posted as one JSON field; parsed and validated server-side. -->
+                            <input type="hidden" name="business_hours" :value="JSON.stringify(businessHours)">
+
+                            <div class="space-y-2">
+                                <template x-for="day in weekdays" :key="day.key">
+                                    <div
+                                        class="flex flex-wrap items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
+                                        <span class="w-24 text-sm font-medium text-gray-700 dark:text-gray-300"
+                                            x-text="day.label"></span>
+
+                                        <label class="flex items-center gap-1.5">
+                                            <input type="checkbox" x-model="businessHours[day.key].closed"
+                                                class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                            <span class="text-xs text-gray-500 dark:text-gray-400">Closed</span>
+                                        </label>
+
+                                        <template x-if="!businessHours[day.key].closed">
+                                            <div class="flex items-center gap-2">
+                                                <input type="time" x-model="businessHours[day.key].open"
+                                                    class="form-input rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm h-9 px-2">
+                                                <span class="text-gray-400 text-sm">–</span>
+                                                <input type="time" x-model="businessHours[day.key].close"
+                                                    class="form-input rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm h-9 px-2">
+                                                <button type="button" @click="applyHoursToAll(day.key)"
+                                                    x-show="businessHours[day.key].open && businessHours[day.key].close"
+                                                    class="text-xs font-medium text-indigo-500 hover:underline">Copy to
+                                                    all</button>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Note
+                                        (optional)</label>
+                                    <input type="text" name="business_hours_note" :value="settings.business_hours_note"
+                                        maxlength="120" placeholder="e.g. Downloads are available 24/7."
+                                        class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Visible
+                                        to</label>
+                                    <select name="footer_hours_visibility" x-model="settings.footer_hours_visibility"
+                                        class="form-select block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                                        <option value="public">Everyone (indexed by search engines)</option>
+                                        <option value="session">Readers with an active session</option>
+                                        <option value="verified">Verified customers only</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Trust signals -->
+                    <div
+                        class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Trust Signals</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">The reassurance strip above the
+                                    footer columns.</p>
+                            </div>
+                            <label class="flex items-center gap-2 shrink-0">
+                                <input type="checkbox" name="footer_trust_enabled"
+                                    x-model="settings.footer_trust_enabled"
+                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Show</span>
+                            </label>
+                        </div>
+                        <div x-show="settings.footer_trust_enabled" x-collapse class="space-y-3">
+                            <label class="flex items-center gap-3">
+                                <input type="checkbox" name="footer_trust_secure_payment_enabled"
+                                    x-model="settings.footer_trust_secure_payment_enabled"
+                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Secure payment</span>
+                            </label>
+                            <label class="flex items-center gap-3">
+                                <input type="checkbox" name="footer_trust_instant_delivery_enabled"
+                                    x-model="settings.footer_trust_instant_delivery_enabled"
+                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Instant delivery</span>
+                            </label>
+                            <label class="flex items-center gap-3">
+                                <input type="checkbox" name="footer_trust_support_enabled"
+                                    x-model="settings.footer_trust_support_enabled"
+                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                <span class="text-sm text-gray-700 dark:text-gray-300">Support promise</span>
+                            </label>
+                            <div x-show="settings.footer_trust_support_enabled" x-collapse class="pl-7">
+                                <input type="text" name="footer_trust_support_text"
+                                    :value="settings.footer_trust_support_text" maxlength="60"
+                                    placeholder="e.g. We reply within 24 hours"
+                                    class="form-input block w-full sm:w-80 rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                            </div>
+
+                            <div class="pt-3 border-t border-gray-100 dark:border-gray-700">
+                                <label class="flex items-start gap-3">
+                                    <input type="checkbox" name="footer_stats_enabled"
+                                        x-model="settings.footer_stats_enabled"
+                                        class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                                    <span class="text-sm text-gray-700 dark:text-gray-300">
+                                        Show real social proof
+                                        <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">Customers
+                                            served and your average rating, read live from your own sales. Figures that
+                                            are still zero are simply left out, and genuine ratings are published as
+                                            review markup.</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Legal -->
+                    <div
+                        class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Legal Identity</h3>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">A named, registered business converts
+                                better than an anonymous store — and these fields feed your Organization markup.</p>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Legal
+                                    name</label>
+                                <input type="text" name="footer_legal_name" :value="settings.footer_legal_name"
+                                    placeholder="e.g. Nyota Media Ltd"
+                                    class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reg. /
+                                    Tax number</label>
+                                <input type="text" name="footer_tax_id" :value="settings.footer_tax_id"
+                                    placeholder="e.g. TIN 123-456-789"
+                                    class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Founded
+                                    (year)</label>
+                                <input type="text" name="footer_founding_year" :value="settings.footer_founding_year"
+                                    placeholder="2019" maxlength="4"
+                                    class="form-input block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </div>

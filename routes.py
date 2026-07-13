@@ -39,6 +39,7 @@ from utils.security import creator_login_required, generate_totp_secret, get_tot
 from utils.translator import translate
 from utils.image_utils import optimize_cover_image
 from utils.phone import normalize_phone_number
+from utils.timezones import local_to_utc, utc_to_local, creator_tz_name
 from extensions import limiter
 from services.sms_service import get_sms_provider
 
@@ -1046,6 +1047,19 @@ def check_subscription_status(purchase):
     is_active = datetime.utcnow() < expiry_date
     return is_active, expiry_date
 
+# Statuses a stranger holding the URL may open and buy. UNLISTED belongs here:
+# it is a *distribution* choice (keep it off the storefront), not an access
+# restriction — the secrecy of the link is the only thing gating it. Anything that
+# DISCOVERS assets (storefront list, search, sitemap, recommendations, OG picker)
+# must keep filtering on PUBLISHED alone, never on this tuple.
+LINK_REACHABLE_STATUSES = (AssetStatus.PUBLISHED, AssetStatus.UNLISTED)
+
+
+def is_link_reachable(asset):
+    """True if a visitor with the direct link may view/buy this asset."""
+    return bool(asset) and asset.status in LINK_REACHABLE_STATUSES
+
+
 def is_subscription_purchase(purchase):
     """True if the purchase is subscription-based (asset flag OR a recurring tier)."""
     if not purchase:
@@ -1159,8 +1173,15 @@ def save_asset_from_form(asset, req):
 
     pricing_data = form_data.get('pricing', {})
     asset.price = decimal.Decimal(pricing_data.get('amount') or 0.0)
-    asset.is_subscription = pricing_data.get('type') == 'recurring'
-    asset.subscription_interval = SubscriptionInterval[pricing_data.get('billingCycle', 'monthly').upper()] if asset.is_subscription else None
+    # The billing model is chosen once, at creation. An existing asset can have live
+    # subscribers whose renewals and access depend on it, so an edit never flips it —
+    # whatever the client sends for pricing.type on an update is ignored.
+    if asset.id is None:
+        asset.is_subscription = pricing_data.get('type') == 'recurring'
+    if asset.is_subscription:
+        asset.subscription_interval = SubscriptionInterval[pricing_data.get('billingCycle', 'monthly').upper()]
+    else:
+        asset.subscription_interval = None
     
     # Handle allow_download setting (default to True if not explicitly set)
     allow_download = form_data.get('allow_download')
@@ -1348,7 +1369,16 @@ def save_asset_from_form(asset, req):
             position=i
         ))
 
-    asset.status = AssetStatus.DRAFT if form_data.get('action') == 'draft' else AssetStatus.PUBLISHED
+    # Status: the editor sends the exact status the creator picked ('Unlisted',
+    # 'Archived', ...). Trust it when it's valid. Only fall back to the coarse
+    # draft/publish 'action' for the create form, which has no status picker —
+    # otherwise saving an Unlisted asset would silently republish it.
+    status_str = (form_data.get('status') or '').strip()
+    valid_statuses = {s.value: s for s in AssetStatus}
+    if status_str in valid_statuses:
+        asset.status = valid_statuses[status_str]
+    else:
+        asset.status = AssetStatus.DRAFT if form_data.get('action') == 'draft' else AssetStatus.PUBLISHED
     return asset
 
 # --- API ENDPOINTS FOR ASSET ACTIONS ---
@@ -1362,6 +1392,7 @@ def assets_bulk_action():
     if query.count() != len(asset_ids): return jsonify({'success': False, 'message': 'Authorization error or some assets not found.'}), 403
     try:
         if action == 'publish': query.update({'status': AssetStatus.PUBLISHED}); msg = f"{len(asset_ids)} asset(s) published."
+        elif action == 'unlist': query.update({'status': AssetStatus.UNLISTED}); msg = f"{len(asset_ids)} asset(s) are now unlisted — reachable only by direct link."
         elif action == 'draft': query.update({'status': AssetStatus.DRAFT}); msg = f"{len(asset_ids)} asset(s) moved to drafts."
         elif action == 'archive': query.update({'status': AssetStatus.ARCHIVED}); msg = f"{len(asset_ids)} asset(s) archived."
         elif action == 'delete': query.delete(synchronize_session=False); msg = f"{len(asset_ids)} asset(s) permanently deleted."
@@ -1975,6 +2006,24 @@ def manage_settings():
             # NOTE: 'asset_sort_mode' is intentionally NOT here — it is managed
             # from the Assets list page via /admin/api/settings/sort-mode so that
             # saving the main Settings form never wipes it.
+
+            # Footer & Trust
+            'footer_enabled', 'footer_tagline', 'footer_credit_enabled',
+            'footer_about_enabled', 'footer_about_visibility', 'footer_about_text',
+            'footer_links_enabled',
+            'footer_contact_enabled', 'footer_contact_visibility', 'footer_contact_whatsapp',
+            'footer_address_enabled', 'footer_address_visibility',
+            'business_street', 'business_city', 'business_region',
+            'business_postal_code', 'business_country', 'business_map_url',
+            'footer_hours_enabled', 'footer_hours_visibility', 'business_hours_note',
+            'footer_social_enabled',
+            'footer_trust_enabled', 'footer_trust_secure_payment_enabled',
+            'footer_trust_instant_delivery_enabled', 'footer_trust_support_enabled',
+            'footer_trust_support_text',
+            'footer_stats_enabled',
+            'footer_legal_name', 'footer_tax_id', 'footer_founding_year',
+            # NOTE: 'footer_links' and 'business_hours' are JSON structures posted as
+            # a single field each; they are parsed below rather than through this loop.
         ]
 
         # Iterate and save each setting
@@ -1990,7 +2039,64 @@ def manage_settings():
                 continue
             
             g.creator.set_setting(key, value)
-        
+
+        # --- Footer JSON structures ---
+        # Links and opening hours are repeatable/nested, so the form posts each as
+        # one JSON blob rather than dozens of indexed fields. They are validated and
+        # normalised here so the storefront never has to defend against bad shapes.
+        footer_links_raw = request.form.get('footer_links')
+        if footer_links_raw is not None:
+            try:
+                parsed = json.loads(footer_links_raw) or []
+                clean_links = []
+                for item in parsed:
+                    # Three links max, by design — a footer is not a sitemap. The cap is
+                    # applied to *valid* links, so a rejected one doesn't consume a slot.
+                    if len(clean_links) >= 3:
+                        break
+                    if not isinstance(item, dict):
+                        continue
+                    title = (item.get('title') or '').strip()
+                    url = (item.get('url') or '').strip()
+                    if not title or not url:
+                        continue
+                    # A URL carrying a scheme must carry an allowed one; anything else
+                    # (javascript:, data:, …) is dropped rather than patched up, so a
+                    # hostile value can never be massaged into something renderable.
+                    scheme_match = re.match(r'^([a-zA-Z][a-zA-Z0-9+.\-]*):', url)
+                    if scheme_match:
+                        if scheme_match.group(1).lower() not in ('http', 'https', 'mailto', 'tel'):
+                            continue
+                    elif not url.startswith('/'):
+                        # Bare domain the creator typed without a scheme, e.g. "example.com".
+                        url = 'https://' + url
+                    clean_links.append({
+                        'title': title[:60],
+                        'description': (item.get('description') or '').strip()[:120],
+                        'url': url,
+                    })
+                g.creator.set_setting('footer_links', clean_links)
+            except (ValueError, TypeError):
+                current_app.logger.warning('Settings: could not parse footer_links payload; left unchanged.')
+
+        business_hours_raw = request.form.get('business_hours')
+        if business_hours_raw is not None:
+            try:
+                parsed = json.loads(business_hours_raw) or {}
+                clean_hours = {}
+                for day in ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']:
+                    entry = parsed.get(day)
+                    if not isinstance(entry, dict):
+                        continue
+                    clean_hours[day] = {
+                        'closed': bool(entry.get('closed')),
+                        'open': (entry.get('open') or '').strip(),
+                        'close': (entry.get('close') or '').strip(),
+                    }
+                g.creator.set_setting('business_hours', clean_hours)
+            except (ValueError, TypeError):
+                current_app.logger.warning('Settings: could not parse business_hours payload; left unchanged.')
+
         # Handle file upload for store logo
         if 'store_logo' in request.files:
             file = request.files['store_logo']
@@ -2323,13 +2429,16 @@ def sms_campaigns():
         'is_recurring': c.is_recurring,
         'recurrence_interval_days': c.recurrence_interval_days,
         'smart_exclude_recent_buyers': c.smart_exclude_recent_buyers,
-        'sent_at': c.sent_at.isoformat() if c.sent_at else None,
-        'scheduled_at': c.scheduled_at.isoformat() if c.scheduled_at else None,
-        'created_at': c.created_at.isoformat(),
+        'sent_at': utc_to_local(c.sent_at, g.creator).isoformat() if c.sent_at else None,
+        # Sent to the browser as the creator's wall-clock time — that is what the
+        # datetime-local picker edits and what the list displays.
+        'scheduled_at': utc_to_local(c.scheduled_at, g.creator).strftime('%Y-%m-%dT%H:%M') if c.scheduled_at else None,
+        'created_at': utc_to_local(c.created_at, g.creator).isoformat(),
     } for c in campaigns]
 
     return render_template('admin/campaigns_sms.html',
                            campaigns_json=json.dumps(campaigns_data),
+                           creator_timezone=creator_tz_name(g.creator),
                            sms_configured=sms_configured,
                            assets=all_assets,
                            sms_templates=sms_templates,
@@ -2398,12 +2507,17 @@ def sms_campaign_save():
     scheduled_at_str = data.get('scheduled_at')
     if scheduled_at_str:
         try:
-            campaign.scheduled_at = datetime.fromisoformat(scheduled_at_str)
+            # The admin picks a wall-clock time in their own timezone; store UTC
+            # so the background worker's utcnow() comparison fires at that hour.
+            local_dt = datetime.fromisoformat(scheduled_at_str)
+            campaign.scheduled_at = local_to_utc(local_dt, g.creator)
+            campaign.next_run_at = campaign.scheduled_at
             campaign.status = SMSCampaignStatus.SCHEDULED
         except ValueError:
             pass
     else:
         campaign.scheduled_at = None
+        campaign.next_run_at = None
 
     db.session.commit()
     return jsonify({'success': True, 'id': campaign.id, 'message': 'Campaign saved.'})
@@ -2509,7 +2623,7 @@ def sms_campaign_logs(campaign_id):
     return jsonify({
         'campaign': {'id': campaign.id, 'name': campaign.name, 'status': campaign.status.value},
         'logs': [{'phone': l.phone_number, 'status': l.status,
-                  'sent_at': l.sent_at.isoformat() if l.sent_at else None,
+                  'sent_at': utc_to_local(l.sent_at, g.creator).isoformat() if l.sent_at else None,
                   'error': l.error_message} for l in logs]
     })
 
@@ -2589,7 +2703,7 @@ def sms_global_log():
             'phone': l.phone_number,
             'type': l.log_type.value,
             'status': l.status,
-            'sent_at': l.sent_at.isoformat() if l.sent_at else None,
+            'sent_at': utc_to_local(l.sent_at, g.creator).isoformat() if l.sent_at else None,
             'preview': l.message_preview,
             'campaign_id': l.campaign_id,
         } for l in logs.items]
@@ -2993,7 +3107,10 @@ def referral_landing(refcode):
 
     next_slug = request.args.get('next', '').strip()
     if next_slug:
-        asset = DigitalAsset.query.filter_by(slug=next_slug, status=AssetStatus.PUBLISHED).first()
+        asset = DigitalAsset.query.filter(
+            DigitalAsset.slug == next_slug,
+            DigitalAsset.status.in_(LINK_REACHABLE_STATUSES)
+        ).first()
         if asset:
             return redirect(url_for('main.asset_detail', slug=next_slug))
 
@@ -3122,6 +3239,11 @@ def asset_detail(slug):
     # Visibility Rules
     if asset_obj.status == AssetStatus.PUBLISHED:
         pass # Public
+    elif asset_obj.status == AssetStatus.UNLISTED:
+        # Anyone holding the link may view and buy — it's just kept off the
+        # storefront, search, sitemap and recommendations. The template renders
+        # a noindex tag so a leaked link doesn't end up in Google.
+        pass
     elif asset_obj.status == AssetStatus.ARCHIVED:
         # Visible only to Owners (Purchasers) and Creator
         if not (has_purchased or is_creator):
@@ -3267,12 +3389,18 @@ def asset_detail(slug):
         meta_title=meta_title,
         meta_description=meta_description,
         meta_image=meta_image,
-        hide_navbar_search=True
+        hide_navbar_search=True,
+        # Only a genuinely published asset should be indexable. Unlisted pages are
+        # reachable by link, so they must actively tell crawlers to stay away.
+        robots_noindex=(asset_obj.status != AssetStatus.PUBLISHED)
     )
 
 @main_bp.route('/checkout/<slug>')
 def checkout(slug):
-    asset = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
+    asset = DigitalAsset.query.filter(
+        DigitalAsset.slug == slug,
+        DigitalAsset.status.in_(LINK_REACHABLE_STATUSES)
+    ).first_or_404()
     creator = Creator.query.first()
     return render_template('user/checkout.html', asset=asset.to_dict(), channel_id=str(uuid.uuid4()), creator=creator, store_name=creator.store_name if creator else 'Nyota')
 
@@ -3344,6 +3472,12 @@ def initiate_payment():
     tier = data.get('tier')  # Extract selected tier
 
     asset = DigitalAsset.query.get_or_404(asset_id)
+
+    # Only link-reachable assets may be bought. Without this an unpublished asset
+    # (draft or archived) could be purchased by anyone who guessed its numeric id,
+    # since this endpoint takes the id straight from the request body.
+    if not is_link_reachable(asset):
+        return jsonify({'success': False, 'message': 'This item is not available for purchase.'}), 404
 
     # Determine price based on tier
     amount = asset.price

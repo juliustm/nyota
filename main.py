@@ -65,6 +65,26 @@ def create_app(config_class=Config):
     Compress(app)
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year cache for static files
 
+    # Static files are cached for a year, so every url_for('static', ...) carries a
+    # ?v=<mtime> stamp — editing a CSS/JS file changes the URL and busts the cache.
+    _static_versions = {}
+
+    @app.url_defaults
+    def add_static_version(endpoint, values):
+        if endpoint != 'static' or 'filename' not in values:
+            return
+        filename = values['filename']
+        version = _static_versions.get(filename)
+        if version is None or app.debug:
+            path = os.path.join(app.static_folder, filename)
+            try:
+                version = str(int(os.path.getmtime(path)))
+            except OSError:
+                version = ''
+            _static_versions[filename] = version
+        if version:
+            values['v'] = version
+
     # --- Register Jinja2 Filters ---
     app.jinja_env.filters['format_currency'] = format_currency
 
@@ -115,6 +135,32 @@ def create_app(config_class=Config):
             currency_symbol=get_currency_symbol(),
             translate=translate
         )
+
+    @app.context_processor
+    def inject_site_footer():
+        """Make the footer available to every storefront page.
+
+        Routes pass `creator` inconsistently (the library and recovery pages
+        don't), so the footer resolves the creator itself rather than depending
+        on each route to remember. Admin pages don't render it.
+        """
+        if request.blueprint == 'admin':
+            return {}
+
+        from models.nyota import Creator
+        from utils.site_meta import build_site_footer, build_structured_data
+
+        try:
+            creator = Creator.query.first()
+            footer = build_site_footer(creator)
+            return dict(
+                site_footer=footer,
+                site_schema=build_structured_data(creator, footer),
+            )
+        except Exception as exc:
+            # Pre-setup (no tables yet) or a bad settings row must not 500 the store.
+            app.logger.warning(f"Footer context unavailable: {exc}")
+            return dict(site_footer={'enabled': False}, site_schema=None)
 
     def get_currency_symbol():
         from models.nyota import Creator

@@ -65,6 +65,26 @@ def create_app(config_class=Config):
     Compress(app)
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year cache for static files
 
+    # Static files are cached for a year, so every url_for('static', ...) carries a
+    # ?v=<mtime> stamp — editing a CSS/JS file changes the URL and busts the cache.
+    _static_versions = {}
+
+    @app.url_defaults
+    def add_static_version(endpoint, values):
+        if endpoint != 'static' or 'filename' not in values:
+            return
+        filename = values['filename']
+        version = _static_versions.get(filename)
+        if version is None or app.debug:
+            path = os.path.join(app.static_folder, filename)
+            try:
+                version = str(int(os.path.getmtime(path)))
+            except OSError:
+                version = ''
+            _static_versions[filename] = version
+        if version:
+            values['v'] = version
+
     # --- Register Jinja2 Filters ---
     app.jinja_env.filters['format_currency'] = format_currency
 

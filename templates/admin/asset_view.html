@@ -314,18 +314,19 @@
                         <div class="space-y-8">
                             <!-- Event Details Card -->
                             <div
-                                class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
-                                <h3
-                                    class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                                    <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24"
-                                        stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                class="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-5 border border-gray-200 dark:border-gray-600">
+                                <h4
+                                    class="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24"
+                                        stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
                                             d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                     </svg>
                                     Event Logistics
-                                </h3>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div class="md:col-span-2">
+                                </h4>
+                                <div
+                                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div class="md:col-span-3">
                                         <label for="event_location" class="input-label">Location / Link</label>
                                         <input type="text" id="event_location" x-model="editableAsset.eventDetails.link"
                                             class="input-field" placeholder="e.g., Zoom Link or Physical Address">
@@ -351,23 +352,23 @@
 
                             <!-- Post-Purchase Instructions -->
                             <div
-                                class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
-                                <h3
-                                    class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                                    <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24"
-                                        stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                class="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-5 border border-gray-200 dark:border-gray-600">
+                                <h4
+                                    class="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24"
+                                        stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
                                             d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
                                     After Purchase
-                                </h3>
-                                <div>
+                                </h4>
+                                <div
+                                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
                                     <label class="input-label">Instructions for Attendees</label>
-                                    <p class="text-xs text-gray-500 mb-2">Shown only to people who have purchased a
-                                        ticket.</p>
                                     <textarea x-model="editableAsset.eventDetails.postPurchaseInstructions" rows="4"
                                         class="input-field"
                                         placeholder="e.g., Join this WhatsApp group for updates..."></textarea>
+                                    <p class="input-hint">Shown only to people who have purchased a ticket.</p>
                                 </div>
                             </div>
 
@@ -383,57 +384,65 @@
                         <div class="space-y-8">
                             <!-- Pricing Tiers -->
                             <div
-                                class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
-                                <div class="flex justify-between items-center mb-6">
-                                    <h3
-                                        class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                                        <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24"
-                                            stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                        Pricing Tiers
-                                    </h3>
+                                class="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-5 border border-gray-200 dark:border-gray-600">
+                                <div class="flex justify-between items-center mb-4">
+                                    <div>
+                                        <h4
+                                            class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                            <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24"
+                                                stroke="currentColor" stroke-width="2">
+                                                <path stroke-linecap="round" stroke-linejoin="round"
+                                                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            Pricing Tiers
+                                        </h4>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Each tier becomes a
+                                            plan subscribers can choose at checkout.</p>
+                                    </div>
                                     <button type="button" @click="addPricingTier()"
-                                        class="text-sm font-medium text-indigo-600 hover:text-indigo-500 flex items-center gap-1">
-                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M12 4v16m8-8H4" />
+                                        class="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-500 shrink-0">
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                            stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
                                         </svg>
                                         Add Tier
                                     </button>
                                 </div>
 
-                                <div class="space-y-4">
+                                <div class="space-y-3">
                                     <template x-for="(tier, index) in editableAsset.details.subscription_tiers"
                                         :key="index">
                                         <div
-                                            class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 relative shadow-sm">
-                                            <button @click="removePricingTier(index)"
-                                                class="absolute top-2 right-2 text-gray-400 hover:text-red-500">
-                                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
-                                                    stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round"
-                                                        stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                                </svg>
-                                            </button>
-                                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 space-y-3">
+                                            <div class="flex items-center gap-3">
+                                                <span
+                                                    class="flex items-center justify-center w-6 h-6 rounded-md bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 text-xs font-bold shrink-0"
+                                                    x-text="index + 1"></span>
+                                                <p class="flex-1 min-w-0 text-sm font-medium text-gray-700 dark:text-gray-200 truncate"
+                                                    x-text="tier.name || 'Untitled tier'"></p>
+                                                <button type="button" @click="removePricingTier(index)"
+                                                    class="text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                                                    title="Remove tier">
+                                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24"
+                                                        stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                                            stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pl-9">
                                                 <div>
-                                                    <label
-                                                        class="input-label text-xs uppercase tracking-wide text-gray-500">Tier
-                                                        Name</label>
+                                                    <label class="input-label-sm">Tier Name</label>
                                                     <input type="text" x-model="tier.name" class="input-field"
                                                         placeholder="e.g., Monthly">
                                                 </div>
                                                 <div>
-                                                    <label
-                                                        class="input-label text-xs uppercase tracking-wide text-gray-500">Price</label>
+                                                    <label class="input-label-sm">Price</label>
                                                     <input type="number" x-model="tier.price" class="input-field"
                                                         placeholder="0.00">
                                                 </div>
                                                 <div>
-                                                    <label
-                                                        class="input-label text-xs uppercase tracking-wide text-gray-500">Interval</label>
+                                                    <label class="input-label-sm">Interval</label>
                                                     <select x-model="tier.interval" class="input-field">
                                                         <option value="daily">Daily</option>
                                                         <option value="weekly">Weekly</option>
@@ -445,28 +454,24 @@
                                                     </select>
                                                 </div>
                                                 <div class="md:col-span-3">
-                                                    <label
-                                                        class="input-label text-xs uppercase tracking-wide text-gray-500">Benefits
-                                                        / Description</label>
+                                                    <label class="input-label-sm">Benefits / Description</label>
                                                     <input type="text" x-model="tier.description" class="input-field"
                                                         placeholder="What do they get?">
                                                 </div>
                                                 <div class="md:col-span-3">
-                                                    <label
-                                                        class="input-label text-xs uppercase tracking-wide text-gray-500">UZA
-                                                        Product ID
-                                                        <span
-                                                            class="text-xs font-normal text-gray-400">(Optional)</span>
+                                                    <label class="input-label-sm">
+                                                        UZA Product ID
+                                                        <span class="font-normal normal-case tracking-normal text-gray-400">(optional)</span>
                                                     </label>
                                                     <input type="text" x-model="tier.uza_product_id"
-                                                        class="input-field font-mono text-sm"
+                                                        class="input-field font-mono"
                                                         placeholder="e.g., prod_tier_monthly_123">
                                                 </div>
                                             </div>
                                         </div>
                                     </template>
                                     <div x-show="!editableAsset.details.subscription_tiers || editableAsset.details.subscription_tiers.length === 0"
-                                        class="text-center py-8 text-gray-500 text-sm bg-white dark:bg-gray-800 rounded-lg border border-dashed border-gray-300">
+                                        class="text-center py-6 text-gray-500 text-sm bg-white dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-600">
                                         No tiers defined. The base price will be used.
                                     </div>
                                 </div>
@@ -474,36 +479,36 @@
 
                             <!-- Subscriber Content -->
                             <div
-                                class="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
-                                <h3
-                                    class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                                    <svg class="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24"
-                                        stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M12 8v13m0-13V6a4 4 0 00-4-4H5.5a2.5 2.5 0 010 5H12zm0 0V6a4 4 0 014-4h2.5a2.5 2.5 0 010 5H12z" />
-                                    </svg>
-                                    Subscriber Content
-                                </h3>
-                                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                                    Content shown to new subscribers after they sign up.
-                                </p>
+                                class="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-5 border border-gray-200 dark:border-gray-600">
+                                <div class="mb-4">
+                                    <h4 class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24"
+                                            stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M12 8v13m0-13V6a4 4 0 00-4-4H5.5a2.5 2.5 0 010 5H12zm0 0V6a4 4 0 014-4h2.5a2.5 2.5 0 010 5H12z" />
+                                        </svg>
+                                        Subscriber Content
+                                    </h4>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                        Content shown to new subscribers after they sign up.
+                                    </p>
+                                </div>
 
-                                <div class="space-y-4">
+                                <div
+                                    class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 space-y-4">
                                     <div>
                                         <label class="input-label">Welcome Message</label>
-                                        <p class="text-xs text-gray-500 mb-2">Sent immediately after subscription
-                                            confirmation.</p>
                                         <textarea x-model="editableAsset.details.welcomeContent" rows="3"
                                             class="input-field"
                                             placeholder="Thank you for subscribing! Here's what you can expect..."></textarea>
+                                        <p class="input-hint">Sent immediately after subscription confirmation.</p>
                                     </div>
 
                                     <div>
                                         <label class="input-label">Ongoing Benefits</label>
-                                        <p class="text-xs text-gray-500 mb-2">What subscribers receive on a regular
-                                            basis.</p>
                                         <textarea x-model="editableAsset.details.benefits" rows="3" class="input-field"
                                             placeholder="Weekly exclusive content, early access to new products, community access..."></textarea>
+                                        <p class="input-hint">What subscribers receive on a regular basis.</p>
                                     </div>
                                 </div>
                             </div>

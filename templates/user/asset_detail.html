@@ -1,6 +1,16 @@
 {% extends "user/base.html" %}
 {% set asset_type_key = asset_obj.asset_type.name.lower() if asset_obj.asset_type and asset_obj.asset_type.name is
 defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'digital_product') %}
+{# Physical products: min/max effective price across variations (a variation with no
+   price of its own falls back to the base price) — drives the "starts at" display. #}
+{% set _phys_vars = ((asset_obj.details or {}).get('variations') or []) if asset_type_key == 'physical' else [] %}
+{% set _phys_ns = namespace(prices=[]) %}
+{% for _pv in _phys_vars %}
+{% if _pv.get('price') is not none and _pv.get('price') != '' %}{% set _phys_ns.prices = _phys_ns.prices + [_pv.get('price')|float] %}
+{% elif asset_obj.price is not none %}{% set _phys_ns.prices = _phys_ns.prices + [asset_obj.price|float] %}{% endif %}
+{% endfor %}
+{% set physical_min_price = (_phys_ns.prices | min) if _phys_ns.prices else none %}
+{% set physical_price_varies = _phys_ns.prices and ((_phys_ns.prices | max) != (_phys_ns.prices | min)) %}
 
 {% block title %}{{ asset_obj.title }} | {{ store_name }}{% endblock %}
 
@@ -313,12 +323,61 @@ null
 
                     {# --- Post-purchase questionnaire (rendered below content so buyers reach their
                        files first; in gate mode content is hidden, so this still shows first) --- #}
+                    {% set is_physical = asset_obj.asset_type.name == 'PHYSICAL' %}
                     {% set collect_mode = (asset_obj.details or {}).get('collect_info_mode', 'optional') %}
-                    {# An answer is "real" only if it's a non-tier key — tier is internal subscription data. #}
-                    {% set answered_keys = (latest_purchase.ticket_data or {}).keys() | reject('equalto', 'tier') | list %}
+                    {# An answer is "real" only if it's a non-internal key — tier/variation/quantity are
+                       platform order data, never buyer answers. #}
+                    {% set answered_keys = (latest_purchase.ticket_data or {}).keys() | reject('in', ['tier', 'variation', 'quantity']) | list %}
                     {% set info_answered = asset_obj.custom_fields and (answered_keys | length > 0) %}
                     {% set info_pending = asset_obj.custom_fields and not info_answered %}
                     {% set info_gate_locked = (collect_mode == 'gate' and info_pending) %}
+
+                    {# --- Physical order card: for goods, the order summary IS the content --- #}
+                    {% if is_physical %}
+                    {% set _od = latest_purchase.ticket_data or {} %}
+                    {% set _ovar = _od.get('variation') or {} %}
+                    {% set _oqty = _od.get('quantity') or 1 %}
+                    {% set _vphoto = ((asset_obj.details or {}).get('variations') or []) | selectattr('id', 'equalto', _ovar.get('id')) | map(attribute='photo_url') | select | list | first if _ovar else None %}
+                    <section class="fade-in mb-4" style="animation-delay: 90ms;">
+                        <div class="bg-white dark:bg-gray-800 sm:border border-gray-200 dark:border-gray-700 sm:rounded-2xl overflow-hidden shadow-sm">
+                            <div class="p-5 md:p-6 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/10 border-b border-gray-200 dark:border-gray-700">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-800/50 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ translate('order_received') }}</h2>
+                                        <p class="text-sm text-gray-500 dark:text-gray-400">{{ translate('order_summary') }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-5 md:p-6">
+                                <div class="flex items-center gap-4">
+                                    <img src="{{ _vphoto or asset_obj.cover_image_url }}" alt=""
+                                        class="w-16 h-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700 shrink-0">
+                                    <div class="min-w-0 flex-1">
+                                        <p class="font-semibold text-gray-900 dark:text-white truncate">{{ asset_obj.title }}</p>
+                                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                                            {% if _ovar.get('name') %}{{ translate('variation') }}: <span class="font-medium text-gray-700 dark:text-gray-300">{{ _ovar.get('name') }}</span> · {% endif %}
+                                            {{ translate('quantity') }}: <span class="font-medium text-gray-700 dark:text-gray-300">{{ _oqty }}</span>
+                                        </p>
+                                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                                            {{ translate('total_amount') }}: <span class="font-bold text-gray-900 dark:text-white">{{ currency_symbol }} {{ '{:,.0f}'.format(latest_purchase.amount_paid or 0) }}</span>
+                                        </p>
+                                    </div>
+                                    <span class="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
+                                        {% if latest_purchase.status.name == 'COMPLETED' %}bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300
+                                        {% elif latest_purchase.status.name == 'PENDING' %}bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300
+                                        {% else %}bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300{% endif %}">
+                                        {{ translate('completed') if latest_purchase.status.name == 'COMPLETED' else (translate('pending') if latest_purchase.status.name == 'PENDING' else translate('failed')) }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                    {% endif %}
 
                     <!-- Content Access — hidden when there are no files (e.g. ticket-only) so the
                          buyer never sees an empty "Access Your Content" shell. -->
@@ -674,7 +733,7 @@ null
                     {% if collect_mode == 'reminder' and info_pending %}
                     <div class="mb-3 flex items-center gap-2 px-4 py-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl text-sm text-indigo-700 dark:text-indigo-300">
                         <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <span>{{ translate('please_complete_registration') }}</span>
+                        <span>{{ translate('awaiting_delivery_info') if is_physical else translate('please_complete_registration') }}</span>
                     </div>
                     {% endif %}
                     <section id="post-purchase-form-{{ asset_obj.id }}" class="fade-in mb-6" style="animation-delay: 120ms;">
@@ -683,6 +742,17 @@ null
                            enclosing x-data attribute early, breaking Alpine and leaving the form unrendered. #}
                         <script type="application/json" id="post-purchase-fields-{{ asset_obj.id }}">{{ asset_obj.custom_fields|tojson|safe }}</script>
                         <script type="application/json" id="post-purchase-answers-{{ asset_obj.id }}">{{ latest_purchase.ticket_data|tojson|safe if latest_purchase.ticket_data else '{}' }}</script>
+                        {# Localized strings for the location widget #}
+                        <script type="application/json" id="delivery-i18n">{
+                            "locating": {{ translate('locating')|tojson|safe }},
+                            "location_set": {{ translate('location_set')|tojson|safe }},
+                            "location_denied": {{ translate('location_denied')|tojson|safe }}
+                        }</script>
+                        {% if saved_delivery_answers %}
+                        {# The buyer's own saved delivery details — emitted only for a session already
+                           authorized to edit this purchase (never from a phone number alone). #}
+                        <script type="application/json" id="saved-delivery-{{ asset_obj.id }}">{{ saved_delivery_answers|tojson|safe }}</script>
+                        {% endif %}
                         <div class="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden transition-shadow {% if info_gate_locked %}border-2 border-amber-200 dark:border-amber-900 shadow-lg{% else %}border-indigo-100 dark:border-indigo-900{% endif %}"
                             {% if not info_gate_locked %}:class="(mode === 'view' && !submitted) ? 'border shadow-sm' : 'border-2 shadow-lg'"{% endif %}
                             x-data="postPurchaseForm({{ asset_obj.id }}, {{ latest_purchase.id }}, {{ 'true' if info_answered else 'false' }})">
@@ -704,12 +774,15 @@ null
                                     {% if info_gate_locked %}
                                     <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                                     {{ translate('complete_form_to_unlock') }}
+                                    {% elif is_physical %}
+                                    <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                    {{ translate('delivery_details') }}
                                     {% else %}
                                     {{ translate('attendee_information_required') }}
                                     {% endif %}
                                 </h2>
                                 <p class="text-sm {% if info_gate_locked %}text-amber-700 dark:text-amber-300{% else %}text-indigo-700 dark:text-indigo-300{% endif %}">
-                                    {% if info_gate_locked %}{{ translate('complete_form_to_unlock_sub') }}{% else %}{{ translate('please_complete_registration') }}{% endif %}
+                                    {% if info_gate_locked %}{{ translate('complete_form_to_unlock_sub') }}{% elif is_physical %}{{ translate('delivery_prompt') }}{% else %}{{ translate('please_complete_registration') }}{% endif %}
                                 </p>
                             </div>
 
@@ -735,6 +808,17 @@ null
 
                             {# Editable form #}
                             <div class="p-6 md:p-8" x-show="mode === 'edit' && !submitted" x-cloak>
+                                {# One-tap reuse of the delivery details from the buyer's last order #}
+                                <template x-if="hasSavedAnswers">
+                                    <button type="button" @click="applySavedAnswers()"
+                                        class="w-full mb-6 flex items-center justify-between gap-3 px-4 py-3.5 rounded-xl border-2 border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50/60 dark:bg-indigo-900/10 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors text-left">
+                                        <span class="flex items-center gap-2.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                                            <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+                                            {{ translate('use_last_details') }}
+                                        </span>
+                                        <svg class="w-4 h-4 text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                                    </button>
+                                </template>
                                 <form @submit.prevent="submit" class="space-y-6">
                                     <!-- Progress bar for multi-question forms -->
                                     <template x-if="fields.length > 1">
@@ -784,6 +868,34 @@ null
                                                         class="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
                                                     <span class="text-sm text-gray-600 dark:text-gray-400">Yes</span>
                                                 </label>
+                                            </template>
+
+                                            <template x-if="field.type === 'location'">
+                                                <div class="space-y-2.5">
+                                                    <div class="flex flex-wrap items-center gap-2">
+                                                        <button type="button" @click="shareLocation(field.question)"
+                                                            :disabled="locState[field.question] === 'locating'"
+                                                            class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-sm transition-colors"
+                                                            :class="locState[field.question] === 'set'
+                                                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                                                                : 'bg-indigo-600 hover:bg-indigo-700 text-white'">
+                                                            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                                            <span x-show="locState[field.question] === 'locating'">{{ translate('locating') }}</span>
+                                                            <span x-show="locState[field.question] === 'set'">{{ translate('location_set') }} ✓</span>
+                                                            <span x-show="!locState[field.question] || locState[field.question] === 'error'">📍 {{ translate('share_my_location') }}</span>
+                                                        </button>
+                                                        <button type="button" x-show="locState[field.question] === 'set'"
+                                                            @click="clearLocation(field.question)"
+                                                            class="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 underline">
+                                                            {{ translate('remove') }}
+                                                        </button>
+                                                    </div>
+                                                    <p x-show="locState[field.question] === 'error'"
+                                                        class="text-xs text-amber-600 dark:text-amber-400">{{ translate('location_denied') }}</p>
+                                                    <input type="url" x-model="formData[field.question].maps_url"
+                                                        placeholder="{{ translate('paste_maps_link') }}"
+                                                        class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500 text-sm">
+                                                </div>
                                             </template>
 
                                             <template x-if="field.type === 'file'">
@@ -1251,6 +1363,13 @@ null
                                 <span class="text-4xl font-extrabold text-gray-900 dark:text-white break-words"
                                     x-text="currency + formatCurrency({{ min_price }})"></span>
                             </div>
+                            {% elif physical_price_varies %}
+                            <p class="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">{{
+                                translate('starts_at') }}</p>
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-4xl font-extrabold text-gray-900 dark:text-white break-words"
+                                    x-text="currency + formatCurrency({{ physical_min_price }})"></span>
+                            </div>
                             {% else %}
                             {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
                             {% set _don = asset_obj.details.donation if asset_obj.details and asset_obj.details.donation and asset_obj.details.donation.enabled else None %}
@@ -1632,6 +1751,12 @@ null
                             <p class="font-extrabold text-xl text-gray-900 dark:text-white truncate">
                                 <span x-text="currency"></span><span x-text="formatCurrency({{ min_price }})"></span>
                             </p>
+                            {% elif physical_price_varies %}
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide font-bold">{{
+                                translate('starts_at') }}</p>
+                            <p class="font-extrabold text-xl text-gray-900 dark:text-white truncate">
+                                <span x-text="currency"></span><span x-text="formatCurrency({{ physical_min_price }})"></span>
+                            </p>
                             {% else %}
                             {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
                             {% set _don = asset_obj.details.donation if asset_obj.details and asset_obj.details.donation and asset_obj.details.donation.enabled else None %}
@@ -1711,6 +1836,30 @@ null
                             <span x-show="!isFree">{{ translate('cta_paid_' ~ asset_type_key) }}</span>
                         </h3>
 
+                        <!-- Variation Selection (physical products) -->
+                        <div x-show="isPhysical && variations.length > 0" x-cloak class="mb-6 space-y-3">
+                            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ translate('choose_variation') }}:</p>
+                            <div class="grid grid-cols-2 gap-3">
+                                <template x-for="v in variations" :key="v.id">
+                                    <div @click="selectVariation(v)"
+                                        class="p-3 rounded-xl border-2 transition-all"
+                                        :class="[
+                                            selectedVariation && selectedVariation.id === v.id ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-400' : 'border-gray-200 dark:border-gray-700',
+                                            v.sold_out ? 'opacity-50' : 'cursor-pointer hover:border-indigo-300'
+                                        ]">
+                                        <img x-show="v.photo_url" :src="v.photo_url" alt=""
+                                            class="w-full h-20 object-cover rounded-lg mb-2">
+                                        <div class="flex justify-between items-center gap-2">
+                                            <span class="font-semibold text-sm text-gray-900 dark:text-white truncate" x-text="v.name"></span>
+                                            <span class="text-sm font-bold shrink-0"
+                                                :class="v.sold_out ? 'text-gray-400 uppercase text-xs tracking-wide' : 'text-indigo-600 dark:text-indigo-400'"
+                                                x-text="v.sold_out ? '{{ translate('sold_out') }}' : currency + formatCurrency((v.price !== null && v.price !== undefined && v.price !== '') ? v.price : asset.price)"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
                         <!-- Tier Selection -->
                         <div x-show="tiers.length > 0" class="mb-6 space-y-3">
                             <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ translate('choose_plan')
@@ -1742,6 +1891,36 @@ null
                             <div class="mb-5"><input type="tel" x-ref="phoneInput" x-model="phoneNumber"
                                     @input="formatPhoneNumber()" placeholder="07XX XXX XXX"
                                     class="input-field pl-4 text-lg font-mono" required></div>
+
+                            <!-- 2a) Quantity stepper (physical products) -->
+                            <div x-show="isPhysical" x-cloak
+                                class="mb-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="min-w-0 flex items-center gap-2.5">
+                                        <img x-show="selectedVariation && selectedVariation.photo_url"
+                                            :src="selectedVariation?.photo_url" alt=""
+                                            class="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-700 shrink-0">
+                                        <div class="min-w-0">
+                                            <p class="text-sm font-bold text-gray-800 dark:text-gray-200">{{ translate('quantity') }}</p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                                <span x-show="selectedVariation"><span x-text="selectedVariation?.name"></span> · </span>
+                                                <span x-text="currency + formatCurrency(unitPrice)"></span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-1 shrink-0">
+                                        <button type="button" @click="decrementQuantity()" :disabled="quantity <= 1"
+                                            class="w-10 h-10 rounded-lg border-2 border-gray-200 dark:border-gray-700 flex items-center justify-center text-lg font-bold text-gray-700 dark:text-gray-300 hover:border-indigo-300 disabled:opacity-40 transition-all">−</button>
+                                        <span class="w-10 text-center text-lg font-bold text-gray-900 dark:text-white" x-text="quantity"></span>
+                                        <button type="button" @click="incrementQuantity()" :disabled="quantity >= 100"
+                                            class="w-10 h-10 rounded-lg border-2 border-gray-200 dark:border-gray-700 flex items-center justify-center text-lg font-bold text-gray-700 dark:text-gray-300 hover:border-indigo-300 disabled:opacity-40 transition-all">+</button>
+                                    </div>
+                                </div>
+                                <div x-show="quantity > 1" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-baseline text-sm">
+                                    <span class="text-gray-500 dark:text-gray-400">{{ translate('total_amount') }}</span>
+                                    <span class="font-bold text-gray-900 dark:text-white" x-text="currency + formatCurrency(effectiveAmount)"></span>
+                                </div>
+                            </div>
 
                             <!-- 2) Then ask about the donation -->
                             <div x-show="isDonation" x-cloak
@@ -1783,11 +1962,14 @@ null
 
                             <!-- 3) Smart submit button that states the choice -->
                             <button type="submit"
-                                class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl text-lg hover:scale-[1.01] transition-transform">
+                                :disabled="isPhysical && variations.length > 0 && !selectedVariation"
+                                class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl text-lg hover:scale-[1.01] transition-transform disabled:opacity-50 disabled:hover:scale-100">
+                                <!-- All variations sold out -->
+                                <span x-show="isPhysical && variations.length > 0 && !selectedVariation">{{ translate('sold_out') }}</span>
                                 <!-- Non-donation assets -->
-                                <span x-show="!isDonation && isFree">{{ translate('cta_free_' ~ asset_type_key) }}</span>
-                                <span x-show="!isDonation && !isFree"
-                                    x-text="'{{ translate('cta_paid_' ~ asset_type_key) }} • ' + currency + formatCurrency(selectedTier ? selectedTier.price : asset.price)"></span>
+                                <span x-show="!isDonation && isFree && !(isPhysical && variations.length > 0 && !selectedVariation)">{{ translate('cta_free_' ~ asset_type_key) }}</span>
+                                <span x-show="!isDonation && !isFree && !(isPhysical && variations.length > 0 && !selectedVariation)"
+                                    x-text="'{{ translate('cta_paid_' ~ asset_type_key) }} • ' + currency + formatCurrency(effectiveAmount)"></span>
                                 <!-- Donation assets: communicate whether they're donating -->
                                 <span x-show="isDonation && contributionAmount > 0"
                                     x-text="'{{ translate('donate_cta') }} ' + currency + formatCurrency(contributionAmount)"></span>

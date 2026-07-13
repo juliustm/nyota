@@ -156,6 +156,10 @@
                             </h3>
                             <span class="text-xs text-gray-500 dark:text-gray-400"
                                 x-text="new Date(purchase.purchase_date).toLocaleDateString()"></span>
+                            <template x-if="purchase.variation || (purchase.quantity && purchase.quantity > 1)">
+                                <span class="text-xs font-medium text-gray-700 dark:text-gray-300 mt-0.5"
+                                    x-text="[purchase.variation, purchase.quantity ? '× ' + purchase.quantity : ''].filter(Boolean).join(' ')"></span>
+                            </template>
                         </div>
                     </div>
 

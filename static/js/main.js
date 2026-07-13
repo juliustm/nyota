@@ -27,6 +27,39 @@ function mountMarkdownEditor(element, { minHeight = '160px', placeholder = '' } 
 
 // Wire a mounted editor to Alpine state in both directions on mount, then keep
 // state in sync as the creator types.
+// Client-side id for a product variation. Server keeps it (sanitized to
+// [A-Za-z0-9_-]) and pairs it with the matching variation_photo_<id> upload.
+function newVariationId() {
+    return 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+// Shared by the admin activity feeds: render questionnaire answers in their most
+// useful form — location objects as Google Maps links, phone numbers as tel/WhatsApp
+// links, URLs as links. Mixed into activityFeed and supporterActivity.
+const answerValueHelpers = {
+    isLocationAnswer(v) { return !!(v && typeof v === 'object' && v.__location__); },
+    locationHref(v) {
+        if (!this.isLocationAnswer(v)) return '';
+        if ((v.maps_url || '').trim()) return v.maps_url.trim();
+        if (v.lat !== null && v.lat !== undefined && v.lng !== null && v.lng !== undefined) {
+            return `https://www.google.com/maps?q=${v.lat},${v.lng}`;
+        }
+        return '';
+    },
+    isPhoneAnswer(v) {
+        if (typeof v !== 'string') return false;
+        const t = v.trim();
+        return /^\+?[0-9][0-9 ()\-]{7,15}$/.test(t) && t.replace(/\D/g, '').length >= 9;
+    },
+    telHref(v) { return 'tel:' + String(v).replace(/[^\d+]/g, ''); },
+    waHref(v) {
+        let d = String(v).replace(/\D/g, '');
+        if (d.startsWith('0')) d = '255' + d.slice(1); // Tanzanian local format
+        return 'https://wa.me/' + d;
+    },
+    isUrlAnswer(v) { return typeof v === 'string' && /^https?:\/\//i.test(v.trim()); },
+};
+
 function bindMarkdownEditor(element, opts, getValue, setValue) {
     const mde = mountMarkdownEditor(element, opts);
     if (!mde) return null;
@@ -340,6 +373,12 @@ document.addEventListener('alpine:init', () => {
         // In view mode the summary is a collapsed disclosure so it never competes with the
         // bought content above it. Expanded by default while filling/unlocking the form.
         open: !alreadyAnswered,
+        // Saved delivery details from the buyer's last physical order (one-tap prefill).
+        savedAnswers: {},
+        prefillApplied: false,
+        // Per-question geolocation state: '' | 'locating' | 'set' | 'error'
+        locState: {},
+        i18n: { locating: 'Getting your location...', location_set: 'Location received', location_denied: "We couldn't get your location. You can type it or paste a link instead." },
         init() {
             // Field definitions and any existing answers are read from JSON <script> tags rather
             // than inline attribute arguments — embedding the JSON directly in x-data breaks the
@@ -360,7 +399,21 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 answers = {};
             }
-            delete answers.tier; // internal subscription key — never shown or edited
+            // Internal order keys (tier/variation/quantity) — never shown or edited
+            ['tier', 'variation', 'quantity'].forEach(k => delete answers[k]);
+
+            // Saved delivery details (physical orders only; emitted server-side only
+            // for a session already authorized to edit this purchase).
+            try {
+                const sd = document.getElementById('saved-delivery-' + assetId);
+                this.savedAnswers = sd ? (JSON.parse(sd.textContent || '{}') || {}) : {};
+            } catch (e) { this.savedAnswers = {}; }
+
+            // Localized strings for the location widget.
+            try {
+                const di = document.getElementById('delivery-i18n');
+                if (di) this.i18n = Object.assign({}, this.i18n, JSON.parse(di.textContent || '{}'));
+            } catch (e) { }
 
             // Seed formData: reuse an existing answer when present, else a sensible empty default.
             this.fields.forEach(field => {
@@ -370,6 +423,9 @@ document.addEventListener('alpine:init', () => {
                     // Show original filename if already uploaded
                     this.formData[field.question] = (existing && existing.__file__)
                         ? existing.original_name : '';
+                } else if (field.type === 'location') {
+                    this.formData[field.question] = this._locationValue(existing);
+                    this.locState[field.question] = this._hasPin(existing) ? 'set' : '';
                 } else if (existing !== undefined && existing !== null) {
                     this.formData[field.question] = existing;
                 } else {
@@ -377,11 +433,71 @@ document.addEventListener('alpine:init', () => {
                 }
             });
         },
+        // --- Location-answer helpers ---
+        _locationValue(v) {
+            v = (v && typeof v === 'object' && v.__location__) ? v : {};
+            return { __location__: true, lat: v.lat ?? null, lng: v.lng ?? null, maps_url: v.maps_url || '', text: v.text || '' };
+        },
+        _hasPin(v) {
+            return !!(v && typeof v === 'object' && v.lat !== null && v.lat !== undefined && v.lat !== '');
+        },
+        hasLocationValue(v) {
+            return !!(v && typeof v === 'object'
+                && (this._hasPin(v) || (v.maps_url || '').trim() || (v.text || '').trim()));
+        },
+        shareLocation(question) {
+            if (!navigator.geolocation) { this.locState[question] = 'error'; return; }
+            this.locState[question] = 'locating';
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    const v = this.formData[question];
+                    v.lat = +pos.coords.latitude.toFixed(6);
+                    v.lng = +pos.coords.longitude.toFixed(6);
+                    this.locState[question] = 'set';
+                },
+                () => { this.locState[question] = 'error'; },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+            );
+        },
+        clearLocation(question) {
+            const v = this.formData[question];
+            v.lat = null; v.lng = null;
+            this.locState[question] = '';
+        },
+        locationLink(v) {
+            if (!v || typeof v !== 'object') return '';
+            if ((v.maps_url || '').trim()) return v.maps_url.trim();
+            if (this._hasPin(v)) return `https://www.google.com/maps?q=${v.lat},${v.lng}`;
+            return '';
+        },
+        // --- "Use my last details" prefill ---
+        get hasSavedAnswers() {
+            if (this.alreadyAnswered || this.prefillApplied) return false;
+            const saved = this.savedAnswers || {};
+            return this.fields.some(f => f.type !== 'file' && saved[f.question] !== undefined && saved[f.question] !== null);
+        },
+        applySavedAnswers() {
+            this.fields.forEach(field => {
+                const saved = (this.savedAnswers || {})[field.question];
+                if (saved === undefined || saved === null || field.type === 'file') return;
+                if (field.type === 'location') {
+                    this.formData[field.question] = this._locationValue(saved);
+                    this.locState[field.question] = this._hasPin(saved) ? 'set' : '';
+                } else {
+                    this.formData[field.question] = saved;
+                }
+            });
+            this.prefillApplied = true;
+        },
         // Human-readable value for the read-only summary.
         displayValue(field) {
             const v = this.formData[field.question];
             if (field.type === 'checkbox') return v ? 'Yes' : 'No';
             if (field.type === 'file') return v ? v : '—';
+            if (field.type === 'location') {
+                if (!this.hasLocationValue(v)) return '—';
+                return this.locationLink(v) || (v.text || '').trim() || '—';
+            }
             return (v === '' || v === null || v === undefined) ? '—' : v;
         },
         handleFileSelect(question, event) {
@@ -393,6 +509,7 @@ document.addEventListener('alpine:init', () => {
             const total = this.fields.length;
             const answered = this.fields.filter(f => {
                 if (f.type === 'file') return !!this.fileData[f.question];
+                if (f.type === 'location') return this.hasLocationValue(this.formData[f.question]);
                 const v = this.formData[f.question];
                 return v !== '' && v !== false && v !== null && v !== undefined;
             }).length;
@@ -404,9 +521,14 @@ document.addEventListener('alpine:init', () => {
                 // Step 1: collect non-file answers
                 const textAnswers = {};
                 this.fields.forEach(f => {
-                    if (f.type !== 'file') {
-                        textAnswers[f.question] = this.formData[f.question];
+                    if (f.type === 'file') return;
+                    if (f.type === 'location') {
+                        // Only send a location when it actually carries something.
+                        const v = this.formData[f.question];
+                        if (this.hasLocationValue(v)) textAnswers[f.question] = v;
+                        return;
                     }
+                    textAnswers[f.question] = this.formData[f.question];
                 });
 
                 // Step 2: submit text answers to existing endpoint
@@ -623,11 +745,20 @@ document.addEventListener('alpine:init', () => {
         newsletterDetails: { welcomeFile: null, welcomeDescription: '', frequency: 'monthly' },
         pricing: { type: 'one-time', amount: null, billingCycle: 'monthly', tiers: [] },
         donation: { enabled: false, min_amount: 0, mandatory: false, _suggestedRaw: '' },
+        variations: [],
+        // Default delivery questions (creator's language) seeded onto new physical
+        // products; parsed from the #delivery-defaults JSON island.
+        _deliveryDefaults: [],
         positionPreference: 'bottom',
         collectInfoMode: 'optional',
         steps: [{ number: 1, title: 'Type', subtitle: 'Choose content format' }, { number: 2, title: 'Details', subtitle: 'Describe your asset' }, { number: 3, title: 'Content', subtitle: 'Add files/links' }, { number: 4, title: 'Pricing', subtitle: 'Set your price' }],
 
         init() {
+            try {
+                const dd = document.getElementById('delivery-defaults');
+                this._deliveryDefaults = dd ? (JSON.parse(dd.textContent || '[]') || []) : [];
+            } catch (e) { this._deliveryDefaults = []; }
+
             const dataElement = document.getElementById('asset-form-data');
             if (dataElement && dataElement.textContent.trim() !== '{}') {
                 const existing = JSON.parse(dataElement.textContent);
@@ -642,6 +773,7 @@ document.addEventListener('alpine:init', () => {
                 }));
 
                 this.customFields = existing.custom_fields || [];
+                this.variations = (existing.details?.variations || []).map(v => ({ ...v }));
 
                 // Initialize event details
                 this.eventDetails = {
@@ -693,13 +825,35 @@ document.addEventListener('alpine:init', () => {
                 v => { this.asset.story_snippet = v; }
             );
         },
-        setAssetType(type) { this.assetType = type; this.assetTypeEnum = this.mapFormTypeToEnumType(type); },
+        setAssetType(type) {
+            this.assetType = type;
+            this.assetTypeEnum = this.mapFormTypeToEnumType(type);
+            if (type === 'physical') {
+                // Physical goods are plain one-time sales, and they arrive with the
+                // delivery questionnaire pre-seeded (still fully editable/removable).
+                this.pricing.type = 'one-time';
+                this.donation.enabled = false;
+                if (!this.customFields.length && this._deliveryDefaults.length) {
+                    this.customFields = this._deliveryDefaults.map(f => ({
+                        type: f.type || 'text', question: f.question || '', required: !!f.required,
+                        options: [], _optionsRaw: '', accept: '', maxSizeMb: 5
+                    }));
+                    this.collectInfoMode = 'reminder';
+                }
+            }
+        },
         addContentItem(defaultType = 'upload') { this.contentItems.push({ type: defaultType, title: '', link: '', description: '' }); },
         removeContentItem(index) { this.contentItems.splice(index, 1); },
         addCustomField() { this.customFields.push({ type: 'text', question: '', required: false, options: [], _optionsRaw: '', accept: '', maxSizeMb: 5 }); },
         removeCustomField(index) { this.customFields.splice(index, 1); },
         addPricingTier() { this.pricing.tiers.push({ name: '', price: null, interval: 'monthly', description: '' }); },
         removePricingTier(index) { this.pricing.tiers.splice(index, 1); },
+        addVariation() { this.variations.push({ id: newVariationId(), name: '', price: null, photo_url: null, sold_out: false }); },
+        removeVariation(index) { this.variations.splice(index, 1); },
+        previewVariationPhoto(variation, event) {
+            const file = event.target.files[0];
+            if (file) { variation.photo_url = URL.createObjectURL(file); }
+        },
         previewCoverImage(event) { const file = event.target.files[0]; if (file) { this.asset.cover_image_url = URL.createObjectURL(file); } },
         submitForm(action) {
             // Clean custom fields: derive dropdown options + drop editor-only helpers.
@@ -740,6 +894,15 @@ document.addEventListener('alpine:init', () => {
                 subscriptionDetails: this.subscriptionDetails,
                 newsletterDetails: { ...this.newsletterDetails, welcomeFile: null },
                 donation: donation,
+                variations: (this.variations || [])
+                    .map(v => ({
+                        id: v.id, name: (v.name || '').trim(),
+                        price: (v.price === null || v.price === '') ? null : parseFloat(v.price),
+                        // Blob previews are editor-only; the real URL comes back from the upload.
+                        photo_url: (v.photo_url && !v.photo_url.startsWith('blob:')) ? v.photo_url : null,
+                        sold_out: !!v.sold_out
+                    }))
+                    .filter(v => v.name),
                 pricing: pricing,
                 position_preference: this.positionPreference || 'bottom'
             };
@@ -788,12 +951,19 @@ document.addEventListener('alpine:init', () => {
                 contentDescription: 'Set up your welcome content and choose how often you\'ll send new editions.',
                 examples: ['Weekly industry insights', 'Monthly market analysis', 'Bi-weekly creative writing'],
                 guide: ['Include a high-value welcome PDF or message so new subscribers feel it\'s worth it', 'Pick a frequency you can consistently maintain', 'Set clear expectations about what each edition will cover']
+            },
+            'physical': {
+                title: 'Physical Product',
+                description: 'Sell real, deliverable goods — clothing, crafts, books, food, electronics. Buyers pick a variation and quantity, pay with mobile money, then share their delivery details.',
+                contentDescription: 'Add the variations buyers can choose from (e.g. size or colour), each with its own optional photo and price.',
+                examples: ['Branded T-shirts (S/M/L)', 'Handmade bags', 'Packaged spices'],
+                guide: ['Add a photo per variation so buyers see exactly what they\'re choosing', 'Leave a variation\'s price empty to use the base price', 'A delivery questionnaire is attached automatically — edit it in the Questionnaire tab', 'Mark a variation "sold out" instead of deleting it when stock runs dry']
             }
         },
 
         getAssetTypeDetails() { return this.assetTypeDetails[this.assetType] || { title: 'Asset', contentDescription: '', description: '', examples: [], guide: [] }; },
-        mapEnumTypeToFormType(enumType) { const map = { 'VIDEO_SERIES': 'video-series', 'TICKET': 'ticket', 'DIGITAL_PRODUCT': 'digital-file', 'SUBSCRIPTION': 'subscription', 'NEWSLETTER': 'newsletter' }; return map[enumType]; },
-        mapFormTypeToEnumType(formType) { const map = { 'video-series': 'VIDEO_SERIES', 'ticket': 'TICKET', 'digital-file': 'DIGITAL_PRODUCT', 'subscription': 'SUBSCRIPTION', 'newsletter': 'NEWSLETTER' }; return map[formType]; },
+        mapEnumTypeToFormType(enumType) { const map = { 'VIDEO_SERIES': 'video-series', 'TICKET': 'ticket', 'DIGITAL_PRODUCT': 'digital-file', 'SUBSCRIPTION': 'subscription', 'NEWSLETTER': 'newsletter', 'PHYSICAL': 'physical' }; return map[enumType]; },
+        mapFormTypeToEnumType(formType) { const map = { 'video-series': 'VIDEO_SERIES', 'ticket': 'TICKET', 'digital-file': 'DIGITAL_PRODUCT', 'subscription': 'SUBSCRIPTION', 'newsletter': 'NEWSLETTER', 'physical': 'PHYSICAL' }; return map[formType]; },
     }));
 
     Alpine.data('settingsPage', (initialSettings) => ({
@@ -1026,7 +1196,7 @@ document.addEventListener('alpine:init', () => {
             const validTabs = ['general', 'configuration', 'content', 'questionnaire', 'responses', 'activity'];
             let savedTab = localStorage.getItem('adminAssetViewTab');
             if (savedTab && validTabs.includes(savedTab)) {
-                const configurableTypes = ['TICKET', 'SUBSCRIPTION', 'NEWSLETTER'];
+                const configurableTypes = ['TICKET', 'SUBSCRIPTION', 'NEWSLETTER', 'PHYSICAL'];
                 if (savedTab === 'configuration' && !configurableTypes.includes(this.asset.asset_type)) {
                     savedTab = 'general';
                 }
@@ -1077,6 +1247,12 @@ document.addEventListener('alpine:init', () => {
             if (!this.editableAsset.details.subscription_tiers) {
                 this.editableAsset.details.subscription_tiers = this.asset.details?.subscription_tiers || [];
             }
+
+            // Initialize physical-product variations (each may carry a pending photo upload)
+            if (!this.editableAsset.details.variations) {
+                this.editableAsset.details.variations = (this.asset.details?.variations || []).map(v => ({ ...v }));
+            }
+            this.editableAsset.details.variations.forEach(v => { if (v._newPhoto === undefined) v._newPhoto = null; });
 
             // Initialize subscription content fields
             if (!this.editableAsset.details.welcomeContent) {
@@ -1262,6 +1438,23 @@ document.addEventListener('alpine:init', () => {
             this.editableAsset.details.subscription_tiers.splice(index, 1);
         },
 
+        addVariation() {
+            if (!this.editableAsset.details.variations) this.editableAsset.details.variations = [];
+            this.editableAsset.details.variations.push({ id: newVariationId(), name: '', price: null, photo_url: null, sold_out: false, _newPhoto: null });
+        },
+
+        removeVariation(index) {
+            this.editableAsset.details.variations.splice(index, 1);
+        },
+
+        handleVariationPhoto(variation, event) {
+            const file = event.target.files[0];
+            if (file) {
+                variation._newPhoto = file;
+                variation.photo_url = URL.createObjectURL(file);
+            }
+        },
+
         addCustomField() {
             if (!this.editableAsset.customFields) this.editableAsset.customFields = [];
             this.editableAsset.customFields.push({ type: 'text', question: '', required: false, options: [], _optionsRaw: '', accept: '', maxSizeMb: 5 });
@@ -1371,6 +1564,14 @@ document.addEventListener('alpine:init', () => {
                 },
                 labels: this.editableAsset.details?.labels || {},
                 donation: donation,
+                variations: (this.editableAsset.details?.variations || [])
+                    .map(v => ({
+                        id: v.id, name: (v.name || '').trim(),
+                        price: (v.price === null || v.price === '') ? null : parseFloat(v.price),
+                        photo_url: (v.photo_url && !v.photo_url.startsWith('blob:')) ? v.photo_url : null,
+                        sold_out: !!v.sold_out
+                    }))
+                    .filter(v => v.name),
                 pricing: {
                     // The billing model is fixed at creation; the server ignores this on
                     // updates. Sent only so the payload stays consistent with the asset.
@@ -1393,6 +1594,13 @@ document.addEventListener('alpine:init', () => {
             (this.editableAsset.files || []).forEach((f, index) => {
                 if (f.newFile) {
                     formData.append(`content_file_${index}`, f.newFile);
+                }
+            });
+
+            // Append new/replacement variation photos
+            (this.editableAsset.details?.variations || []).forEach(v => {
+                if (v._newPhoto && v.id) {
+                    formData.append(`variation_photo_${v.id}`, v._newPhoto);
                 }
             });
 
@@ -1449,6 +1657,9 @@ document.addEventListener('alpine:init', () => {
         selectedTier: null,
         tiers: [],
         contribution: '', // Donor-chosen amount for pay-what-you-want assets
+        selectedVariation: null, // Physical products: the chosen variation
+        variations: [],
+        quantity: 1, // Physical products: how many units
         purchaseId: null,
         dealId: null,
         pollingInterval: null,
@@ -1463,8 +1674,8 @@ document.addEventListener('alpine:init', () => {
             return (d && d.enabled) ? d : null;
         },
         get isDonation() {
-            // Donation never applies while a subscription tier is selected.
-            return !!this.donationCfg && !this.selectedTier;
+            // Donation never applies while a subscription tier is selected, nor to physical goods.
+            return !!this.donationCfg && !this.selectedTier && !this.isPhysical;
         },
         get donationMin() {
             return this.donationCfg ? parseFloat(this.donationCfg.min_amount || 0) : 0;
@@ -1473,11 +1684,28 @@ document.addEventListener('alpine:init', () => {
             const n = parseFloat(this.contribution);
             return isNaN(n) || n < 0 ? 0 : n;
         },
+        // --- Physical product helpers (variation + quantity) ---
+        get isPhysical() {
+            return this.asset.asset_type === 'PHYSICAL';
+        },
+        // Unit price: the chosen variation's price, falling back to the base price.
+        get unitPrice() {
+            const vp = this.selectedVariation ? this.selectedVariation.price : null;
+            if (vp !== null && vp !== undefined && vp !== '') return parseFloat(vp) || 0;
+            return parseFloat(this.asset.price || 0);
+        },
+        selectVariation(v) {
+            if (!v || v.sold_out) return;
+            this.selectedVariation = v;
+        },
+        incrementQuantity() { if (this.quantity < 100) this.quantity++; },
+        decrementQuantity() { if (this.quantity > 1) this.quantity--; },
         formatCurrency(amount) {
             return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0);
         },
         // The amount actually being charged — used for the CTA label and analytics.
         get effectiveAmount() {
+            if (this.isPhysical) return this.unitPrice * this.quantity;
             if (this.isDonation) return this.contributionAmount;
             if (this.selectedTier) return parseFloat(this.selectedTier.price || 0);
             return parseFloat(this.asset.price || 0);
@@ -1487,6 +1715,9 @@ document.addEventListener('alpine:init', () => {
             // Donation assets are free unless the supporter chooses to contribute.
             if (this.isDonation) {
                 return this.contributionAmount === 0;
+            }
+            if (this.isPhysical) {
+                return this.unitPrice === 0;
             }
             // Check if this is a free asset (no tier selected or tier price is 0)
             if (this.selectedTier && this.selectedTier.price) {
@@ -1592,6 +1823,15 @@ document.addEventListener('alpine:init', () => {
                 : null;
             this.selectedTier = priorTier || (this.tiers.length > 0 ? this.tiers[0] : null);
 
+            // Physical products: variation picker + quantity stepper instead of tiers
+            if (this.isPhysical) {
+                this.tiers = [];
+                this.selectedTier = null;
+                this.variations = this.asset.details?.variations || [];
+                this.selectedVariation = this.variations.find(v => !v.sold_out) || null;
+                this.quantity = 1;
+            }
+
             // Donation assets: reset the amount. If a contribution is mandatory,
             // prefill with the minimum (or first suggested amount) so the CTA is valid.
             this.contribution = '';
@@ -1635,9 +1875,10 @@ document.addEventListener('alpine:init', () => {
             this._trackPurchaseOnce = true;
             try {
                 var price = this.effectiveAmount;
+                var qty = this.isPhysical ? this.quantity : 1;
                 if (typeof window.nyotaTrack === 'function') {
                     window.nyotaTrack('purchase',
-                        { transaction_id: String(this.purchaseId || ''), currency: currencySymbol, value: price, items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: price, quantity: 1 }] },
+                        { transaction_id: String(this.purchaseId || ''), currency: currencySymbol, value: price, items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: this.isPhysical ? this.unitPrice : price, quantity: qty }] },
                         { event: 'Purchase', params: { content_ids: [String(this.asset.id)], content_type: 'product', content_name: this.asset.title, value: price, currency: currencySymbol } }
                     );
                 }
@@ -1700,6 +1941,8 @@ document.addEventListener('alpine:init', () => {
                         channel_id: this.channelId,
                         tier: this.selectedTier,
                         contribution: this.isDonation ? this.contributionAmount : undefined,
+                        variation_id: (this.isPhysical && this.selectedVariation) ? this.selectedVariation.id : undefined,
+                        quantity: this.isPhysical ? this.quantity : undefined,
                         language: navigator.language || 'en'
                     })
                 });
@@ -1735,7 +1978,7 @@ document.addEventListener('alpine:init', () => {
                         var payPrice = this.effectiveAmount;
                         if (typeof window.nyotaTrack === 'function') {
                             window.nyotaTrack('add_payment_info',
-                                { currency: currencySymbol, value: payPrice, payment_type: 'mobile_money', items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: payPrice, quantity: 1 }] },
+                                { currency: currencySymbol, value: payPrice, payment_type: 'mobile_money', items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: this.isPhysical ? this.unitPrice : payPrice, quantity: this.isPhysical ? this.quantity : 1 }] },
                                 { event: 'AddPaymentInfo', params: { content_ids: [String(this.asset.id)], content_type: 'product', value: payPrice, currency: currencySymbol } }
                             );
                         }
@@ -2090,6 +2333,8 @@ document.addEventListener('alpine:init', () => {
                         channel_id: this.channelId,
                         tier: this.selectedTier,
                         contribution: this.isDonation ? this.contributionAmount : undefined,
+                        variation_id: (this.isPhysical && this.selectedVariation) ? this.selectedVariation.id : undefined,
+                        quantity: this.isPhysical ? this.quantity : undefined,
                         language: navigator.language || 'en'
                     })
                 });
@@ -2473,6 +2718,7 @@ document.addEventListener('alpine:init', () => {
     }));
 
     Alpine.data('activityFeed', (hasQuestionnaire = false, assetId = null) => ({
+        ...answerValueHelpers,
         allItems: [],
         hasQuestionnaire,
         assetId,
@@ -2598,6 +2844,7 @@ document.addEventListener('alpine:init', () => {
     // across all of the creator's products. Mirrors activityFeed but filters by
     // product instead of activity type, and exports per-supporter.
     Alpine.data('supporterActivity', (supporterId = null) => ({
+        ...answerValueHelpers,
         allItems: [],
         products: [],
         supporterId,

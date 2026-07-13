@@ -30,6 +30,7 @@ class AssetType(enum.Enum):
     DIGITAL_PRODUCT = "Digital Product"
     SUBSCRIPTION = "Subscription"
     NEWSLETTER = "Newsletter"
+    PHYSICAL = "Physical Product"
 
 class AssetStatus(enum.Enum):
     DRAFT = "Draft"
@@ -277,6 +278,9 @@ class Customer(db.Model):
     whatsapp_number = db.Column(db.String(25), unique=True, nullable=False, index=True)
     xp_points = db.Column(db.Integer, default=0)
     language = db.Column(db.String(5), default='en') # 'en' or 'sw'
+    # Last delivery details from a physical-product order, reused to prefill the
+    # next order's delivery questionnaire: {"answers": {<question>: <value>}, "updated_at": iso}
+    saved_delivery = db.Column(db.JSON, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     purchases = db.relationship('Purchase', back_populates='customer')
     subscriptions = db.relationship('Subscription', back_populates='customer')

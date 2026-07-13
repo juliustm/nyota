@@ -11,6 +11,10 @@ DEFAULT_TEMPLATES = {
     'purchase_sw': "Asante! Umepata '{asset_title}'. Fikia sasa: {link}",
     'purchase_en': "Thank you! You got '{asset_title}'. Access now: {link}",
 
+    # Physical-product order confirmation — nudges the buyer to add delivery details
+    'purchase_physical_sw': "Asante! Oda yako ya '{asset_title}' imepokelewa. Weka maelezo ya kuletewa hapa: {link}",
+    'purchase_physical_en': "Thank you! Your order for '{asset_title}' is received. Add your delivery details here: {link}",
+
     # Magic link (already owns)
     'magic_sw': "Unamiliki '{asset_title}'! Fikia hapa: {link} (Saa 24, mara 3 tu)",
     'magic_en': "You own '{asset_title}'! Access: {link} (24h, 3 opens)",
@@ -135,7 +139,10 @@ class OnSMSProvider(SMSProvider):
         except Exception:
             pass  # use /library fallback
 
-        tpl = self._get_tpl(cr, 'purchase', lang)
+        # Physical orders use the delivery-nudge template — the magic link lands the
+        # buyer on the order page where the delivery form is waiting.
+        is_physical = getattr(getattr(asset, 'asset_type', None), 'name', '') == 'PHYSICAL'
+        tpl = self._get_tpl(cr, 'purchase_physical' if is_physical else 'purchase', lang)
         try:
             message = tpl.format(asset_title=asset.title, link=link, ref=ref)
         except KeyError:

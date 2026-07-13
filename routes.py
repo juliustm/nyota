@@ -39,6 +39,7 @@ from utils.security import creator_login_required, generate_totp_secret, get_tot
 from utils.translator import translate
 from utils.image_utils import optimize_cover_image
 from utils.phone import normalize_phone_number
+from utils.timezones import local_to_utc, utc_to_local, creator_tz_name
 from extensions import limiter
 from services.sms_service import get_sms_provider
 
@@ -2353,13 +2354,16 @@ def sms_campaigns():
         'is_recurring': c.is_recurring,
         'recurrence_interval_days': c.recurrence_interval_days,
         'smart_exclude_recent_buyers': c.smart_exclude_recent_buyers,
-        'sent_at': c.sent_at.isoformat() if c.sent_at else None,
-        'scheduled_at': c.scheduled_at.isoformat() if c.scheduled_at else None,
-        'created_at': c.created_at.isoformat(),
+        'sent_at': utc_to_local(c.sent_at, g.creator).isoformat() if c.sent_at else None,
+        # Sent to the browser as the creator's wall-clock time — that is what the
+        # datetime-local picker edits and what the list displays.
+        'scheduled_at': utc_to_local(c.scheduled_at, g.creator).strftime('%Y-%m-%dT%H:%M') if c.scheduled_at else None,
+        'created_at': utc_to_local(c.created_at, g.creator).isoformat(),
     } for c in campaigns]
 
     return render_template('admin/campaigns_sms.html',
                            campaigns_json=json.dumps(campaigns_data),
+                           creator_timezone=creator_tz_name(g.creator),
                            sms_configured=sms_configured,
                            assets=all_assets,
                            sms_templates=sms_templates,
@@ -2428,12 +2432,17 @@ def sms_campaign_save():
     scheduled_at_str = data.get('scheduled_at')
     if scheduled_at_str:
         try:
-            campaign.scheduled_at = datetime.fromisoformat(scheduled_at_str)
+            # The admin picks a wall-clock time in their own timezone; store UTC
+            # so the background worker's utcnow() comparison fires at that hour.
+            local_dt = datetime.fromisoformat(scheduled_at_str)
+            campaign.scheduled_at = local_to_utc(local_dt, g.creator)
+            campaign.next_run_at = campaign.scheduled_at
             campaign.status = SMSCampaignStatus.SCHEDULED
         except ValueError:
             pass
     else:
         campaign.scheduled_at = None
+        campaign.next_run_at = None
 
     db.session.commit()
     return jsonify({'success': True, 'id': campaign.id, 'message': 'Campaign saved.'})
@@ -2539,7 +2548,7 @@ def sms_campaign_logs(campaign_id):
     return jsonify({
         'campaign': {'id': campaign.id, 'name': campaign.name, 'status': campaign.status.value},
         'logs': [{'phone': l.phone_number, 'status': l.status,
-                  'sent_at': l.sent_at.isoformat() if l.sent_at else None,
+                  'sent_at': utc_to_local(l.sent_at, g.creator).isoformat() if l.sent_at else None,
                   'error': l.error_message} for l in logs]
     })
 
@@ -2619,7 +2628,7 @@ def sms_global_log():
             'phone': l.phone_number,
             'type': l.log_type.value,
             'status': l.status,
-            'sent_at': l.sent_at.isoformat() if l.sent_at else None,
+            'sent_at': utc_to_local(l.sent_at, g.creator).isoformat() if l.sent_at else None,
             'preview': l.message_preview,
             'campaign_id': l.campaign_id,
         } for l in logs.items]

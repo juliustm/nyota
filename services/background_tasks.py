@@ -18,6 +18,8 @@ import time
 import logging
 from datetime import datetime, timedelta
 
+from utils.timezones import add_days_local
+
 logger = logging.getLogger('nyota.background')
 
 
@@ -109,11 +111,18 @@ def _process_scheduled_campaigns():
         campaign.sent_at = datetime.utcnow()
 
         if campaign.is_recurring and campaign.recurrence_interval_days:
-            # Reset to scheduled for the next run
+            # Reset to scheduled for the next run. Step forward from the slot the
+            # admin picked (not from "now") and add the interval in the creator's
+            # timezone, so a 09:00 local campaign keeps firing at 09:00 local and
+            # never drifts by the worker's processing delay.
+            now = datetime.utcnow()
+            next_run = campaign.scheduled_at or now
+            while next_run <= now:
+                next_run = add_days_local(next_run, campaign.recurrence_interval_days, creator)
             campaign.status = SMSCampaignStatus.SCHEDULED
-            campaign.scheduled_at = datetime.utcnow() + timedelta(days=campaign.recurrence_interval_days)
-            campaign.next_run_at = campaign.scheduled_at
-            logger.info(f"Recurring campaign #{campaign.id} rescheduled for {campaign.scheduled_at}.")
+            campaign.scheduled_at = next_run
+            campaign.next_run_at = next_run
+            logger.info(f"Recurring campaign #{campaign.id} rescheduled for {next_run} UTC.")
         else:
             campaign.status = SMSCampaignStatus.SENT
 

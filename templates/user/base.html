@@ -19,7 +19,11 @@
     <meta name="keywords"
         content="{% block meta_keywords %}digital products, online courses, subscriptions, digital downloads{% endblock %}">
     <meta name="author" content="{{ store_name or 'Nyota' }}">
+    {% if robots_noindex %}
+    <meta name="robots" content="noindex, nofollow">
+    {% else %}
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    {% endif %}
 
     <!-- Performance Optimizations -->
     <link rel="preconnect" href="https://cdn.tailwindcss.com">

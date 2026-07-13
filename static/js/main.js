@@ -1094,6 +1094,23 @@ document.addEventListener('alpine:init', () => {
             return `${window.location.origin}/${this.editableAsset.slug || this.asset.slug || ''}`;
         },
 
+        linkCopied: false,
+        async copyPublicUrl() {
+            try {
+                await navigator.clipboard.writeText(this.publicUrl);
+            } catch (e) {
+                // Clipboard API needs a secure context; fall back to a temp input.
+                const tmp = document.createElement('input');
+                tmp.value = this.publicUrl;
+                document.body.appendChild(tmp);
+                tmp.select();
+                document.execCommand('copy');
+                document.body.removeChild(tmp);
+            }
+            this.linkCopied = true;
+            setTimeout(() => { this.linkCopied = false; }, 2000);
+        },
+
         addContentItem(position = 'bottom') {
             if (!this.editableAsset.files) this.editableAsset.files = [];
             const blank = { _uid: 'new-' + Date.now() + '-' + Math.random(), title: '', link: '', description: '', newFile: null, type: 'upload', date: '', expiry: '' };
@@ -1246,6 +1263,9 @@ document.addEventListener('alpine:init', () => {
 
             const assetData = {
                 action: this.editableAsset.status === 'Draft' ? 'draft' : 'publish',
+                // Send the exact status too — 'action' alone cannot express
+                // Unlisted/Archived and the server would fall back to Published.
+                status: this.editableAsset.status,
                 asset: {
                     id: this.asset.id,
                     title: this.editableAsset.title,

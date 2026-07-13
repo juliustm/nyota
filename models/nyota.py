@@ -34,6 +34,9 @@ class AssetType(enum.Enum):
 class AssetStatus(enum.Enum):
     DRAFT = "Draft"
     PUBLISHED = "Published"
+    # Reachable by direct link and fully purchasable, but never listed, searched,
+    # recommended or indexed. The link IS the access control.
+    UNLISTED = "Unlisted"
     ARCHIVED = "Archived"
 
 class SubscriptionInterval(enum.Enum):

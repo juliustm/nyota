@@ -156,6 +156,7 @@
                         class="w-full sm:w-40 pl-3 pr-8 py-2.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 appearance-none">
                         <option value="">Bulk Actions</option>
                         <option value="publish">Publish</option>
+                        <option value="unlist">Make Unlisted</option>
                         <option value="draft">Move to Draft</option>
                         <option value="archive">Archive</option>
                         <option value="delete">Delete</option>
@@ -274,6 +275,8 @@
                         <option value="">All Status</option>
                         <option value="Published" {% if current_filters.status=='Published' %}selected{% endif %}>
                             Published</option>
+                        <option value="Unlisted" {% if current_filters.status=='Unlisted' %}selected{% endif %}>
+                            Unlisted</option>
                         <option value="Draft" {% if current_filters.status=='Draft' %}selected{% endif %}>Draft</option>
                         <option value="Archived" {% if current_filters.status=='Archived' %}selected{% endif %}>Archived
                         </option>
@@ -447,6 +450,7 @@
                                 <span
                                     class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium 
                                     {% if asset.status == 'Published' %}bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300
+                                    {% elif asset.status == 'Unlisted' %}bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300
                                     {% elif asset.status == 'Draft' %}bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300
                                     {% else %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{% endif %}">
                                     {{ asset.status }}
@@ -528,6 +532,7 @@
                     </button>
                     <span class="px-2 py-1 rounded-full text-xs font-medium
                         {% if asset.status == 'Published' %}bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300
+                        {% elif asset.status == 'Unlisted' %}bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300
                         {% elif asset.status == 'Draft' %}bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300
                         {% else %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{% endif %}">
                         {{ asset.status }}

@@ -1046,6 +1046,19 @@ def check_subscription_status(purchase):
     is_active = datetime.utcnow() < expiry_date
     return is_active, expiry_date
 
+# Statuses a stranger holding the URL may open and buy. UNLISTED belongs here:
+# it is a *distribution* choice (keep it off the storefront), not an access
+# restriction — the secrecy of the link is the only thing gating it. Anything that
+# DISCOVERS assets (storefront list, search, sitemap, recommendations, OG picker)
+# must keep filtering on PUBLISHED alone, never on this tuple.
+LINK_REACHABLE_STATUSES = (AssetStatus.PUBLISHED, AssetStatus.UNLISTED)
+
+
+def is_link_reachable(asset):
+    """True if a visitor with the direct link may view/buy this asset."""
+    return bool(asset) and asset.status in LINK_REACHABLE_STATUSES
+
+
 def is_subscription_purchase(purchase):
     """True if the purchase is subscription-based (asset flag OR a recurring tier)."""
     if not purchase:
@@ -1348,7 +1361,16 @@ def save_asset_from_form(asset, req):
             position=i
         ))
 
-    asset.status = AssetStatus.DRAFT if form_data.get('action') == 'draft' else AssetStatus.PUBLISHED
+    # Status: the editor sends the exact status the creator picked ('Unlisted',
+    # 'Archived', ...). Trust it when it's valid. Only fall back to the coarse
+    # draft/publish 'action' for the create form, which has no status picker —
+    # otherwise saving an Unlisted asset would silently republish it.
+    status_str = (form_data.get('status') or '').strip()
+    valid_statuses = {s.value: s for s in AssetStatus}
+    if status_str in valid_statuses:
+        asset.status = valid_statuses[status_str]
+    else:
+        asset.status = AssetStatus.DRAFT if form_data.get('action') == 'draft' else AssetStatus.PUBLISHED
     return asset
 
 # --- API ENDPOINTS FOR ASSET ACTIONS ---
@@ -1362,6 +1384,7 @@ def assets_bulk_action():
     if query.count() != len(asset_ids): return jsonify({'success': False, 'message': 'Authorization error or some assets not found.'}), 403
     try:
         if action == 'publish': query.update({'status': AssetStatus.PUBLISHED}); msg = f"{len(asset_ids)} asset(s) published."
+        elif action == 'unlist': query.update({'status': AssetStatus.UNLISTED}); msg = f"{len(asset_ids)} asset(s) are now unlisted — reachable only by direct link."
         elif action == 'draft': query.update({'status': AssetStatus.DRAFT}); msg = f"{len(asset_ids)} asset(s) moved to drafts."
         elif action == 'archive': query.update({'status': AssetStatus.ARCHIVED}); msg = f"{len(asset_ids)} asset(s) archived."
         elif action == 'delete': query.delete(synchronize_session=False); msg = f"{len(asset_ids)} asset(s) permanently deleted."
@@ -2993,7 +3016,10 @@ def referral_landing(refcode):
 
     next_slug = request.args.get('next', '').strip()
     if next_slug:
-        asset = DigitalAsset.query.filter_by(slug=next_slug, status=AssetStatus.PUBLISHED).first()
+        asset = DigitalAsset.query.filter(
+            DigitalAsset.slug == next_slug,
+            DigitalAsset.status.in_(LINK_REACHABLE_STATUSES)
+        ).first()
         if asset:
             return redirect(url_for('main.asset_detail', slug=next_slug))
 
@@ -3122,6 +3148,11 @@ def asset_detail(slug):
     # Visibility Rules
     if asset_obj.status == AssetStatus.PUBLISHED:
         pass # Public
+    elif asset_obj.status == AssetStatus.UNLISTED:
+        # Anyone holding the link may view and buy — it's just kept off the
+        # storefront, search, sitemap and recommendations. The template renders
+        # a noindex tag so a leaked link doesn't end up in Google.
+        pass
     elif asset_obj.status == AssetStatus.ARCHIVED:
         # Visible only to Owners (Purchasers) and Creator
         if not (has_purchased or is_creator):
@@ -3267,12 +3298,18 @@ def asset_detail(slug):
         meta_title=meta_title,
         meta_description=meta_description,
         meta_image=meta_image,
-        hide_navbar_search=True
+        hide_navbar_search=True,
+        # Only a genuinely published asset should be indexable. Unlisted pages are
+        # reachable by link, so they must actively tell crawlers to stay away.
+        robots_noindex=(asset_obj.status != AssetStatus.PUBLISHED)
     )
 
 @main_bp.route('/checkout/<slug>')
 def checkout(slug):
-    asset = DigitalAsset.query.filter_by(slug=slug, status=AssetStatus.PUBLISHED).first_or_404()
+    asset = DigitalAsset.query.filter(
+        DigitalAsset.slug == slug,
+        DigitalAsset.status.in_(LINK_REACHABLE_STATUSES)
+    ).first_or_404()
     creator = Creator.query.first()
     return render_template('user/checkout.html', asset=asset.to_dict(), channel_id=str(uuid.uuid4()), creator=creator, store_name=creator.store_name if creator else 'Nyota')
 
@@ -3344,6 +3381,12 @@ def initiate_payment():
     tier = data.get('tier')  # Extract selected tier
 
     asset = DigitalAsset.query.get_or_404(asset_id)
+
+    # Only link-reachable assets may be bought. Without this an unpublished asset
+    # (draft or archived) could be purchased by anyone who guessed its numeric id,
+    # since this endpoint takes the id straight from the request body.
+    if not is_link_reachable(asset):
+        return jsonify({'success': False, 'message': 'This item is not available for purchase.'}), 404
 
     # Determine price based on tier
     amount = asset.price

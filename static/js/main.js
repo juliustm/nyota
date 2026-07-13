@@ -826,6 +826,21 @@ document.addEventListener('alpine:init', () => {
         metaPixelEnabled: false,
         gaEnabled: false,
 
+        // Footer: links and opening hours are edited as structures and posted as
+        // JSON in a single hidden field each (see the footer section of settings.html).
+        footerLinks: [],
+        businessHours: {},
+        weekdays: [
+            { key: 'mon', label: 'Monday' },
+            { key: 'tue', label: 'Tuesday' },
+            { key: 'wed', label: 'Wednesday' },
+            { key: 'thu', label: 'Thursday' },
+            { key: 'fri', label: 'Friday' },
+            { key: 'sat', label: 'Saturday' },
+            { key: 'sun', label: 'Sunday' },
+        ],
+        maxFooterLinks: 3,
+
         init() {
             // Populate state from the initial settings object
             this.storeLogo = this.settings.store_logo_url || '';
@@ -837,8 +852,39 @@ document.addEventListener('alpine:init', () => {
             this.metaPixelEnabled = this.settings.marketing_meta_pixel_enabled || false;
             this.gaEnabled = this.settings.marketing_ga_enabled || false;
 
+            // Footer defaults. A store that has never opened this tab has no rows at
+            // all, so seed the selects (an unmatched x-model would render blank) and
+            // switch on the two things every store wants.
+            ['footer_about_visibility', 'footer_contact_visibility', 'footer_address_visibility', 'footer_hours_visibility']
+                .forEach(key => {
+                    if (!this.settings[key]) this.settings[key] = 'public';
+                });
+            if (this.settings.footer_enabled === undefined) this.settings.footer_enabled = true;
+            if (this.settings.footer_credit_enabled === undefined) this.settings.footer_credit_enabled = true;
+
+            // Footer structures. Both are stored as JSON in CreatorSetting.value, but
+            // tolerate a string in case an older row was written as text.
+            this.footerLinks = this.parseStructure(this.settings.footer_links, []);
+            if (!Array.isArray(this.footerLinks)) this.footerLinks = [];
+            this.footerLinks = this.footerLinks.slice(0, this.maxFooterLinks).map(link => ({
+                title: link.title || '',
+                description: link.description || '',
+                url: link.url || '',
+            }));
+
+            const savedHours = this.parseStructure(this.settings.business_hours, {}) || {};
+            this.businessHours = {};
+            this.weekdays.forEach(day => {
+                const entry = savedHours[day.key] || {};
+                this.businessHours[day.key] = {
+                    closed: !!entry.closed,
+                    open: entry.open || '',
+                    close: entry.close || '',
+                };
+            });
+
             // Restore the last-open tabs so a refresh returns to the same view.
-            const validMainTabs = ['storeProfile', 'appearance', 'integrations'];
+            const validMainTabs = ['storeProfile', 'appearance', 'footer', 'integrations'];
             const validIntegrationTabs = ['notifications', 'payments', 'marketing'];
             const savedMainTab = localStorage.getItem('adminSettingsMainTab');
             const savedIntegrationTab = localStorage.getItem('adminSettingsIntegrationTab');
@@ -855,6 +901,41 @@ document.addEventListener('alpine:init', () => {
         setTheme(newTheme) {
             // This method updates the LIVE theme, not the saved setting
             this.$dispatch('set-theme', newTheme);
+        },
+
+        // --- Footer helpers ---
+
+        parseStructure(value, fallback) {
+            if (value === null || value === undefined || value === '') return fallback;
+            if (typeof value === 'object') return value;
+            try {
+                return JSON.parse(value);
+            } catch (e) {
+                console.warn('[Nyota] Ignoring unreadable footer setting:', e);
+                return fallback;
+            }
+        },
+
+        addFooterLink() {
+            if (this.footerLinks.length >= this.maxFooterLinks) return;
+            this.footerLinks.push({ title: '', description: '', url: '' });
+        },
+
+        removeFooterLink(index) {
+            this.footerLinks.splice(index, 1);
+        },
+
+        // Copy one day's hours down to every other open day — the common case is
+        // the same window Mon–Fri.
+        applyHoursToAll(sourceKey) {
+            const source = this.businessHours[sourceKey];
+            if (!source) return;
+            this.weekdays.forEach(day => {
+                if (day.key === sourceKey) return;
+                if (this.businessHours[day.key].closed) return;
+                this.businessHours[day.key].open = source.open;
+                this.businessHours[day.key].close = source.close;
+            });
         },
 
         previewStoreLogo(event) {

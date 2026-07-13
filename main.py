@@ -136,6 +136,32 @@ def create_app(config_class=Config):
             translate=translate
         )
 
+    @app.context_processor
+    def inject_site_footer():
+        """Make the footer available to every storefront page.
+
+        Routes pass `creator` inconsistently (the library and recovery pages
+        don't), so the footer resolves the creator itself rather than depending
+        on each route to remember. Admin pages don't render it.
+        """
+        if request.blueprint == 'admin':
+            return {}
+
+        from models.nyota import Creator
+        from utils.site_meta import build_site_footer, build_structured_data
+
+        try:
+            creator = Creator.query.first()
+            footer = build_site_footer(creator)
+            return dict(
+                site_footer=footer,
+                site_schema=build_structured_data(creator, footer),
+            )
+        except Exception as exc:
+            # Pre-setup (no tables yet) or a bad settings row must not 500 the store.
+            app.logger.warning(f"Footer context unavailable: {exc}")
+            return dict(site_footer={'enabled': False}, site_schema=None)
+
     def get_currency_symbol():
         from models.nyota import Creator
         creator = Creator.query.first()

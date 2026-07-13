@@ -60,7 +60,16 @@
         content="{% block twitter_image_alt %}{{ meta_title or store_name or 'Digital content' }}{% endblock %}">
 
     <!-- JSON-LD Structured Data -->
+    {#
+      Built server-side in utils/site_meta.py from the same data as the footer,
+      so the markup can never advertise a detail the page doesn't show. Anything
+      the creator gated behind a reader session is omitted here, because search
+      engines crawl anonymously.
+    #}
     {% block structured_data %}
+    {% if site_schema %}
+    <script type="application/ld+json">{{ site_schema | tojson }}</script>
+    {% else %}
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -71,6 +80,7 @@
       "description": "{{ meta_description or 'Digital content marketplace' }}"
     }
     </script>
+    {% endif %}
     {% endblock %}
 
     <script src="https://cdn.tailwindcss.com"></script>
@@ -295,11 +305,7 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer
-        class="text-center py-8 text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-800 mt-12">
-        {{ translate('powered_by') }} <a href="{{ url_for('main.landing_page') }}"
-            class="font-semibold hover:text-indigo-500">Nyota ✨</a>.
-    </footer>
+    {% include 'user/partials/footer.html' %}
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script>

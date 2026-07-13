@@ -2006,6 +2006,24 @@ def manage_settings():
             # NOTE: 'asset_sort_mode' is intentionally NOT here — it is managed
             # from the Assets list page via /admin/api/settings/sort-mode so that
             # saving the main Settings form never wipes it.
+
+            # Footer & Trust
+            'footer_enabled', 'footer_tagline', 'footer_credit_enabled',
+            'footer_about_enabled', 'footer_about_visibility', 'footer_about_text',
+            'footer_links_enabled',
+            'footer_contact_enabled', 'footer_contact_visibility', 'footer_contact_whatsapp',
+            'footer_address_enabled', 'footer_address_visibility',
+            'business_street', 'business_city', 'business_region',
+            'business_postal_code', 'business_country', 'business_map_url',
+            'footer_hours_enabled', 'footer_hours_visibility', 'business_hours_note',
+            'footer_social_enabled',
+            'footer_trust_enabled', 'footer_trust_secure_payment_enabled',
+            'footer_trust_instant_delivery_enabled', 'footer_trust_support_enabled',
+            'footer_trust_support_text',
+            'footer_stats_enabled',
+            'footer_legal_name', 'footer_tax_id', 'footer_founding_year',
+            # NOTE: 'footer_links' and 'business_hours' are JSON structures posted as
+            # a single field each; they are parsed below rather than through this loop.
         ]
 
         # Iterate and save each setting
@@ -2021,7 +2039,64 @@ def manage_settings():
                 continue
             
             g.creator.set_setting(key, value)
-        
+
+        # --- Footer JSON structures ---
+        # Links and opening hours are repeatable/nested, so the form posts each as
+        # one JSON blob rather than dozens of indexed fields. They are validated and
+        # normalised here so the storefront never has to defend against bad shapes.
+        footer_links_raw = request.form.get('footer_links')
+        if footer_links_raw is not None:
+            try:
+                parsed = json.loads(footer_links_raw) or []
+                clean_links = []
+                for item in parsed:
+                    # Three links max, by design — a footer is not a sitemap. The cap is
+                    # applied to *valid* links, so a rejected one doesn't consume a slot.
+                    if len(clean_links) >= 3:
+                        break
+                    if not isinstance(item, dict):
+                        continue
+                    title = (item.get('title') or '').strip()
+                    url = (item.get('url') or '').strip()
+                    if not title or not url:
+                        continue
+                    # A URL carrying a scheme must carry an allowed one; anything else
+                    # (javascript:, data:, …) is dropped rather than patched up, so a
+                    # hostile value can never be massaged into something renderable.
+                    scheme_match = re.match(r'^([a-zA-Z][a-zA-Z0-9+.\-]*):', url)
+                    if scheme_match:
+                        if scheme_match.group(1).lower() not in ('http', 'https', 'mailto', 'tel'):
+                            continue
+                    elif not url.startswith('/'):
+                        # Bare domain the creator typed without a scheme, e.g. "example.com".
+                        url = 'https://' + url
+                    clean_links.append({
+                        'title': title[:60],
+                        'description': (item.get('description') or '').strip()[:120],
+                        'url': url,
+                    })
+                g.creator.set_setting('footer_links', clean_links)
+            except (ValueError, TypeError):
+                current_app.logger.warning('Settings: could not parse footer_links payload; left unchanged.')
+
+        business_hours_raw = request.form.get('business_hours')
+        if business_hours_raw is not None:
+            try:
+                parsed = json.loads(business_hours_raw) or {}
+                clean_hours = {}
+                for day in ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']:
+                    entry = parsed.get(day)
+                    if not isinstance(entry, dict):
+                        continue
+                    clean_hours[day] = {
+                        'closed': bool(entry.get('closed')),
+                        'open': (entry.get('open') or '').strip(),
+                        'close': (entry.get('close') or '').strip(),
+                    }
+                g.creator.set_setting('business_hours', clean_hours)
+            except (ValueError, TypeError):
+                current_app.logger.warning('Settings: could not parse business_hours payload; left unchanged.')
+
         # Handle file upload for store logo
         if 'store_logo' in request.files:
             file = request.files['store_logo']

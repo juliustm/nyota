@@ -177,6 +177,52 @@ class CreatorSetting(db.Model):
 # 'creator_timezone': (string) IANA timezone name, e.g. "Africa/Nairobi" or "Europe/London"
 # 'asset_sort_mode': (string) How assets are ordered on public page:
 #                   "manual" | "date_listed" | "date_modified" | "sales" | "alphabetical"
+#
+# --- Footer & Trust (rendered by utils/site_meta.py + user/partials/footer.html) ---
+# Every '*_visibility' key is one of "public" | "session" | "verified", and gates the
+# block against the reader's session strength. Anything not "public" is withheld from
+# the JSON-LD too, because crawlers are anonymous.
+#
+# 'footer_enabled': (boolean) Master switch. Absent == on.
+# 'footer_tagline': (string) One-line pitch under the footer logo
+# 'footer_credit_enabled': (boolean) Show "Powered by Nyota". Absent == on.
+#
+# 'footer_about_enabled': (boolean)
+# 'footer_about_text': (string) Falls back to 'store_bio' when blank
+# 'footer_about_visibility': (string)
+#
+# 'footer_links_enabled': (boolean)
+# 'footer_links': (list) Max 3 of {title, description, url}. Posted as one JSON field.
+#
+# 'footer_contact_enabled': (boolean) Renders 'contact_email' / 'contact_phone'
+# 'footer_contact_whatsapp': (string) Phone number for the wa.me link
+# 'footer_contact_visibility': (string)
+#
+# 'footer_address_enabled': (boolean)
+# 'business_street', 'business_city', 'business_region',
+# 'business_postal_code', 'business_country': (string) schema.org PostalAddress parts.
+#                   A PUBLIC address promotes the markup from Organization to LocalBusiness.
+# 'business_map_url': (string)
+# 'footer_address_visibility': (string)
+#
+# 'footer_hours_enabled': (boolean)
+# 'business_hours': (dict) {mon..sun: {closed: bool, open: "09:00", close: "17:00"}}.
+#                   Posted as one JSON field. Days left blank are omitted.
+# 'business_hours_note': (string)
+# 'footer_hours_visibility': (string)
+#
+# 'footer_social_enabled': (boolean) Reuses the 'social_*' keys; also emitted as sameAs
+#
+# 'footer_trust_enabled': (boolean) Master switch for the trust strip
+# 'footer_trust_secure_payment_enabled': (boolean)
+# 'footer_trust_instant_delivery_enabled': (boolean)
+# 'footer_trust_support_enabled': (boolean)
+# 'footer_trust_support_text': (string)
+# 'footer_stats_enabled': (boolean) Live social proof (customers, ratings) read from the DB
+#
+# 'footer_legal_name': (string) Registered business name
+# 'footer_tax_id': (string) Registration / TIN, emitted as schema taxID
+# 'footer_founding_year': (string) Emitted as schema foundingDate
 # ==============================================================================
 
 # --- Core Models ---

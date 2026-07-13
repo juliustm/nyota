@@ -1250,7 +1250,7 @@ document.addEventListener('alpine:init', () => {
 
             // Sanitize donation config (only meaningful for non-subscription assets).
             const donationSrc = this.editableAsset.donation || {};
-            const donationEnabled = !!donationSrc.enabled && !this.editableAsset.is_subscription;
+            const donationEnabled = !!donationSrc.enabled && !this.asset.is_subscription;
             const donation = {
                 enabled: donationEnabled,
                 min_amount: parseFloat(donationSrc.min_amount) || 0,
@@ -1292,9 +1292,11 @@ document.addEventListener('alpine:init', () => {
                 labels: this.editableAsset.details?.labels || {},
                 donation: donation,
                 pricing: {
+                    // The billing model is fixed at creation; the server ignores this on
+                    // updates. Sent only so the payload stays consistent with the asset.
                     amount: effectivePrice,
-                    type: this.editableAsset.is_subscription ? 'recurring' : 'one-time',
-                    billingCycle: (this.editableAsset.subscription_interval || 'monthly').toLowerCase(),
+                    type: this.asset.is_subscription ? 'recurring' : 'one-time',
+                    billingCycle: (this.asset.subscription_interval || 'monthly').toLowerCase(),
                     tiers: this.editableAsset.details?.subscription_tiers || []
                 }
             };

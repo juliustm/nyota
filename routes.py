@@ -1172,8 +1172,15 @@ def save_asset_from_form(asset, req):
 
     pricing_data = form_data.get('pricing', {})
     asset.price = decimal.Decimal(pricing_data.get('amount') or 0.0)
-    asset.is_subscription = pricing_data.get('type') == 'recurring'
-    asset.subscription_interval = SubscriptionInterval[pricing_data.get('billingCycle', 'monthly').upper()] if asset.is_subscription else None
+    # The billing model is chosen once, at creation. An existing asset can have live
+    # subscribers whose renewals and access depend on it, so an edit never flips it —
+    # whatever the client sends for pricing.type on an update is ignored.
+    if asset.id is None:
+        asset.is_subscription = pricing_data.get('type') == 'recurring'
+    if asset.is_subscription:
+        asset.subscription_interval = SubscriptionInterval[pricing_data.get('billingCycle', 'monthly').upper()]
+    else:
+        asset.subscription_interval = None
     
     # Handle allow_download setting (default to True if not explicitly set)
     allow_download = form_data.get('allow_download')

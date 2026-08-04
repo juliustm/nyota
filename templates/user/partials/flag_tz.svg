@@ -1,0 +1,8 @@
+{# Tanzanian flag — inline so it renders identically on every OS, unlike the 🇹🇿 emoji
+   (Windows Chrome draws that as the letters "TZ"). Shown beside the fixed +255 prefix. #}
+<svg class="field-flag" viewBox="0 0 640 480" aria-hidden="true" focusable="false" preserveAspectRatio="none">
+    <path fill="#09f" d="M0 0h640v480H0z" />
+    <path fill="#090" d="M0 0h640L0 480z" />
+    <path stroke="#ff0" stroke-width="74" d="m0 480 640-480" />
+    <path stroke="#000" stroke-width="50" d="m0 480 640-480" />
+</svg>

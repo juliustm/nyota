@@ -1,0 +1,78 @@
+{# Physical goods: the buyer picks the option and the quantity HERE, on the page,
+   beside the photos — not inside the checkout modal. A first-time web user should
+   never have to open a form to discover that this product comes in two colours.
+   State lives in $store.order, so the price card, the sticky footer and the modal
+   all show the same choice. #}
+<section x-show="$store.order.isPhysical" x-cloak
+    class="mt-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 sm:p-5">
+
+    <!-- Options -->
+    <template x-if="$store.order.hasOptions">
+        <div>
+            <h2 class="text-base font-bold text-gray-900 dark:text-white mb-1">{{ translate('choose_variation') }}</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">{{ translate('tap_the_one_you_want') }}</p>
+
+            <div class="space-y-2.5">
+                <template x-for="v in $store.order.variations" :key="v.id">
+                    <button type="button" @click="$store.order.pick(v)" :disabled="v.sold_out"
+                        class="opt-row"
+                        :class="{
+                            'is-selected': $store.order.selected && $store.order.selected.id === v.id,
+                            'is-sold-out': v.sold_out
+                        }">
+                        <img x-show="v.photo_url" :src="v.photo_url" alt="" loading="lazy" class="opt-row__photo">
+                        <span class="flex-1 min-w-0">
+                            <span class="opt-row__name block" x-text="v.name"></span>
+                            <span x-show="v.sold_out"
+                                class="block mt-0.5 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{{ translate('sold_out') }}</span>
+                            {# Per-option price only when the options actually differ — otherwise
+                               it repeats the one number already shown below the picker. #}
+                            <span x-show="!v.sold_out && $store.order.pricesVary"
+                                class="block mt-0.5 text-sm font-bold text-indigo-600 dark:text-indigo-400"
+                                x-text="'{{ currency_symbol }}' + $store.order.money($store.order.priceOf(v))"></span>
+                        </span>
+                        <span class="opt-row__tick" aria-hidden="true">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                                stroke-width="3.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                        </span>
+                    </button>
+                </template>
+            </div>
+        </div>
+    </template>
+
+    <!-- Quantity + running total. One row, always visible: the buyer sees the
+         number they will be charged before they ever tap Buy. -->
+    <div x-show="!$store.order.soldOut"
+        class="flex items-center justify-between gap-3"
+        :class="$store.order.hasOptions ? 'mt-4 pt-4 border-t border-gray-100 dark:border-gray-700' : ''">
+        <div class="min-w-0">
+            <p class="text-sm font-bold text-gray-900 dark:text-white">{{ translate('quantity') }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                <span x-text="'{{ currency_symbol }}' + $store.order.money($store.order.unitPrice)"></span>
+                <span x-show="$store.order.selected"> · <span x-text="$store.order.selected?.name"></span></span>
+            </p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <button type="button" @click="$store.order.dec()" :disabled="$store.order.quantity <= 1"
+                class="qty-btn" aria-label="{{ translate('quantity') }} −">−</button>
+            <span class="w-8 text-center text-xl font-extrabold text-gray-900 dark:text-white"
+                x-text="$store.order.quantity" aria-live="polite"></span>
+            <button type="button" @click="$store.order.inc()" :disabled="$store.order.quantity >= 100"
+                class="qty-btn" aria-label="{{ translate('quantity') }} +">+</button>
+        </div>
+    </div>
+
+    <div x-show="!$store.order.soldOut && $store.order.quantity > 1"
+        class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex items-baseline justify-between">
+        <span class="text-sm text-gray-500 dark:text-gray-400">{{ translate('total_amount') }}</span>
+        <span class="text-xl font-extrabold text-gray-900 dark:text-white"
+            x-text="'{{ currency_symbol }}' + $store.order.money($store.order.total)"></span>
+    </div>
+
+    <p x-show="$store.order.soldOut" class="text-sm font-bold text-gray-500 dark:text-gray-400 text-center py-2">
+        {{ translate('sold_out') }}
+    </p>
+</section>

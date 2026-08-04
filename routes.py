@@ -407,6 +407,7 @@ def export_dashboard_data():
     # Headers
     headers = [
         'Order ID', 'Date', 'Time', 'Customer Phone', 'Asset', 'Status', 'Amount',
+        'Variation', 'Quantity',
         'Refcode Used', 'Source Used', 'Visitor Refcode', 'Refcode Outcome',
         'Past Purchase 1 (Date - Asset - Amount)',
         'Past Purchase 2 (Date - Asset - Amount)',
@@ -433,9 +434,10 @@ def export_dashboard_data():
             asset_title = pp2.asset.title if pp2.asset else "Unknown Asset"
             past_2_str = f"{pp2.purchase_date.strftime('%Y-%m-%d')} - {asset_title} - {pp2.amount_paid}"
 
-        # Collect custom field responses, excluding internal 'tier' key
-        custom_fields_data = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
-        custom_fields_str = '; '.join(f"{k}: {v}" for k, v in custom_fields_data.items()) if custom_fields_data else ''
+        # Collect custom field responses, excluding internal keys (tier/variation/quantity)
+        custom_fields_data = ticket_answers(p.ticket_data)
+        custom_fields_str = '; '.join(f"{k}: {csv_answer_value(v)}" for k, v in custom_fields_data.items()) if custom_fields_data else ''
+        variation_name, order_qty = purchase_order_extras(p)
 
         cw.writerow([
             p.id,
@@ -445,6 +447,8 @@ def export_dashboard_data():
             p.asset.title,
             p.status.name,
             p.amount_paid,
+            variation_name or '',
+            order_qty or '',
             p.refcode_used or '',
             p.source_used or '',
             p.visitor_refcode or '',
@@ -519,7 +523,7 @@ def export_asset_responses(asset_id):
         answer_rows = []
         extra_keys = []
         for p in purchases:
-            answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+            answers = ticket_answers(p.ticket_data)
             filled = bool(answers)
             if quest_filled == 'filled' and not filled:
                 continue
@@ -534,11 +538,13 @@ def export_asset_responses(asset_id):
 
         cw.writerow(
             ['Order ID', 'Date', 'Time', 'Customer Phone', 'Payment Status',
-             'Questionnaire Filled', 'Amount', 'Refcode Used', 'Source Used'] + question_cols
+             'Questionnaire Filled', 'Amount', 'Variation', 'Quantity',
+             'Refcode Used', 'Source Used'] + question_cols
         )
         for p, answers in answer_rows:
             questionnaire_filled = ('N/A' if not asset.custom_fields
                                     else ('Yes' if bool(answers) else 'No'))
+            variation_name, order_qty = purchase_order_extras(p)
             row = [
                 p.id,
                 p.purchase_date.strftime('%Y-%m-%d'),
@@ -547,16 +553,13 @@ def export_asset_responses(asset_id):
                 p.status.name,
                 questionnaire_filled,
                 p.amount_paid,
+                variation_name or '',
+                order_qty or '',
                 p.refcode_used or '',
                 p.source_used or '',
             ]
             for col in question_cols:
-                v = answers.get(col, '')
-                if isinstance(v, bool):
-                    v = 'Yes' if v else 'No'
-                elif isinstance(v, dict) and v.get('__file__'):
-                    v = v.get('original_name', '[file]')
-                row.append(v)
+                row.append(csv_answer_value(answers.get(col, '')))
             cw.writerow(row)
 
     # --- Comments section ---
@@ -712,12 +715,15 @@ def asset_edit(asset_id):
             asset_id=asset.id, status=PurchaseStatus.COMPLETED
         ).order_by(Purchase.purchase_date.desc()).all()
         for p in completed:
-            answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+            answers = ticket_answers(p.ticket_data)
+            _var = (p.ticket_data or {}).get('variation')
             responses.append({
                 'purchase_id': p.id,
                 'customer': p.customer.whatsapp_number if p.customer else 'Unknown',
                 'date': p.purchase_date,
                 'amount': float(p.amount_paid or 0),
+                'variation': _var.get('name') if isinstance(_var, dict) else None,
+                'quantity': (p.ticket_data or {}).get('quantity'),
                 'answers': answers,
                 'filled': bool(answers),
             })
@@ -728,7 +734,8 @@ def asset_edit(asset_id):
     ).order_by(Purchase.purchase_date.desc()).limit(200).all()
     activity_purchases = []
     for p in all_purchases:
-        answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+        answers = ticket_answers(p.ticket_data)
+        _var = (p.ticket_data or {}).get('variation')
         activity_purchases.append({
             'activity_type': 'purchase',
             'purchase_id': p.id,
@@ -736,6 +743,8 @@ def asset_edit(asset_id):
             'date': p.purchase_date.isoformat(),
             'amount': float(p.amount_paid or 0),
             'payment_status': p.status.name,
+            'variation': _var.get('name') if isinstance(_var, dict) else None,
+            'quantity': (p.ticket_data or {}).get('quantity'),
             'answers': answers,
             'filled': bool(answers),
         })
@@ -949,7 +958,7 @@ def serve_content(file_id):
         # filled, block delivery until the buyer has submitted their answers.
         _asset = purchase.asset
         if (_asset.details or {}).get('collect_info_mode') == 'gate' and _asset.custom_fields:
-            _answered = {k: v for k, v in (purchase.ticket_data or {}).items() if k != 'tier'}
+            _answered = ticket_answers(purchase.ticket_data)
             if not _answered:
                 flash("Please complete the short form to unlock your content.", "info")
                 return redirect(url_for('main.asset_detail', slug=_asset.slug))
@@ -1058,6 +1067,75 @@ LINK_REACHABLE_STATUSES = (AssetStatus.PUBLISHED, AssetStatus.UNLISTED)
 def is_link_reachable(asset):
     """True if a visitor with the direct link may view/buy this asset."""
     return bool(asset) and asset.status in LINK_REACHABLE_STATUSES
+
+
+# Keys inside Purchase.ticket_data that belong to the platform (chosen tier,
+# physical-order variation/quantity), never to the buyer's questionnaire answers.
+# They must be excluded wherever answers are displayed/exported, and protected
+# from being overwritten through the public ticket-data API.
+TICKET_INTERNAL_KEYS = frozenset({'tier', 'variation', 'quantity'})
+
+
+def ticket_answers(ticket_data):
+    """The buyer-entered questionnaire answers, with internal keys stripped."""
+    return {k: v for k, v in (ticket_data or {}).items() if k not in TICKET_INTERNAL_KEYS}
+
+
+def csv_answer_value(v):
+    """Flatten a questionnaire answer (bool/file/location) into a CSV-safe string."""
+    if isinstance(v, bool):
+        return 'Yes' if v else 'No'
+    if isinstance(v, dict):
+        if v.get('__file__'):
+            return v.get('original_name', '[file]')
+        if v.get('__location__'):
+            url = v.get('maps_url')
+            if not url and v.get('lat') is not None and v.get('lng') is not None:
+                url = f"https://www.google.com/maps?q={v['lat']},{v['lng']}"
+            parts = [p for p in (url, v.get('text')) if p]
+            return ' | '.join(parts) if parts else '[location]'
+    return v
+
+
+def purchase_order_extras(purchase):
+    """(variation_name, quantity) recorded on a purchase, or (None, None)."""
+    td = purchase.ticket_data or {}
+    var = td.get('variation')
+    return (var.get('name') if isinstance(var, dict) else None), td.get('quantity')
+
+
+# Hosts a pasted "share location" link may come from. Anything else is rejected —
+# these values are rendered back as clickable links in the admin order views.
+_MAPS_URL_RE = re.compile(
+    r'^https://(www\.)?(google\.[a-z.]+/maps|maps\.google\.[a-z.]+|maps\.app\.goo\.gl|goo\.gl/maps)[/?#]?',
+    re.IGNORECASE,
+)
+
+
+def sanitize_location_answer(value):
+    """Validate a location-type questionnaire answer from the client.
+
+    Returns a clean {'__location__': True, lat?, lng?, maps_url?, text?} dict,
+    or None if nothing usable survives validation.
+    """
+    if not isinstance(value, dict) or not value.get('__location__'):
+        return None
+    clean = {'__location__': True}
+    lat, lng = value.get('lat'), value.get('lng')
+    try:
+        lat, lng = float(lat), float(lng)
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            clean['lat'] = round(lat, 6)
+            clean['lng'] = round(lng, 6)
+    except (TypeError, ValueError):
+        pass
+    maps_url = str(value.get('maps_url') or '').strip()
+    if maps_url and len(maps_url) <= 500 and _MAPS_URL_RE.match(maps_url):
+        clean['maps_url'] = maps_url
+    text_note = str(value.get('text') or '').strip()
+    if text_note:
+        clean['text'] = text_note[:300]
+    return clean if len(clean) > 1 else None
 
 
 def is_subscription_purchase(purchase):
@@ -1281,6 +1359,53 @@ def save_asset_from_form(asset, req):
     elif asset.asset_type == AssetType.NEWSLETTER:
         # Merge existing details with newsletter details
         asset.details.update(form_data.get('newsletterDetails', {}))
+    elif asset.asset_type == AssetType.PHYSICAL:
+        # --- Variations (size/colour/model options) with an optional photo each ---
+        # Stored in details['variations']; a variation without its own price falls
+        # back to the asset's base price at checkout. Photos ride the same
+        # optimize-to-WebP pipeline as covers, under field names variation_photo_<id>.
+        variations_in = form_data.get('variations') or []
+        variations = []
+        if isinstance(variations_in, list):
+            for i, v in enumerate(variations_in):
+                if not isinstance(v, dict):
+                    continue
+                name = str(v.get('name') or '').strip()
+                if not name:
+                    continue
+                var_id = re.sub(r'[^A-Za-z0-9_-]', '', str(v.get('id') or ''))[:40]
+                if not var_id:
+                    var_id = f"v{int(datetime.now().timestamp())}{i}"
+                price = None
+                if v.get('price') not in (None, ''):
+                    try:
+                        price = float(v.get('price'))
+                        if price < 0:
+                            price = None
+                    except (ValueError, TypeError):
+                        price = None
+                photo_url = str(v.get('photo_url') or '').strip() or None
+                photo_file = req.files.get(f'variation_photo_{var_id}')
+                if photo_file and photo_file.filename:
+                    upload_path = current_app.config['COVERS_DIR']
+                    filename_prefix = f"{asset.id or 'new'}_{var_id}_{int(datetime.now().timestamp())}"
+                    try:
+                        optimized_filename = optimize_cover_image(photo_file, upload_path, filename_prefix)
+                        photo_url = f'/media/covers/{optimized_filename}'
+                    except Exception as e:
+                        current_app.logger.warning(f"Variation photo optimization failed, saving original: {e}")
+                        fallback_name = f"{filename_prefix}_{secure_filename(photo_file.filename)}"
+                        photo_file.seek(0)
+                        photo_file.save(os.path.join(upload_path, fallback_name))
+                        photo_url = f'/media/covers/{fallback_name}'
+                variations.append({
+                    'id': var_id,
+                    'name': name[:120],
+                    'price': price,
+                    'photo_url': photo_url,
+                    'sold_out': bool(v.get('sold_out')),
+                })
+        asset.details['variations'] = variations
 
     # Position preference: place new assets at top or bottom of the manual order
     if not asset.id:
@@ -1661,7 +1786,8 @@ def supporter_detail(id):
     products = []
     seen_products = set()
     for p in purchases:
-        answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+        answers = ticket_answers(p.ticket_data)
+        _var = (p.ticket_data or {}).get('variation')
         activity_items.append({
             'purchase_id': p.id,
             'asset_id': p.asset_id,
@@ -1670,6 +1796,8 @@ def supporter_detail(id):
             'amount_display': f"{currency_symbol} {float(p.amount_paid or 0):,.2f}",
             'payment_status': p.status.name,
             'refcode_used': p.refcode_used or '',
+            'variation': _var.get('name') if isinstance(_var, dict) else None,
+            'quantity': (p.ticket_data or {}).get('quantity'),
             'answers': answers,
             'filled': bool(answers),
         })
@@ -1746,7 +1874,7 @@ def export_supporter_responses(id):
             q = f.get('question') if isinstance(f, dict) else None
             if q and q not in questions:
                 questions.append(q)
-        answers = {k: v for k, v in (p.ticket_data or {}).items() if k != 'tier'}
+        answers = ticket_answers(p.ticket_data)
         filled = bool(answers)
         if quest_filled == 'filled' and not filled:
             continue
@@ -1763,11 +1891,13 @@ def export_supporter_responses(id):
     cw = csv.writer(si)
     cw.writerow(
         ['Product', 'Order ID', 'Date', 'Time', 'Payment Status',
-         'Questionnaire Filled', 'Amount', 'Refcode Used', 'Source Used'] + question_cols
+         'Questionnaire Filled', 'Amount', 'Variation', 'Quantity',
+         'Refcode Used', 'Source Used'] + question_cols
     )
     for p, answers in answer_rows:
         questionnaire_filled = ('N/A' if not p.asset.custom_fields
                                 else ('Yes' if bool(answers) else 'No'))
+        variation_name, order_qty = purchase_order_extras(p)
         row = [
             p.asset.title,
             p.id,
@@ -1776,16 +1906,13 @@ def export_supporter_responses(id):
             p.status.name,
             questionnaire_filled,
             p.amount_paid,
+            variation_name or '',
+            order_qty or '',
             p.refcode_used or '',
             p.source_used or '',
         ]
         for col in question_cols:
-            v = answers.get(col, '')
-            if isinstance(v, bool):
-                v = 'Yes' if v else 'No'
-            elif isinstance(v, dict) and v.get('__file__'):
-                v = v.get('original_name', '[file]')
-            row.append(v)
+            row.append(csv_answer_value(answers.get(col, '')))
         cw.writerow(row)
 
     fname = f"supporter_{customer.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
@@ -3292,6 +3419,16 @@ def asset_detail(slug):
         if isinstance(_tier, dict):
             renewal_tier_name = _tier.get('name')
 
+    # Physical orders: the buyer's reusable delivery snapshot powering the one-tap
+    # "use my last details" prefill on the delivery form. Only emitted for a session
+    # already authorized to edit this purchase's answers (same gate as the form's
+    # save endpoint) — never derived from a phone number alone.
+    saved_delivery_answers = None
+    if (asset_obj.asset_type == AssetType.PHYSICAL and latest_purchase
+            and _phone_authorized_for_ticket(latest_purchase.id)
+            and latest_purchase.customer):
+        saved_delivery_answers = ((latest_purchase.customer.saved_delivery or {}).get('answers')) or None
+
     # Serialize the asset. Strip the real file locations (link + storage_path) for
     # anyone not currently entitled so non-buyers and expired subscribers can never
     # read external-link destinations straight out of the page source. Counts/types
@@ -3384,6 +3521,7 @@ def asset_detail(slug):
         subscription_expired=subscription_expired,
         expiry_date=expiry_date,
         renewal_tier_name=renewal_tier_name,
+        saved_delivery_answers=saved_delivery_answers,
         store_name=store_name,
         creator=creator, # Pass creator for base.html branding
         meta_title=meta_title,
@@ -3501,8 +3639,9 @@ def initiate_payment():
     # --- Donation / flexible-amount ("pay-what-you-want") resolution ---
     # A donation asset is free at base; the supporter-chosen contribution IS the
     # charge. Donation never applies when a subscription tier is being purchased.
+    is_physical = asset.asset_type == AssetType.PHYSICAL
     donation_cfg = (asset.details or {}).get('donation')
-    is_donation = bool(donation_cfg and donation_cfg.get('enabled')) and not tier
+    is_donation = bool(donation_cfg and donation_cfg.get('enabled')) and not tier and not is_physical
     if is_donation:
         try:
             min_amount = decimal.Decimal(str(donation_cfg.get('min_amount') or 0))
@@ -3539,6 +3678,47 @@ def initiate_payment():
 
         amount = contribution
 
+    # --- Physical product: variation + quantity resolution ---
+    # Unit price always comes from OUR stored variation/asset data, never from the
+    # client payload. Chosen variation + quantity are snapshotted into ticket_data
+    # so the order keeps them even if the admin later edits the variations.
+    quantity = 1
+    if is_physical:
+        tier = None
+        ticket_data.pop('tier', None)  # tiers don't apply to physical orders
+        try:
+            quantity = int(data.get('quantity') or 1)
+        except (ValueError, TypeError):
+            quantity = 1
+        quantity = max(1, min(quantity, 100))
+
+        variations = [v for v in ((asset.details or {}).get('variations') or []) if isinstance(v, dict)]
+        variation = None
+        if variations:
+            variation_id = str(data.get('variation_id') or '').strip()
+            variation = next((v for v in variations if str(v.get('id')) == variation_id), None)
+            if not variation:
+                msg = 'Chagua aina kwanza.' if str(language).startswith('sw') else 'Please choose a type first.'
+                return jsonify({'success': False, 'message': msg}), 400
+            if variation.get('sold_out'):
+                msg = 'Samahani, aina hii imeisha.' if str(language).startswith('sw') else 'Sorry, this type is sold out.'
+                return jsonify({'success': False, 'message': msg}), 400
+
+        unit_price = asset.price or decimal.Decimal('0')
+        if variation and variation.get('price') not in (None, ''):
+            try:
+                unit_price = decimal.Decimal(str(variation['price']))
+            except (decimal.InvalidOperation, ValueError):
+                unit_price = asset.price or decimal.Decimal('0')
+
+        amount = unit_price * quantity
+        ticket_data['quantity'] = quantity
+        if variation:
+            ticket_data['variation'] = {
+                'id': variation.get('id'),
+                'name': variation.get('name'),
+                'price': float(unit_price),
+            }
 
     # Create a pending purchase
     customer = Customer.query.filter_by(whatsapp_number=phone_number).first()
@@ -3568,9 +3748,11 @@ def initiate_payment():
 
     # A supporter who already has access may still make a NEW paid contribution
     # (repeat donation). Only a zero-contribution return restores their session.
+    # Physical goods are always repeat-purchasable: owning a delivered item never
+    # blocks ordering it again, so the guard is skipped entirely for them.
     donation_repeat = is_donation and float(amount) > 0
 
-    if existing_completed and purchase_grants_access(existing_completed) and not donation_repeat:
+    if existing_completed and purchase_grants_access(existing_completed) and not donation_repeat and not is_physical:
         creator = asset.creator
         lang = (customer.language or 'sw')[:2].lower()
 
@@ -3772,7 +3954,7 @@ def initiate_payment():
 
             try:
                 uza_payload = {
-                    "products": [{"id": uza_product_id, "name": asset.title, "quantity": 1, "price": 0}],
+                    "products": [{"id": uza_product_id, "name": asset.title, "quantity": quantity, "price": 0}],
                     "payment": {"type": "payby.selcom", "walletid": phone_number},
                     "reference": purchase.transaction_token,
                     "pk": uza_pk,
@@ -3871,10 +4053,15 @@ def initiate_payment():
         uza_product_id = 8069  # Default fallback ID
 
     # Donation assets bill as: unit price 1 × quantity <contribution> = <contribution>.
+    # Physical orders bill their real quantity × unit price (variation-aware).
     # Fixed-price assets keep the classic quantity 1 × price <amount>.
     if is_donation:
         qty = int(amount) if amount == amount.to_integral_value() else float(amount)
         product_line = {"id": uza_product_id, "name": asset.title, "quantity": qty, "price": 1}
+    elif is_physical:
+        chosen_variation = (ticket_data.get('variation') or {})
+        line_name = f"{asset.title} — {chosen_variation['name']}" if chosen_variation.get('name') else asset.title
+        product_line = {"id": uza_product_id, "name": line_name, "quantity": quantity, "price": float(amount / quantity)}
     else:
         product_line = {"id": uza_product_id, "name": asset.title, "quantity": 1, "price": float(amount)}
 
@@ -3980,7 +4167,9 @@ def retry_payment():
     """
     data = request.get_json()
     deal_id = data.get('deal_id')
-    new_phone_number = data.get('phone_number')
+    # Normalize exactly like initiate_payment: the gateway and the session must see
+    # the same canonical 0XXXXXXXXX, never "0712 345 678" as typed.
+    new_phone_number = normalize_phone_number(data.get('phone_number', ''))
     purchase_id = data.get('purchase_id') # To find the purchase record
 
     if not all([deal_id, new_phone_number, purchase_id]):
@@ -4488,10 +4677,13 @@ def library():
                 if is_sub:
                     is_active, expiry_date = check_subscription_status(purchase)
 
+                _var_name, _order_qty = purchase_order_extras(purchase)
                 purchases_data.append({
                     'id': purchase.id,
                     'status': purchase.status.name,
                     'purchase_date': purchase.purchase_date.isoformat(),
+                    'variation': _var_name,
+                    'quantity': _order_qty,
                     'asset': {
                         'title': purchase.asset.title,
                         'slug': purchase.asset.slug,
@@ -4549,6 +4741,13 @@ def finalize_session(purchase_id):
             session['is_verified'] = True
             session.permanent = True
             session.pop('unverified_purchase_ids', None) # Clear constraint since verified
+            if purchase.asset and purchase.asset.asset_type == AssetType.PHYSICAL:
+                # A physical order still needs delivery details — land the buyer on
+                # the order page, anchored at the delivery form, not the library.
+                return redirect(url_for(
+                    'main.asset_detail', slug=purchase.asset.slug,
+                    _anchor=f'post-purchase-form-{purchase.asset_id}'
+                ))
             flash("Payment successful! Welcome to your library.", "success")
             return redirect(url_for('main.library'))
         # Completed but free / not initiated in this browser — don't verify; the
@@ -4614,13 +4813,35 @@ def save_purchase_custom_data(purchase_id):
     if not data:
         return jsonify({'success': False, 'message': 'No data provided.'}), 400
 
-    # Merge into ticket_data, preserving internal keys like 'tier'
+    # Merge into ticket_data, preserving internal keys (tier/variation/quantity)
     existing = dict(purchase.ticket_data or {})
     for key, value in data.items():
-        if key != 'tier':  # never overwrite internal tier data
-            existing[key] = value
+        if key in TICKET_INTERNAL_KEYS:  # never overwrite internal order data
+            continue
+        if isinstance(value, dict) and value.get('__location__'):
+            value = sanitize_location_answer(value)
+            if value is None:
+                continue
+        existing[key] = value
     purchase.ticket_data = existing
     flag_modified(purchase, 'ticket_data')
+
+    # Physical orders: snapshot the delivery answers onto the customer so the next
+    # order can offer "use my last details". Files stay per-purchase and are not
+    # part of the reusable snapshot. Re-submitting later refreshes the snapshot —
+    # that IS how a buyer updates their saved address.
+    if purchase.asset and purchase.asset.asset_type == AssetType.PHYSICAL:
+        snapshot = dict(((customer.saved_delivery or {}).get('answers')) or {})
+        for k, v in ticket_answers(existing).items():
+            if isinstance(v, dict) and v.get('__file__'):
+                continue
+            snapshot[k] = v
+        customer.saved_delivery = {
+            'answers': snapshot,
+            'updated_at': datetime.utcnow().isoformat(),
+        }
+        flag_modified(customer, 'saved_delivery')
+
     db.session.commit()
     return jsonify({'success': True})
 

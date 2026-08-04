@@ -4167,7 +4167,9 @@ def retry_payment():
     """
     data = request.get_json()
     deal_id = data.get('deal_id')
-    new_phone_number = data.get('phone_number')
+    # Normalize exactly like initiate_payment: the gateway and the session must see
+    # the same canonical 0XXXXXXXXX, never "0712 345 678" as typed.
+    new_phone_number = normalize_phone_number(data.get('phone_number', ''))
     purchase_id = data.get('purchase_id') # To find the purchase record
 
     if not all([deal_id, new_phone_number, purchase_id]):

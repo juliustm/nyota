@@ -517,3 +517,272 @@ input[type="number"].input-field::-webkit-inner-spin-button {
 input[type="number"].input-field {
     -moz-appearance: textfield;
 }
+
+/* --- Composite field: fixed prefix + input in one box -----------------------
+   Used by checkout for the "+255" phone prefix and the currency prefix on the
+   donation amount. A flex row rather than an absolutely-positioned overlay: the
+   prefix reserves its own space, so it can never end up sitting on top of what
+   the buyer typed (which is exactly what happened when a page-level .input-field
+   rule overrode the padding utility that used to make room for it). */
+.field-group {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    background-color: #f9fafb;
+    overflow: hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field-group:focus-within {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35);
+}
+
+.field-group__prefix {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 0.75rem;
+    background-color: #f3f4f6;
+    border-right: 1px solid #e5e7eb;
+    color: #4b5563;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.field-group__input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.75rem 1rem;
+    border: 0;
+    background-color: transparent;
+    color: #111827;
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+}
+
+.field-group__input:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+.field-group__input::placeholder {
+    color: #9ca3af;
+}
+
+/* Spinners add clutter to an amount the buyer types once. */
+.field-group__input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+.field-group__input[type="number"]::-webkit-outer-spin-button,
+.field-group__input[type="number"]::-webkit-inner-spin-button {
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.field-flag {
+    width: 1.25rem;
+    height: 0.875rem;
+    border-radius: 0.125rem;
+    flex-shrink: 0;
+}
+
+.dark .field-group {
+    border-color: #4b5563;
+    background-color: #111827;
+}
+
+.dark .field-group__prefix {
+    background-color: #1f2937;
+    border-right-color: #374151;
+    color: #d1d5db;
+}
+
+.dark .field-group__input {
+    color: #ffffff;
+}
+
+.dark .field-group__input::placeholder {
+    color: #6b7280;
+}
+
+/* --- Donation quick-pick chips --------------------------------------------- */
+.amount-chip {
+    padding: 0.5rem 0.25rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.625rem;
+    background-color: #ffffff;
+    color: #374151;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+    text-align: center;
+    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.amount-chip:hover {
+    border-color: #a5b4fc;
+}
+
+.amount-chip.is-selected {
+    border-color: #6366f1;
+    background-color: #eef2ff;
+    color: #4338ca;
+}
+
+.dark .amount-chip {
+    border-color: #374151;
+    background-color: #1f2937;
+    color: #d1d5db;
+}
+
+.dark .amount-chip:hover {
+    border-color: #6366f1;
+}
+
+.dark .amount-chip.is-selected {
+    border-color: #818cf8;
+    background-color: rgba(99, 102, 241, 0.18);
+    color: #c7d2fe;
+}
+
+/* --- Physical goods: option picker ------------------------------------------
+   Full-width rows, not a grid: a first-time buyer must read the whole option
+   name (grids truncate it) and hit a target big enough for a thumb. The photo
+   rides along as recognition, never as the only label. */
+.opt-row {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    width: 100%;
+    min-height: 4.5rem;
+    padding: 0.625rem 0.875rem 0.625rem 0.625rem;
+    border: 2px solid #e5e7eb;
+    border-radius: 1rem;
+    background-color: #ffffff;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.opt-row:hover {
+    border-color: #a5b4fc;
+}
+
+.opt-row.is-selected {
+    border-color: #4f46e5;
+    background-color: #eef2ff;
+}
+
+.opt-row.is-sold-out {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.opt-row.is-sold-out:hover {
+    border-color: #e5e7eb;
+}
+
+.opt-row__photo {
+    width: 3.5rem;
+    height: 3.5rem;
+    flex-shrink: 0;
+    border-radius: 0.75rem;
+    object-fit: cover;
+    background-color: #f3f4f6;
+}
+
+.opt-row__name {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.3;
+    color: #111827;
+    overflow-wrap: anywhere;
+}
+
+/* The tick is the whole feedback story for someone who has never used a radio
+   button: empty circle = not yours yet, filled tick = this is what you're buying. */
+.opt-row__tick {
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+    border: 2px solid #d1d5db;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: transparent;
+}
+
+.opt-row.is-selected .opt-row__tick {
+    border-color: #4f46e5;
+    background-color: #4f46e5;
+    color: #ffffff;
+}
+
+.dark .opt-row {
+    border-color: #374151;
+    background-color: #1f2937;
+}
+
+.dark .opt-row.is-selected {
+    border-color: #818cf8;
+    background-color: rgba(99, 102, 241, 0.16);
+}
+
+.dark .opt-row.is-sold-out:hover {
+    border-color: #374151;
+}
+
+.dark .opt-row__name {
+    color: #f9fafb;
+}
+
+.dark .opt-row__tick {
+    border-color: #4b5563;
+}
+
+.dark .opt-row.is-selected .opt-row__tick {
+    border-color: #818cf8;
+    background-color: #6366f1;
+}
+
+/* Quantity stepper: 3rem targets, because the buyer is tapping on a phone
+   they are holding in one hand. */
+.qty-btn {
+    width: 3rem;
+    height: 3rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #e5e7eb;
+    border-radius: 0.875rem;
+    background-color: #ffffff;
+    color: #111827;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.qty-btn:hover:not(:disabled) {
+    border-color: #a5b4fc;
+}
+
+.qty-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.dark .qty-btn {
+    border-color: #374151;
+    background-color: #1f2937;
+    color: #f9fafb;
+}

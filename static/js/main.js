@@ -60,6 +60,54 @@ const answerValueHelpers = {
     isUrlAnswer(v) { return typeof v === 'string' && /^https?:\/\//i.test(v.trim()); },
 };
 
+// --- Tanzanian phone entry -------------------------------------------------
+// Checkout shows a fixed 🇹🇿 +255 prefix, so a buyer only ever types the 9-digit
+// national part. Whatever they actually type or paste — 0712 345 678,
+// +255 712 345 678, 255712345678, 00255712345678, +255 (0) 712-345-678 — collapses
+// to those same 9 digits, and we always submit the canonical 0XXXXXXXXX that the
+// database and the UZA gateway expect. Kept as a plain object (no Alpine, no DOM)
+// so both checkout components and the tests can share exactly one implementation.
+const NyotaPhone = {
+    // The 9 national digits, stripped of every prefix. Safe on every keystroke.
+    national(raw) {
+        let d = String(raw === null || raw === undefined ? '' : raw).replace(/\D/g, '');
+        if (d.startsWith('00255')) d = d.slice(5);
+        // Only treat a leading 255 as the country code once it can't be the start
+        // of a real number — so someone typing "255…" mid-entry isn't fought with.
+        else if (d.startsWith('255') && (d.length > 9 || /^255[67]/.test(d))) d = d.slice(3);
+        d = d.replace(/^0+/, ''); // national trunk prefix (and any stray zeros)
+        return d.slice(0, 9);
+    },
+
+    // What the input shows while typing: 712 345 678
+    display(raw) {
+        const d = this.national(raw);
+        if (d.length > 6) return d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6);
+        if (d.length > 3) return d.slice(0, 3) + ' ' + d.slice(3);
+        return d;
+    },
+
+    // Canonical local form (0XXXXXXXXX) — what we store and send to the server.
+    canonical(raw) {
+        const d = this.national(raw);
+        return d ? '0' + d : '';
+    },
+
+    // Full international form, for read-back ("Request sent to +255 712 345 678").
+    international(raw) {
+        const d = this.display(raw);
+        return d ? '+255 ' + d : '';
+    },
+
+    // TZ mobile numbers are 9 national digits starting with 6 or 7.
+    isValid(raw) {
+        return /^[67]\d{8}$/.test(this.national(raw));
+    },
+};
+
+if (typeof window !== 'undefined') window.NyotaPhone = NyotaPhone;
+if (typeof module !== 'undefined' && module.exports) module.exports = { NyotaPhone };
+
 function bindMarkdownEditor(element, opts, getValue, setValue) {
     const mde = mountMarkdownEditor(element, opts);
     if (!mde) return null;
@@ -90,6 +138,62 @@ document.addEventListener('alpine:init', () => {
         setFilter(type) { this.activeFilter = type; },
         formatCurrency(amount) { return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0); }
     }));
+
+    // --- Physical goods: the buyer's in-progress order --------------------------
+    // The choice (variation + quantity) is made ON the product page, next to the
+    // photos, and is then read by the price card, the sticky footer and the
+    // checkout modal. A store rather than component state, because those four live
+    // in different Alpine scopes and must never disagree about what is being bought.
+    Alpine.store('order', {
+        isPhysical: false,
+        variations: [],
+        selected: null,
+        quantity: 1,
+        basePrice: 0,
+
+        init() {
+            let asset = null;
+            try {
+                const el = document.getElementById('asset-data');
+                if (el) asset = JSON.parse(el.textContent);
+            } catch (e) { /* not an asset page — the store stays inert */ }
+            if (!asset || asset.asset_type !== 'PHYSICAL') return;
+            this.isPhysical = true;
+            this.basePrice = parseFloat(asset.price || 0);
+            this.variations = (asset.details?.variations || []).filter(v => v && v.id);
+            // Pre-select the first available option so a buyer who wants the obvious
+            // thing pays without a single extra tap. The choice is never silent: the
+            // hero photo, the footer and the modal all name it before money moves.
+            this.selected = this.variations.find(v => !v.sold_out) || null;
+        },
+
+        get hasOptions() { return this.variations.length > 0; },
+        // Every option gone — the page shows "sold out" instead of a buy button.
+        get soldOut() { return this.hasOptions && !this.selected; },
+        // A variation with no price of its own is sold at the asset's base price.
+        priceOf(v) {
+            const p = v ? v.price : null;
+            return (p === null || p === undefined || p === '') ? this.basePrice : (parseFloat(p) || 0);
+        },
+        get unitPrice() { return this.selected ? this.priceOf(this.selected) : this.basePrice; },
+        get total() { return this.unitPrice * this.quantity; },
+        // True when the options a buyer can actually pick differ in price — if they
+        // don't, repeating the same number on every row is noise to read past. A
+        // sold-out option's price is irrelevant: it can never be bought.
+        get pricesVary() {
+            const buyable = this.variations.filter(v => !v.sold_out);
+            if (buyable.length < 2) return false;
+            const first = this.priceOf(buyable[0]);
+            return buyable.some(v => this.priceOf(v) !== first);
+        },
+        get photo() { return (this.selected && this.selected.photo_url) || null; },
+        pick(v) { if (v && !v.sold_out) this.selected = v; },
+        inc() { if (this.quantity < 100) this.quantity++; },
+        dec() { if (this.quantity > 1) this.quantity--; },
+        money(amount) {
+            return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0);
+        }
+    });
 
     Alpine.data('assetDetail', (currencySymbol) => ({
         asset: {}, countdown: 'Loading...', currency: currencySymbol, visibleReviews: 3,
@@ -1648,7 +1752,8 @@ document.addEventListener('alpine:init', () => {
         paymentUrl: paymentUrl,
         renewalTierName: null,
         autoOpenRenew: false,
-        phoneNumber: localStorage.getItem('nyota_phone') || '',
+        // Holds the national part only ("712 345 678") — the +255 lives in the UI.
+        phoneNumber: NyotaPhone.display(localStorage.getItem('nyota_phone') || ''),
         status: 'ready',
         errorMessage: '',
         statusMessage: '',
@@ -1657,9 +1762,6 @@ document.addEventListener('alpine:init', () => {
         selectedTier: null,
         tiers: [],
         contribution: '', // Donor-chosen amount for pay-what-you-want assets
-        selectedVariation: null, // Physical products: the chosen variation
-        variations: [],
-        quantity: 1, // Physical products: how many units
         purchaseId: null,
         dealId: null,
         pollingInterval: null,
@@ -1684,28 +1786,44 @@ document.addEventListener('alpine:init', () => {
             const n = parseFloat(this.contribution);
             return isNaN(n) || n < 0 ? 0 : n;
         },
-        // --- Physical product helpers (variation + quantity) ---
+        // Quick-pick chips: unique, sorted, and never below the minimum — offering a
+        // chip the server would reject is a dead end for the supporter.
+        get suggestedAmounts() {
+            const min = this.donationMin;
+            const seen = new Set();
+            return (this.donationCfg?.suggested_amounts || [])
+                .map(a => parseFloat(a))
+                .filter(n => !isNaN(n) && n > 0 && n >= min && !seen.has(n) && seen.add(n))
+                .sort((a, b) => a - b)
+                .slice(0, 6);
+        },
+        // Money as a supporter reads it: 12,000 — not 12,000.00. Cents only appear
+        // when the amount actually has them.
+        formatAmount(amount) {
+            const n = parseFloat(amount) || 0;
+            const decimals = Number.isInteger(n) ? 0 : 2;
+            return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+        },
+        // Tapping a chip sets the amount; tapping the selected chip again clears it
+        // (only when donating is optional — mandatory assets always need a value).
+        pickAmount(amt) {
+            const selected = this.contributionAmount === parseFloat(amt);
+            this.contribution = (selected && !this.donationCfg?.mandatory) ? '' : String(amt);
+        },
+        // --- Physical products ---
+        // The order itself (which option, how many) is chosen on the page and lives
+        // in $store.order; the modal only reads it back and pays for it.
         get isPhysical() {
             return this.asset.asset_type === 'PHYSICAL';
         },
-        // Unit price: the chosen variation's price, falling back to the base price.
-        get unitPrice() {
-            const vp = this.selectedVariation ? this.selectedVariation.price : null;
-            if (vp !== null && vp !== undefined && vp !== '') return parseFloat(vp) || 0;
-            return parseFloat(this.asset.price || 0);
-        },
-        selectVariation(v) {
-            if (!v || v.sold_out) return;
-            this.selectedVariation = v;
-        },
-        incrementQuantity() { if (this.quantity < 100) this.quantity++; },
-        decrementQuantity() { if (this.quantity > 1) this.quantity--; },
+        get order() { return Alpine.store('order'); },
+        get unitPrice() { return this.order.unitPrice; },
         formatCurrency(amount) {
             return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount || 0);
         },
         // The amount actually being charged — used for the CTA label and analytics.
         get effectiveAmount() {
-            if (this.isPhysical) return this.unitPrice * this.quantity;
+            if (this.isPhysical) return this.order.total;
             if (this.isDonation) return this.contributionAmount;
             if (this.selectedTier) return parseFloat(this.selectedTier.price || 0);
             return parseFloat(this.asset.price || 0);
@@ -1799,17 +1917,20 @@ document.addEventListener('alpine:init', () => {
         openModal(prefillNumber = null, autoRetry = false) {
             this.isOpen = true; this.status = 'ready';
             this.errorMessage = ''; this.statusMessage = '';
-            this.phoneNumber = prefillNumber || localStorage.getItem('nyota_phone') || '';
+            this.phoneNumber = NyotaPhone.display(prefillNumber || localStorage.getItem('nyota_phone') || '');
             this.channelId = crypto.randomUUID();
             this._trackPurchaseOnce = false;
 
-            // Analytics: begin_checkout
+            // Analytics: begin_checkout. For goods the buyer has already chosen an
+            // option and a quantity, so report the order being opened, not the base price.
             try {
-                var price = parseFloat(this.asset.price || 0);
+                var qty = this.isPhysical ? this.order.quantity : 1;
+                var unit = this.isPhysical ? this.order.unitPrice : parseFloat(this.asset.price || 0);
+                var price = unit * qty;
                 if (typeof window.nyotaTrack === 'function') {
                     window.nyotaTrack('begin_checkout',
-                        { currency: currencySymbol, value: price, items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: price, quantity: 1 }] },
-                        { event: 'InitiateCheckout', params: { content_ids: [String(this.asset.id)], content_type: 'product', value: price, currency: currencySymbol, num_items: 1 } }
+                        { currency: currencySymbol, value: price, items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: unit, quantity: qty }] },
+                        { event: 'InitiateCheckout', params: { content_ids: [String(this.asset.id)], content_type: 'product', value: price, currency: currencySymbol, num_items: qty } }
                     );
                 }
             } catch (e) { }
@@ -1823,13 +1944,11 @@ document.addEventListener('alpine:init', () => {
                 : null;
             this.selectedTier = priorTier || (this.tiers.length > 0 ? this.tiers[0] : null);
 
-            // Physical products: variation picker + quantity stepper instead of tiers
+            // Physical products have no tiers — the choice is the variation the buyer
+            // already made on the page ($store.order), which the modal must not reset.
             if (this.isPhysical) {
                 this.tiers = [];
                 this.selectedTier = null;
-                this.variations = this.asset.details?.variations || [];
-                this.selectedVariation = this.variations.find(v => !v.sold_out) || null;
-                this.quantity = 1;
             }
 
             // Donation assets: reset the amount. If a contribution is mandatory,
@@ -1837,7 +1956,7 @@ document.addEventListener('alpine:init', () => {
             this.contribution = '';
             const dc = this.donationCfg;
             if (dc && dc.mandatory) {
-                const preset = (dc.suggested_amounts && dc.suggested_amounts[0]) || dc.min_amount || '';
+                const preset = this.suggestedAmounts[0] || dc.min_amount || '';
                 this.contribution = preset ? String(preset) : '';
             }
 
@@ -1875,7 +1994,7 @@ document.addEventListener('alpine:init', () => {
             this._trackPurchaseOnce = true;
             try {
                 var price = this.effectiveAmount;
-                var qty = this.isPhysical ? this.quantity : 1;
+                var qty = this.isPhysical ? this.order.quantity : 1;
                 if (typeof window.nyotaTrack === 'function') {
                     window.nyotaTrack('purchase',
                         { transaction_id: String(this.purchaseId || ''), currency: currencySymbol, value: price, items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: this.isPhysical ? this.unitPrice : price, quantity: qty }] },
@@ -1893,19 +2012,27 @@ document.addEventListener('alpine:init', () => {
             console.log('Modal closed, but payment verification continues in background');
         },
 
+        // Re-formats whatever was typed or pasted into "712 345 678".
         formatPhoneNumber() {
-            let cleaned = this.phoneNumber.replace(/\D/g, '');
-            if (cleaned.startsWith('255')) cleaned = '0' + cleaned.substring(3);
-            else if (cleaned.startsWith('0') && cleaned.length > 10) cleaned = cleaned.substring(0, 10);
+            this.phoneNumber = NyotaPhone.display(this.phoneNumber);
+        },
 
-            if (cleaned.length > 4) cleaned = cleaned.substring(0, 4) + ' ' + cleaned.substring(4);
-            if (cleaned.length > 8) cleaned = cleaned.substring(0, 8) + ' ' + cleaned.substring(8);
+        // 0XXXXXXXXX — the one form we ever send to the server or store.
+        get phoneCanonical() {
+            return NyotaPhone.canonical(this.phoneNumber);
+        },
 
-            this.phoneNumber = cleaned;
+        // +255 712 345 678 — for reading the number back to the buyer.
+        get phoneDisplay() {
+            return NyotaPhone.international(this.phoneNumber);
+        },
+
+        get isPhoneValid() {
+            return NyotaPhone.isValid(this.phoneNumber);
         },
 
         async initiatePayment() {
-            if (this.phoneNumber.replace(/\D/g, '').length < 10) {
+            if (!this.isPhoneValid) {
                 this.errorMessage = 'Please enter a valid phone number.';
                 return;
             }
@@ -1917,32 +2044,32 @@ document.addEventListener('alpine:init', () => {
                 const min = this.donationMin;
                 if (this.donationCfg.mandatory && amt < Math.max(min, 0.01)) {
                     this.errorMessage = min > 0
-                        ? `Please contribute at least ${this.currency}${formatCurrency(min)}.`
+                        ? `Please contribute at least ${this.currency}${this.formatAmount(min)}.`
                         : `A contribution is required to continue.`;
                     return;
                 }
                 if (amt > 0 && amt < min) {
-                    this.errorMessage = `The minimum contribution is ${this.currency}${formatCurrency(min)}.`;
+                    this.errorMessage = `The minimum contribution is ${this.currency}${this.formatAmount(min)}.`;
                     return;
                 }
             }
 
             this.status = 'initiating';
             this.errorMessage = '';
-            localStorage.setItem('nyota_phone', this.phoneNumber);
+            localStorage.setItem('nyota_phone', this.phoneCanonical);
 
             try {
                 const response = await fetch(this.paymentUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        phone_number: this.phoneNumber.replace(/\D/g, ''),
+                        phone_number: this.phoneCanonical,
                         asset_id: this.asset.id,
                         channel_id: this.channelId,
                         tier: this.selectedTier,
                         contribution: this.isDonation ? this.contributionAmount : undefined,
-                        variation_id: (this.isPhysical && this.selectedVariation) ? this.selectedVariation.id : undefined,
-                        quantity: this.isPhysical ? this.quantity : undefined,
+                        variation_id: (this.isPhysical && this.order.selected) ? this.order.selected.id : undefined,
+                        quantity: this.isPhysical ? this.order.quantity : undefined,
                         language: navigator.language || 'en'
                     })
                 });
@@ -1955,7 +2082,7 @@ document.addEventListener('alpine:init', () => {
                         this.status = 'success';
                         this.statusMessage = result.message || 'Access granted!';
                         this.dispatchStatus('COMPLETED');
-                        localStorage.setItem('nyota_phone', this.phoneNumber);
+                        localStorage.setItem('nyota_phone', this.phoneCanonical);
 
                         // Analytics: generate_lead (free asset acquisition)
                         try {
@@ -1978,7 +2105,7 @@ document.addEventListener('alpine:init', () => {
                         var payPrice = this.effectiveAmount;
                         if (typeof window.nyotaTrack === 'function') {
                             window.nyotaTrack('add_payment_info',
-                                { currency: currencySymbol, value: payPrice, payment_type: 'mobile_money', items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: this.isPhysical ? this.unitPrice : payPrice, quantity: this.isPhysical ? this.quantity : 1 }] },
+                                { currency: currencySymbol, value: payPrice, payment_type: 'mobile_money', items: [{ item_id: String(this.asset.id), item_name: this.asset.title, item_category: this.asset.asset_type, price: this.isPhysical ? this.unitPrice : payPrice, quantity: this.isPhysical ? this.order.quantity : 1 }] },
                                 { event: 'AddPaymentInfo', params: { content_ids: [String(this.asset.id)], content_type: 'product', value: payPrice, currency: currencySymbol } }
                             );
                         }
@@ -2032,7 +2159,7 @@ document.addEventListener('alpine:init', () => {
                     body: JSON.stringify({
                         deal_id: this.dealId,
                         purchase_id: this.purchaseId,
-                        phone_number: this.phoneNumber.replace(/\D/g, '')
+                        phone_number: this.phoneCanonical
                     })
                 });
 
@@ -2149,7 +2276,7 @@ document.addEventListener('alpine:init', () => {
             // Restore state
             this.purchaseId = purchaseId;
             this.dealId = dealId;
-            this.phoneNumber = localStorage.getItem('nyota_phone') || '';
+            this.phoneNumber = NyotaPhone.display(localStorage.getItem('nyota_phone') || '');
             this.status = 'waiting';
             this.statusMessage = 'Checking payment status...';
             // this.isOpen = true; // User requested NOT to open modal automatically on refresh
@@ -2232,7 +2359,8 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('checkoutForm', (asset, channelId) => ({
         asset: asset,
         channelId: channelId,
-        phoneNumber: localStorage.getItem('nyota_phone') || '',
+        // National part only ("712 345 678") — the +255 lives in the UI.
+        phoneNumber: NyotaPhone.display(localStorage.getItem('nyota_phone') || ''),
         state: 'ready',
         errorMessage: '',
         statusMessage: '',
@@ -2264,6 +2392,39 @@ document.addEventListener('alpine:init', () => {
             const n = parseFloat(this.contribution);
             return isNaN(n) || n < 0 ? 0 : n;
         },
+        // Same rules as the modal: unique, sorted, never below the minimum.
+        get suggestedAmounts() {
+            const min = this.donationMin;
+            const seen = new Set();
+            return (this.donationCfg?.suggested_amounts || [])
+                .map(a => parseFloat(a))
+                .filter(n => !isNaN(n) && n > 0 && n >= min && !seen.has(n) && seen.add(n))
+                .sort((a, b) => a - b)
+                .slice(0, 6);
+        },
+        formatAmount(amount) {
+            const n = parseFloat(amount) || 0;
+            const decimals = Number.isInteger(n) ? 0 : 2;
+            return new Intl.NumberFormat('en-US', { style: 'decimal', minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+        },
+        pickAmount(amt) {
+            const selected = this.contributionAmount === parseFloat(amt);
+            this.contribution = (selected && !this.donationCfg?.mandatory) ? '' : String(amt);
+        },
+
+        // --- Phone entry (fixed +255 prefix; buyer types the national part) ---
+        formatPhoneNumber() {
+            this.phoneNumber = NyotaPhone.display(this.phoneNumber);
+        },
+        get phoneCanonical() {
+            return NyotaPhone.canonical(this.phoneNumber);
+        },
+        get phoneDisplay() {
+            return NyotaPhone.international(this.phoneNumber);
+        },
+        get isPhoneValid() {
+            return NyotaPhone.isValid(this.phoneNumber);
+        },
 
         get totalPrice() {
             if (this.isDonation) {
@@ -2279,7 +2440,7 @@ document.addEventListener('alpine:init', () => {
             this.selectedTier = (this.asset.details?.subscription_tiers || [])[0] || null;
             const dc = this.donationCfg;
             if (dc && dc.mandatory) {
-                const preset = (dc.suggested_amounts && dc.suggested_amounts[0]) || dc.min_amount || '';
+                const preset = this.suggestedAmounts[0] || dc.min_amount || '';
                 this.contribution = preset ? String(preset) : '';
             }
 
@@ -2302,7 +2463,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         async submitPayment() {
-            if (this.phoneNumber.replace(/\D/g, '').length < 10) {
+            if (!this.isPhoneValid) {
                 this.errorMessage = 'Please enter a valid phone number.';
                 return;
             }
@@ -2310,25 +2471,25 @@ document.addEventListener('alpine:init', () => {
                 const amt = this.contributionAmount;
                 const min = this.donationMin;
                 if (this.donationCfg.mandatory && amt < Math.max(min, 0.01)) {
-                    this.errorMessage = min > 0 ? `Please contribute at least ${min}.` : `A contribution is required to continue.`;
+                    this.errorMessage = min > 0 ? `Please contribute at least ${this.formatAmount(min)}.` : `A contribution is required to continue.`;
                     return;
                 }
                 if (amt > 0 && amt < min) {
-                    this.errorMessage = `The minimum contribution is ${min}.`;
+                    this.errorMessage = `The minimum contribution is ${this.formatAmount(min)}.`;
                     return;
                 }
             }
             this.state = 'waiting';
             this.statusMessage = 'Initiating payment...';
             this.errorMessage = '';
-            localStorage.setItem('nyota_phone', this.phoneNumber);
+            localStorage.setItem('nyota_phone', this.phoneCanonical);
 
             try {
                 const response = await fetch(this.paymentUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        phone_number: this.phoneNumber.replace(/\D/g, ''),
+                        phone_number: this.phoneCanonical,
                         asset_id: this.asset.id,
                         channel_id: this.channelId,
                         tier: this.selectedTier,
@@ -2628,7 +2789,7 @@ document.addEventListener('alpine:init', () => {
                 this.isSuccess = false;
                 return;
             }
-            if (this.phoneNumber.length < 9) {
+            if (!NyotaPhone.isValid(this.phoneNumber)) {
                 this.feedbackMessage = 'Please enter a valid phone number.';
                 this.isSuccess = false;
                 return;
@@ -2642,7 +2803,7 @@ document.addEventListener('alpine:init', () => {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        phone_number: this.phoneNumber,
+                        phone_number: NyotaPhone.canonical(this.phoneNumber),
                         deal_id: this.dealId,
                         purchase_id: this.purchaseId
                     })
@@ -2653,7 +2814,7 @@ document.addEventListener('alpine:init', () => {
                 this.isSuccess = response.ok && result.success;
 
                 if (this.isSuccess) {
-                    localStorage.setItem('nyota_phone', this.phoneNumber);
+                    localStorage.setItem('nyota_phone', NyotaPhone.canonical(this.phoneNumber));
                     // Give user time to read the success message
                     setTimeout(() => window.location.reload(), 2000);
                 }

@@ -1,6 +1,6 @@
 # Makefile for the Nyota Application
 
-.PHONY: setup-fresh-project start stop logs shell migrate upgrade seed
+.PHONY: setup-fresh-project start stop logs shell migrate upgrade seed test
 
 # ==============================================================================
 # FOR A BRAND NEW PROJECT (Run this ONLY ONCE)
@@ -80,3 +80,13 @@ upgrade:
 seed:
 	@echo "--- Seeding database with initial data... ---"
 	@docker-compose exec app python seed.py
+
+# ==============================================================================
+# TESTS
+# Runs against a throwaway SQLite file with the payment gateway stubbed out —
+# it never touches your database or the network. Needs the dev dependencies:
+#   pip install -r requirements-dev.txt
+# ==============================================================================
+test:
+	@echo "--- Running the test suite... ---"
+	@python -m pytest

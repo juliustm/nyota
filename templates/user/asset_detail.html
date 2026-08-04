@@ -1,16 +1,9 @@
 {% extends "user/base.html" %}
 {% set asset_type_key = asset_obj.asset_type.name.lower() if asset_obj.asset_type and asset_obj.asset_type.name is
 defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'digital_product') %}
-{# Physical products: min/max effective price across variations (a variation with no
-   price of its own falls back to the base price) — drives the "starts at" display. #}
-{% set _phys_vars = ((asset_obj.details or {}).get('variations') or []) if asset_type_key == 'physical' else [] %}
-{% set _phys_ns = namespace(prices=[]) %}
-{% for _pv in _phys_vars %}
-{% if _pv.get('price') is not none and _pv.get('price') != '' %}{% set _phys_ns.prices = _phys_ns.prices + [_pv.get('price')|float] %}
-{% elif asset_obj.price is not none %}{% set _phys_ns.prices = _phys_ns.prices + [asset_obj.price|float] %}{% endif %}
-{% endfor %}
-{% set physical_min_price = (_phys_ns.prices | min) if _phys_ns.prices else none %}
-{% set physical_price_varies = _phys_ns.prices and ((_phys_ns.prices | max) != (_phys_ns.prices | min)) %}
+{# Goods no longer need a server-computed "starts at" range: the buyer picks the
+   option on the page, so every price on it is the price of a real chosen thing,
+   rendered live from $store.order. #}
 
 {% block title %}{{ asset_obj.title }} | {{ store_name }}{% endblock %}
 
@@ -1181,13 +1174,23 @@ null
                     {% endif %}
 
                     {% if status != 'COMPLETED' %}
+                    {# Goods use a square hero, not the tall 3:4 poster: it keeps the
+                       options picker within the first screen on a phone. The photo also
+                       follows the buyer's choice, so "what I picked" is never in doubt. #}
                     <div
-                        class="relative rounded-2xl overflow-hidden shadow-2xl bg-gray-100 dark:bg-gray-800 aspect-[3/4] mb-6">
-                        <img :src="asset.cover_image_url" :alt="asset.title" class="w-full h-full object-cover"
-                            width="900" height="1200" fetchpriority="high" decoding="async">
+                        class="relative rounded-2xl overflow-hidden shadow-2xl bg-gray-100 dark:bg-gray-800 {% if asset_type_key == 'physical' %}aspect-[4/3]{% else %}aspect-[3/4]{% endif %} mb-6">
+                        <img {% if asset_type_key == 'physical' %}:src="$store.order.photo || asset.cover_image_url"{% else %}:src="asset.cover_image_url"{% endif %}
+                            :alt="asset.title" class="w-full h-full object-cover" width="900" height="1200"
+                            fetchpriority="high" decoding="async">
                     </div>
 
-                    <div class="prose prose-lg dark:prose-invert max-w-none">
+                    {# The choice sits directly under the photo, above the prose: pick first,
+                       read the details after — the reverse costs a scroll the buyer won't make. #}
+                    {% if asset_type_key == 'physical' %}
+                    {% include 'user/partials/physical_options.html' %}
+                    {% endif %}
+
+                    <div class="prose prose-lg dark:prose-invert max-w-none {% if asset_type_key == 'physical' %}mt-6{% endif %}">
                         <div class="lead text-lg md:text-xl text-gray-600 dark:text-gray-300 [&>p:first-child]:mt-0"
                             x-html="renderMarkdown(asset.description)"></div>
                     </div>
@@ -1363,13 +1366,22 @@ null
                                 <span class="text-4xl font-extrabold text-gray-900 dark:text-white break-words"
                                     x-text="currency + formatCurrency({{ min_price }})"></span>
                             </div>
-                            {% elif physical_price_varies %}
-                            <p class="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">{{
-                                translate('starts_at') }}</p>
+                            {% elif asset_type_key == 'physical' %}
+                            {# Goods price live off the buyer's own choice, made in the picker
+                               beside this card — never a static "starts at" they have to reconcile. #}
+                            <p x-show="$store.order.quantity > 1"
+                                class="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">{{
+                                translate('total_amount') }}</p>
                             <div class="flex items-baseline gap-2">
                                 <span class="text-4xl font-extrabold text-gray-900 dark:text-white break-words"
-                                    x-text="currency + formatCurrency({{ physical_min_price }})"></span>
+                                    x-text="'{{ currency_symbol }}' + $store.order.money($store.order.total)"></span>
                             </div>
+                            <p x-show="$store.order.selected"
+                                class="text-sm font-semibold text-gray-600 dark:text-gray-300 mt-1 truncate">
+                                <span x-text="$store.order.selected?.name"></span><span
+                                    x-show="$store.order.quantity > 1"> × <span
+                                        x-text="$store.order.quantity"></span></span>
+                            </p>
                             {% else %}
                             {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
                             {% set _don = asset_obj.details.donation if asset_obj.details and asset_obj.details.donation and asset_obj.details.donation.enabled else None %}
@@ -1552,14 +1564,19 @@ null
                                     <!-- Standard Purchase Button (Hidden if Failed to focus on retry card) -->
                                     <!-- Standard Purchase Button (Hidden if Failed to focus on retry card) -->
                                     <template x-if="purchaseStatus !== 'FAILED' && purchaseStatus !== 'PENDING'">
-                                        <button @click="handlePurchaseAction()" :disabled="isProcessing"
+                                        <button @click="handlePurchaseAction()"
+                                            :disabled="isProcessing || ($store.order.isPhysical && $store.order.soldOut)"
                                             class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-bold hover:scale-[1.02] transition-transform disabled:opacity-70 shadow-xl flex items-center justify-center gap-2">
                                             <span x-show="!isProcessing">
-                                                {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
-                                                <span>{{ translate('cta_free_' ~ asset_type_key) }}</span>
-                                                {% else %}
-                                                <span>{{ translate('cta_paid_' ~ asset_type_key) }}</span>
-                                                {% endif %}
+                                                <span x-show="$store.order.isPhysical && $store.order.soldOut"
+                                                    x-cloak>{{ translate('sold_out') }}</span>
+                                                <span x-show="!($store.order.isPhysical && $store.order.soldOut)">
+                                                    {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
+                                                    {{ translate('cta_free_' ~ asset_type_key) }}
+                                                    {% else %}
+                                                    {{ translate('cta_paid_' ~ asset_type_key) }}
+                                                    {% endif %}
+                                                </span>
                                             </span>
                                             <span x-show="isProcessing" class="flex items-center gap-2">
                                                 <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1751,12 +1768,24 @@ null
                             <p class="font-extrabold text-xl text-gray-900 dark:text-white truncate">
                                 <span x-text="currency"></span><span x-text="formatCurrency({{ min_price }})"></span>
                             </p>
-                            {% elif physical_price_varies %}
-                            <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide font-bold">{{
-                                translate('starts_at') }}</p>
-                            <p class="font-extrabold text-xl text-gray-900 dark:text-white truncate">
-                                <span x-text="currency"></span><span x-text="formatCurrency({{ physical_min_price }})"></span>
-                            </p>
+                            {% elif asset_type_key == 'physical' %}
+                            {# The bar the buyer commits from restates the whole order —
+                               thumbnail, option name, quantity, live total — so the tap on
+                               "Buy" is never a leap of faith. #}
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <img x-show="$store.order.photo" :src="$store.order.photo" alt="" x-cloak
+                                    class="w-11 h-11 rounded-lg object-cover border border-gray-200 dark:border-gray-700 shrink-0">
+                                <div class="min-w-0">
+                                    <p class="font-extrabold text-xl text-gray-900 dark:text-white truncate"
+                                        x-text="'{{ currency_symbol }}' + $store.order.money($store.order.total)"></p>
+                                    <p x-show="$store.order.selected"
+                                        class="text-[11px] font-semibold text-gray-500 dark:text-gray-400 truncate">
+                                        <span x-text="$store.order.selected?.name"></span><span
+                                            x-show="$store.order.quantity > 1"> × <span
+                                                x-text="$store.order.quantity"></span></span>
+                                    </p>
+                                </div>
+                            </div>
                             {% else %}
                             {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
                             {% set _don = asset_obj.details.donation if asset_obj.details and asset_obj.details.donation and asset_obj.details.donation.enabled else None %}
@@ -1782,14 +1811,19 @@ null
                             {% endif %}
                             {% endif %}
                         </div>
-                        <button @click="handlePurchaseAction()" :disabled="isProcessing"
+                        <button @click="handlePurchaseAction()"
+                            :disabled="isProcessing || ($store.order.isPhysical && $store.order.soldOut)"
                             class="px-8 py-3.5 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 disabled:opacity-70 disabled:shadow-none min-w-[140px]">
                             <span x-show="!isProcessing">
-                                {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
-                                <span>{{ translate('cta_free_' ~ asset_type_key) }}</span>
-                                {% else %}
-                                <span>{{ translate('cta_paid_' ~ asset_type_key) }}</span>
-                                {% endif %}
+                                <span x-show="$store.order.isPhysical && $store.order.soldOut" x-cloak>{{
+                                    translate('sold_out') }}</span>
+                                <span x-show="!($store.order.isPhysical && $store.order.soldOut)">
+                                    {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
+                                    {{ translate('cta_free_' ~ asset_type_key) }}
+                                    {% else %}
+                                    {{ translate('cta_paid_' ~ asset_type_key) }}
+                                    {% endif %}
+                                </span>
                             </span>
                             <span x-show="isProcessing" class="flex items-center justify-center">
                                 <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1836,27 +1870,28 @@ null
                             <span x-show="!isFree">{{ translate('cta_paid_' ~ asset_type_key) }}</span>
                         </h3>
 
-                        <!-- Variation Selection (physical products) -->
-                        <div x-show="isPhysical && variations.length > 0" x-cloak class="mb-6 space-y-3">
-                            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ translate('choose_variation') }}:</p>
-                            <div class="grid grid-cols-2 gap-3">
-                                <template x-for="v in variations" :key="v.id">
-                                    <div @click="selectVariation(v)"
-                                        class="p-3 rounded-xl border-2 transition-all"
-                                        :class="[
-                                            selectedVariation && selectedVariation.id === v.id ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-400' : 'border-gray-200 dark:border-gray-700',
-                                            v.sold_out ? 'opacity-50' : 'cursor-pointer hover:border-indigo-300'
-                                        ]">
-                                        <img x-show="v.photo_url" :src="v.photo_url" alt=""
-                                            class="w-full h-20 object-cover rounded-lg mb-2">
-                                        <div class="flex justify-between items-center gap-2">
-                                            <span class="font-semibold text-sm text-gray-900 dark:text-white truncate" x-text="v.name"></span>
-                                            <span class="text-sm font-bold shrink-0"
-                                                :class="v.sold_out ? 'text-gray-400 uppercase text-xs tracking-wide' : 'text-indigo-600 dark:text-indigo-400'"
-                                                x-text="v.sold_out ? '{{ translate('sold_out') }}' : currency + formatCurrency((v.price !== null && v.price !== undefined && v.price !== '') ? v.price : asset.price)"></span>
-                                        </div>
-                                    </div>
-                                </template>
+                        <!-- Order summary (physical products).
+                             The option and quantity were chosen on the page, beside the
+                             photos. The modal only confirms them and asks for one thing:
+                             the phone number. One screen, no scrolling, no second choice. -->
+                        <div x-show="isPhysical" x-cloak
+                            class="mb-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 flex items-center gap-3">
+                            <img x-show="$store.order.photo" :src="$store.order.photo" alt=""
+                                class="w-14 h-14 rounded-xl object-cover border border-gray-200 dark:border-gray-700 shrink-0">
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-bold text-gray-900 dark:text-white truncate"
+                                    x-text="$store.order.selected ? $store.order.selected.name : asset.title"></p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                    <span x-text="$store.order.quantity"></span> ×
+                                    <span x-text="'{{ currency_symbol }}' + $store.order.money($store.order.unitPrice)"></span>
+                                </p>
+                            </div>
+                            <div class="text-right shrink-0">
+                                <p class="text-lg font-extrabold text-gray-900 dark:text-white"
+                                    x-text="'{{ currency_symbol }}' + $store.order.money($store.order.total)"></p>
+                                <button type="button" @click="closeModal()"
+                                    class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 underline underline-offset-2">{{
+                                    translate('change_choice') }}</button>
                             </div>
                         </div>
 
@@ -1887,74 +1922,58 @@ null
                         </p>
 
                         <form @submit.prevent="initiatePayment()">
-                            <!-- 1) Phone number first — quick entry -->
-                            <div class="mb-5"><input type="tel" x-ref="phoneInput" x-model="phoneNumber"
-                                    @input="formatPhoneNumber()" placeholder="07XX XXX XXX"
-                                    class="input-field pl-4 text-lg font-mono" required></div>
-
-                            <!-- 2a) Quantity stepper (physical products) -->
-                            <div x-show="isPhysical" x-cloak
-                                class="mb-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
-                                <div class="flex items-center justify-between gap-3">
-                                    <div class="min-w-0 flex items-center gap-2.5">
-                                        <img x-show="selectedVariation && selectedVariation.photo_url"
-                                            :src="selectedVariation?.photo_url" alt=""
-                                            class="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-700 shrink-0">
-                                        <div class="min-w-0">
-                                            <p class="text-sm font-bold text-gray-800 dark:text-gray-200">{{ translate('quantity') }}</p>
-                                            <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                                <span x-show="selectedVariation"><span x-text="selectedVariation?.name"></span> · </span>
-                                                <span x-text="currency + formatCurrency(unitPrice)"></span>
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div class="flex items-center gap-1 shrink-0">
-                                        <button type="button" @click="decrementQuantity()" :disabled="quantity <= 1"
-                                            class="w-10 h-10 rounded-lg border-2 border-gray-200 dark:border-gray-700 flex items-center justify-center text-lg font-bold text-gray-700 dark:text-gray-300 hover:border-indigo-300 disabled:opacity-40 transition-all">−</button>
-                                        <span class="w-10 text-center text-lg font-bold text-gray-900 dark:text-white" x-text="quantity"></span>
-                                        <button type="button" @click="incrementQuantity()" :disabled="quantity >= 100"
-                                            class="w-10 h-10 rounded-lg border-2 border-gray-200 dark:border-gray-700 flex items-center justify-center text-lg font-bold text-gray-700 dark:text-gray-300 hover:border-indigo-300 disabled:opacity-40 transition-all">+</button>
-                                    </div>
-                                </div>
-                                <div x-show="quantity > 1" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-baseline text-sm">
-                                    <span class="text-gray-500 dark:text-gray-400">{{ translate('total_amount') }}</span>
-                                    <span class="font-bold text-gray-900 dark:text-white" x-text="currency + formatCurrency(effectiveAmount)"></span>
+                            <!-- 1) Phone number first — quick entry.
+                                 The country code is fixed, so the buyer only types the
+                                 9 national digits; anything they paste (0…, +255…, 255…)
+                                 is folded into that shape as they type. -->
+                            <div class="mb-5">
+                                <div class="field-group">
+                                    <span class="field-group__prefix">
+                                        {% include 'user/partials/flag_tz.svg' %}
+                                        +255
+                                    </span>
+                                    <input type="tel" x-ref="phoneInput" x-model="phoneNumber"
+                                        @input="formatPhoneNumber()" inputmode="numeric" autocomplete="tel-national"
+                                        placeholder="712 345 678" aria-label="{{ translate('mobile_phone_number') }}"
+                                        class="field-group__input font-mono tracking-wide" required>
                                 </div>
                             </div>
 
-                            <!-- 2) Then ask about the donation -->
+                            <!-- 2) Then ask about the donation.
+                                 Chips are shortcuts that fill the amount field below —
+                                 that field is always the single source of what is charged,
+                                 so a supporter can adjust any suggestion. -->
                             <div x-show="isDonation" x-cloak
                                 class="mb-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
-                                <div class="flex items-baseline justify-between mb-1">
-                                    <span class="text-sm font-bold text-gray-800 dark:text-gray-200">{{ translate('donation_title') }}</span>
-                                    <span x-show="donationMin > 0" class="text-xs text-gray-500 dark:text-gray-400"
-                                        x-text="'{{ translate('donation_min_note') }} ' + currency + formatCurrency(donationMin)"></span>
-                                </div>
-                                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                                    <span x-show="!donationCfg.mandatory">{{ translate('donation_hint_optional') }}</span>
-                                    <span x-show="donationCfg.mandatory">{{ translate('donation_hint_mandatory') }}</span>
-                                </p>
+                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-2.5">{{ translate('donation_title') }}</p>
 
-                                <!-- Quick-pick amounts (toggle off to clear when optional) -->
-                                <div x-show="donationCfg.suggested_amounts && donationCfg.suggested_amounts.length"
-                                    class="flex flex-wrap gap-2 mb-3">
-                                    <template x-for="amt in (donationCfg.suggested_amounts || [])" :key="amt">
-                                        <button type="button"
-                                            @click="contribution = (!donationCfg.mandatory && contributionAmount === parseFloat(amt)) ? '' : String(amt)"
-                                            class="px-3.5 py-2 rounded-lg border-2 text-sm font-semibold transition-all"
-                                            :class="contributionAmount === parseFloat(amt) ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:border-indigo-400 dark:text-indigo-300' : 'border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-indigo-300'"
-                                            x-text="currency + formatCurrency(amt)"></button>
+                                <!-- Quick-pick amounts (tap again to clear when optional) -->
+                                <div x-show="suggestedAmounts.length" class="grid grid-cols-3 gap-2 mb-2.5">
+                                    <template x-for="amt in suggestedAmounts" :key="amt">
+                                        <button type="button" @click="pickAmount(amt)" class="amount-chip"
+                                            :class="contributionAmount === parseFloat(amt) ? 'is-selected' : ''"
+                                            x-text="formatAmount(amt)"></button>
                                     </template>
                                 </div>
 
-                                <!-- Free-form amount -->
-                                <div class="relative">
-                                    <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-gray-500 dark:text-gray-400 font-medium pointer-events-none"
-                                        x-text="currency"></span>
+                                <!-- The amount actually charged -->
+                                <div class="field-group">
+                                    <span class="field-group__prefix" x-text="currency"></span>
                                     <input type="number" inputmode="decimal" min="0" step="any"
-                                        x-model="contribution" :placeholder="'{{ translate('donation_amount_ph') }}'"
-                                        class="input-field pl-10 text-lg font-mono">
+                                        x-model="contribution" placeholder="{{ translate('donation_amount_ph') }}"
+                                        aria-label="{{ translate('donation_amount_ph') }}"
+                                        class="field-group__input font-mono">
                                 </div>
+
+                                <!-- Optional chaining throughout: Alpine evaluates these even on a
+                                     non-donation asset, where donationCfg is null. -->
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                    <span x-show="donationCfg?.mandatory">{{ translate('donation_hint_mandatory') }}</span>
+                                    <span x-show="!donationCfg?.mandatory && suggestedAmounts.length">{{ translate('donation_pick_hint') }}</span>
+                                    <span x-show="!donationCfg?.mandatory && !suggestedAmounts.length">{{ translate('donation_hint_optional') }}</span>
+                                    <span x-show="donationMin > 0"
+                                        x-text="' {{ translate('donation_min_note') }} ' + currency + formatAmount(donationMin)"></span>
+                                </p>
                             </div>
 
                             <p x-show="errorMessage" x-text="errorMessage"
@@ -1962,17 +1981,17 @@ null
 
                             <!-- 3) Smart submit button that states the choice -->
                             <button type="submit"
-                                :disabled="isPhysical && variations.length > 0 && !selectedVariation"
+                                :disabled="isPhysical && $store.order.soldOut"
                                 class="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl text-lg hover:scale-[1.01] transition-transform disabled:opacity-50 disabled:hover:scale-100">
                                 <!-- All variations sold out -->
-                                <span x-show="isPhysical && variations.length > 0 && !selectedVariation">{{ translate('sold_out') }}</span>
+                                <span x-show="isPhysical && $store.order.soldOut">{{ translate('sold_out') }}</span>
                                 <!-- Non-donation assets -->
-                                <span x-show="!isDonation && isFree && !(isPhysical && variations.length > 0 && !selectedVariation)">{{ translate('cta_free_' ~ asset_type_key) }}</span>
-                                <span x-show="!isDonation && !isFree && !(isPhysical && variations.length > 0 && !selectedVariation)"
+                                <span x-show="!isDonation && isFree && !(isPhysical && $store.order.soldOut)">{{ translate('cta_free_' ~ asset_type_key) }}</span>
+                                <span x-show="!isDonation && !isFree && !(isPhysical && $store.order.soldOut)"
                                     x-text="'{{ translate('cta_paid_' ~ asset_type_key) }} • ' + currency + formatCurrency(effectiveAmount)"></span>
                                 <!-- Donation assets: communicate whether they're donating -->
                                 <span x-show="isDonation && contributionAmount > 0"
-                                    x-text="'{{ translate('donate_cta') }} ' + currency + formatCurrency(contributionAmount)"></span>
+                                    x-text="'{{ translate('donate_cta') }} ' + currency + formatAmount(contributionAmount)"></span>
                                 <span x-show="isDonation && contributionAmount === 0 && !donationCfg.mandatory">{{ translate('continue_without_donating') }}</span>
                                 <span x-show="isDonation && contributionAmount === 0 && donationCfg.mandatory">{{ translate('donate_cta') }}</span>
                             </button>
@@ -2013,7 +2032,7 @@ null
                         <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">{{
                             translate('check_phone_header') }}</h3>
                         <p class="text-gray-600 dark:text-gray-400 mb-8">{{ translate('request_sent_to') }} <span
-                                class="font-mono font-bold" x-text="phoneNumber"></span></p>
+                                class="font-mono font-bold" x-text="phoneDisplay"></span></p>
 
                         <div class="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 text-left max-w-xs mx-auto space-y-3">
                             <div class="flex items-center gap-3">

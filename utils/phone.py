@@ -46,19 +46,30 @@ def normalize_phone_number(phone: str) -> str:
     if not digits:
         return ''
 
-    # 3. Handle Tanzanian country code variations
-    #    +255XXXXXXXXX or 255XXXXXXXXX -> 0XXXXXXXXX
-    if digits.startswith('255') and len(digits) == 12:
-        digits = '0' + digits[3:]
-    #    00255XXXXXXXXX -> 0XXXXXXXXX (international dialing prefix)
-    elif digits.startswith('00255') and len(digits) == 14:
-        digits = '0' + digits[5:]
-    #    Missing leading zero: 6XXXXXXXX or 7XXXXXXXX (9 digits) -> 0XXXXXXXXX
-    elif len(digits) == 9 and digits[0] in ('6', '7'):
-        digits = '0' + digits
+    # 3. Strip the Tanzanian country code in whichever form it was written.
+    #    Length is checked so a national number that merely starts with 255 isn't
+    #    mistaken for a country code.
+    had_country_code = True
+    if digits.startswith('00255'):          # international dialling prefix
+        national = digits[5:]
+    elif digits.startswith('255') and len(digits) > 9:
+        national = digits[3:]               # +255…, 255…
+    else:
+        national = digits
+        had_country_code = False
 
-    # 4. Ensure the result starts with '0' for local format
-    #    If it doesn't match any known pattern, return as-is (digits only)
+    # 4. Drop the national trunk prefix. This also absorbs the "+255 (0) 712…"
+    #    convention, where the country code and the trunk zero are both written.
+    national = national.lstrip('0')
+
+    # 5. A 9-digit national number is the shape we can canonicalize. Without a
+    #    country code we only do so for mobile prefixes (06/07), so an unfamiliar
+    #    9-digit string keeps whatever form it arrived in.
+    if len(national) == 9 and (had_country_code or national[0] in ('6', '7')):
+        return '0' + national
+
+    # Anything else (a foreign number, a truncated one) is handed back as digits
+    # only, so the caller's own validation decides what to do with it.
     return digits
 
 

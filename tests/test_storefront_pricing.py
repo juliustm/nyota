@@ -8,7 +8,15 @@ of the button waiting on the asset page.
 
 from models.nyota import AssetStatus, AssetType
 
-from utils.pricing import DONATION, FREE, FREE_DONATION, PAID, asset_pricing, offer_schema
+from utils.pricing import (
+    DONATION,
+    FREE,
+    FREE_DONATION,
+    PAID,
+    asset_pricing,
+    contribution_voice,
+    offer_schema,
+)
 
 from .conftest import make_asset
 
@@ -131,6 +139,96 @@ def test_offer_schema_matches_the_displayed_price(creator):
     assert aggregate['offerCount'] == 2
 
 
+def _contribution(creator, **donation):
+    cfg = {'enabled': True, 'mandatory': True, 'min_amount': 6000}
+    cfg.update(donation)
+    return make_asset(creator, price=0, details={'donation': cfg})
+
+
+def test_a_plain_donation_still_reads_exactly_as_it_always_did(creator):
+    """No CTA chosen, or the default one: nothing about the wording changes."""
+    voice = contribution_voice(_contribution(creator))
+
+    assert voice['is_default'] is True
+    assert voice['preset'] == 'donate'
+    # Nothing overrides the translation keys the surfaces already use.
+    assert asset_pricing(_contribution(creator))['cta_label'] is None
+
+
+def test_a_preset_replaces_the_button_on_a_required_contribution(creator):
+    asset = _contribution(creator, cta='coffee')
+    voice = contribution_voice(asset)
+
+    assert voice['is_default'] is False
+    # Swahili is the default language, and that is what a visitor here reads.
+    assert voice['cta'] == 'Ninunulie Kahawa'
+    # Paying is the way in, so the creator's verb IS the button.
+    pricing = asset_pricing(asset)
+    assert pricing['cta_label'] == 'Ninunulie Kahawa'
+    # ...and no "DONATION" tag left over the cover to contradict it.
+    assert pricing['badge_key'] is None
+
+
+def test_an_optional_contribution_keeps_its_free_button(creator):
+    """The item is still free to take, so only the invitation line changes."""
+    asset = _contribution(creator, mandatory=False, cta='coffee')
+    pricing = asset_pricing(asset)
+
+    assert pricing['mode'] == FREE_DONATION
+    assert pricing['cta_label'] is None
+    assert pricing['note_label'] == 'Ninunulie Kahawa'
+
+
+def test_a_creator_written_label_beats_the_preset(creator):
+    asset = _contribution(creator, cta='coffee', cta_custom={'en': 'Back the demo', 'sw': 'Fadhili Demo'})
+
+    assert contribution_voice(asset)['cta'] == 'Fadhili Demo'
+    assert contribution_voice(asset)['preset'] == 'custom'
+
+
+def test_one_written_language_is_read_by_everyone(creator):
+    """A creator who filled in one side meant it to be read, not to vanish."""
+    asset = _contribution(creator, cta_custom={'en': 'Back the demo', 'sw': ''})
+
+    assert contribution_voice(asset)['cta'] == 'Back the demo'
+
+
+def test_an_unknown_preset_falls_back_to_donate(creator):
+    """A stale or hand-edited id must not render an empty button."""
+    voice = contribution_voice(_contribution(creator, cta='not_a_preset'))
+
+    assert voice['is_default'] is True
+    assert voice['cta']
+
+
+def test_an_asset_that_takes_no_contribution_has_no_voice(creator):
+    assert contribution_voice(make_asset(creator, price=10000)) is None
+
+
+def test_a_required_contribution_asks_for_an_amount_not_a_decision(creator):
+    """The visitor is past deciding — the heading only asks how much."""
+    required = contribution_voice(_contribution(creator))
+    optional = contribution_voice(_contribution(creator, mandatory=False))
+
+    assert required['title'] != optional['title']
+
+
+def test_a_chosen_verb_reaches_the_storefront_card(client, creator):
+    make_asset(
+        creator,
+        title='Karani Demo',
+        slug='karani-demo',
+        price=0,
+        details={'donation': {'enabled': True, 'mandatory': True, 'min_amount': 6000, 'cta': 'coffee'}},
+    )
+
+    body = client.get('/', headers=ENGLISH).get_data(as_text=True)
+
+    assert 'Buy me a coffee' in body
+    # The generic verb it replaced must not survive anywhere on the card.
+    assert 'Donate' not in body
+
+
 def test_sold_out_goods_are_marked_sold_out_for_crawlers(creator):
     asset = make_asset(
         creator,
@@ -206,3 +304,75 @@ def test_unlisted_asset_page_still_refuses_crawlers_entirely(client, creator):
     body = client.get('/hidden').get_data(as_text=True)
 
     assert 'noindex, nofollow' in body
+
+
+# --- Saving the chosen verb from the admin -----------------------------------
+
+def _login(client, creator):
+    with client.session_transaction() as session:
+        session['creator_id'] = creator.id
+
+
+def test_the_admin_can_save_a_chosen_verb(client, creator):
+    import json
+
+    from models.nyota import DigitalAsset
+
+    _login(client, creator)
+    payload = {
+        'action': 'publish',
+        'asset': {'title': 'Karani Demo', 'description': 'Buy me coffee, I show you a demo'},
+        'assetTypeEnum': 'DIGITAL_PRODUCT',
+        'pricing': {'type': 'one-time', 'amount': 0},
+        'contentItems': [],
+        'customFields': [],
+        'donation': {
+            'enabled': True,
+            'mandatory': True,
+            'min_amount': 6000,
+            'suggested_amounts': [6000, 12000],
+            'cta': 'coffee',
+            'cta_custom': {'en': '  Back the demo  ', 'sw': ''},
+        },
+    }
+    response = client.post('/admin/assets/save', data={'asset_data': json.dumps(payload)},
+                           headers={'Accept': 'application/json'})
+
+    assert response.status_code == 200, response.get_data(as_text=True)
+    saved = DigitalAsset.query.filter_by(title='Karani Demo').one().details['donation']
+    assert saved['cta'] == 'coffee'
+    # Stored trimmed, and the empty side stays empty so it can fall back.
+    assert saved['cta_custom'] == {'en': 'Back the demo', 'sw': ''}
+
+
+def test_a_hand_edited_preset_id_is_refused_at_the_door(client, creator):
+    import json
+
+    from models.nyota import DigitalAsset
+
+    _login(client, creator)
+    payload = {
+        'action': 'publish',
+        'asset': {'title': 'Bad Preset', 'description': 'x'},
+        'assetTypeEnum': 'DIGITAL_PRODUCT',
+        'pricing': {'type': 'one-time', 'amount': 0},
+        'contentItems': [],
+        'customFields': [],
+        'donation': {'enabled': True, 'mandatory': True, 'min_amount': 1000, 'cta': '<script>'},
+    }
+    client.post('/admin/assets/save', data={'asset_data': json.dumps(payload)},
+                headers={'Accept': 'application/json'})
+
+    saved = DigitalAsset.query.filter_by(title='Bad Preset').one()
+    assert saved.details['donation']['cta'] == 'donate'
+
+
+def test_the_admin_asset_page_offers_the_pool(client, creator):
+    _login(client, creator)
+    asset = _contribution(creator, cta='coffee')
+
+    html = client.get(f'/admin/assets/{asset.id}/edit').get_data(as_text=True)
+
+    assert 'pickCtaPreset' in html          # the picker rendered
+    assert 'id="cta-presets"' in html       # ...with the pool to pick from
+    assert 'Buy me a coffee' in html

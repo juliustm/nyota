@@ -6,7 +6,17 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
    fallback label; the live buttons below refine it as the buyer picks a tier,
    a variation or a contribution. #}
 {% set pricing = asset_pricing(asset_obj) %}
-{% set page_cta = translate('donate_cta') if pricing.mode == 'donation'
+{# `voice` is the wording a contribution asset uses — the creator's chosen verb
+   ("Donate", "Buy me a coffee", "Unlock") plus the copy around it. None for
+   assets that take no contribution, so every use is guarded. #}
+{% set voice = contribution_voice(asset_obj) %}
+{# The contribution markup below is rendered for every asset and hidden by Alpine
+   on the ones that take no contribution, so each piece of it needs a value even
+   when `voice` is None. #}
+{% set voice_cta = voice.cta if voice else translate('donate_cta') %}
+{% set voice_title = voice.title if voice else translate('donation_title') %}
+{% set voice_inst = voice.inst if voice else translate('inst_donation') %}
+{% set page_cta = voice.cta if pricing.mode == 'donation'
 else (translate('cta_free_' ~ asset_type_key) if pricing.is_free else translate('cta_paid_' ~ asset_type_key)) %}
 {# Goods no longer need a server-computed "starts at" range: the buyer picks the
    option on the page, so every price on it is the price of a real chosen thing,
@@ -1467,7 +1477,7 @@ null
                                 <span class="text-4xl font-extrabold text-green-600 dark:text-green-400">{{
                                     translate('free') }}</span>
                                 <span class="text-sm font-semibold text-rose-600 dark:text-rose-400 mt-1">{{
-                                    translate('donations_welcome') }}</span>
+                                    pricing.note_label or translate('donations_welcome') }}</span>
                             </div>
                             {% elif pricing.is_free %}
                             <div class="flex items-baseline gap-2">
@@ -1869,7 +1879,7 @@ null
                                 {{ translate('free') }}
                             </p>
                             <p class="text-[10px] text-rose-600 dark:text-rose-400 font-semibold truncate">{{
-                                translate('donations_welcome') }}</p>
+                                pricing.note_label or translate('donations_welcome') }}</p>
                             {% elif pricing.is_free %}
                             <p class="font-extrabold text-xl text-green-600 dark:text-green-400 truncate">
                                 {{ translate('free') }}
@@ -1931,7 +1941,7 @@ null
                     <div class="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-6 sm:hidden"></div>
                     <div x-show="status === 'ready' || status === 'failed'">
                         <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                            <span x-show="isDonating" x-cloak>{{ translate('donate_cta') }}</span>
+                            <span x-show="isDonating" x-cloak>{{ voice_cta }}</span>
                             <span x-show="!isDonating && isFree">{{ translate('cta_free_' ~ asset_type_key) }}</span>
                             <span x-show="!isDonating && !isFree">{{ translate('cta_paid_' ~ asset_type_key) }}</span>
                         </h3>
@@ -1983,7 +1993,7 @@ null
                         </div>
 
                         <p class="text-gray-600 dark:text-gray-400 mb-6">
-                            <span x-show="isDonating" x-cloak>{{ translate('inst_donation') }}</span>
+                            <span x-show="isDonating" x-cloak>{{ voice_inst }}</span>
                             <span x-show="!isDonating && isFree">{{ translate('inst_free_' ~ asset_type_key) }}</span>
                             <span x-show="!isDonating && !isFree">{{ translate('inst_paid_' ~ asset_type_key) }}</span>
                         </p>
@@ -2012,7 +2022,7 @@ null
                                  so a supporter can adjust any suggestion. -->
                             <div x-show="isDonation" x-cloak
                                 class="mb-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
-                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-2.5">{{ translate('donation_title') }}</p>
+                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-2.5">{{ voice_title }}</p>
 
                                 <!-- Quick-pick amounts (tap again to clear when optional) -->
                                 <div x-show="suggestedAmounts.length" class="grid grid-cols-3 gap-2 mb-2.5">
@@ -2056,11 +2066,14 @@ null
                                 <span x-show="!isDonation && isFree && !(isPhysical && $store.order.soldOut)">{{ translate('cta_free_' ~ asset_type_key) }}</span>
                                 <span x-show="!isDonation && !isFree && !(isPhysical && $store.order.soldOut)"
                                     x-text="'{{ translate('cta_paid_' ~ asset_type_key) }} • ' + currency + formatCurrency(effectiveAmount)"></span>
-                                <!-- Donation assets: communicate whether they're donating -->
+                                <!-- Contribution assets: the creator's verb, then the amount.
+                                     The label is creator-written, so it goes in as a JSON
+                                     literal inside a single-quoted attribute — an apostrophe
+                                     in "Let's grab a coffee" would otherwise end the string. -->
                                 <span x-show="isDonation && contributionAmount > 0"
-                                    x-text="'{{ translate('donate_cta') }} ' + currency + formatAmount(contributionAmount)"></span>
+                                    x-text='{{ voice_cta|tojson }} + " • " + currency + formatAmount(contributionAmount)'></span>
                                 <span x-show="isDonation && contributionAmount === 0 && !donationCfg.mandatory">{{ translate('continue_without_donating') }}</span>
-                                <span x-show="isDonation && contributionAmount === 0 && donationCfg.mandatory">{{ translate('donate_cta') }}</span>
+                                <span x-show="isDonation && contributionAmount === 0 && donationCfg.mandatory">{{ voice_cta }}</span>
                             </button>
                         </form>
                     </div>

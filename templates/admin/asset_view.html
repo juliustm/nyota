@@ -1096,6 +1096,8 @@
                                     placeholder="5000, 10000, 20000">
                             </div>
 
+                            {% include 'admin/partials/cta_picker.html' %}
+
                             <p class="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 leading-relaxed">
                                 <strong>UZA billing:</strong> set the linked UZA product's price to <strong>1 {{ currency_symbol }}</strong>.
                                 The contribution is sent as the quantity (amount × 1 = total).

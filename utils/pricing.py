@@ -40,6 +40,101 @@ _CARD_CTA = {
 }
 _DEFAULT_CTA = ('card_cta_buy', 'card_cta_get_free')
 
+# --- The contribution voice --------------------------------------------------
+# A flexible-amount asset is not always a donation. "Buy me a coffee", "Support"
+# and "Unlock" all take money the visitor chooses the size of, but only one of
+# them is charity -- the other two hand something back. A visitor decides in
+# about a second which one they are looking at, so the creator picks the verb
+# and every surface repeats it: the card button, the page button, the checkout
+# sheet, and the button that finally takes the money.
+#
+# Preset labels live here rather than in locales/*.json because the admin picks
+# them in English while the visitor reads them in their own language, so the
+# picker has to show BOTH at once -- something translate() (one locale per
+# request) can't do. Creator-written labels follow the same shape as
+# details['labels']: {'en': ..., 'sw': ...}, either side optional.
+CTA_PRESETS = (
+    ('donate',     {'en': 'Donate',          'sw': 'Changia'}),
+    ('support',    {'en': 'Support',         'sw': 'Niunge Mkono'}),
+    ('coffee',     {'en': 'Buy me a coffee', 'sw': 'Ninunulie Kahawa'}),
+    ('tip',        {'en': 'Send a tip',      'sw': 'Tuma Kitu Kidogo'}),
+    ('get_access', {'en': 'Get access',      'sw': 'Pata Ufikiaji'}),
+    ('unlock',     {'en': 'Unlock',          'sw': 'Fungua'}),
+    ('get_it',     {'en': 'Get it now',      'sw': 'Pata Sasa'}),
+    ('join',       {'en': 'Join',            'sw': 'Jiunge'}),
+)
+CTA_PRESET_MAP = dict(CTA_PRESETS)
+
+# 'donate' is what every existing asset already says, so it resolves through the
+# old `donate_cta` translation and leaves all the surrounding donation wording
+# untouched. Anything else is a deliberate change of meaning and pulls the
+# neutral copy with it.
+DEFAULT_CTA_PRESET = 'donate'
+
+# A button label has to survive next to " • TZS 6,000" on a phone.
+CTA_MAX_LEN = 28
+
+
+def _lang():
+    """Current request language, or Swahili when there is no request."""
+    try:
+        from flask import g
+        return getattr(g, 'language', None) or 'sw'
+    except Exception:
+        return 'sw'
+
+
+def preset_choices():
+    """The pool offered to the creator: [{'id', 'en', 'sw'}, ...]."""
+    return [{'id': pid, 'en': words['en'], 'sw': words['sw']} for pid, words in CTA_PRESETS]
+
+
+def contribution_voice(asset):
+    """How a flexible-amount asset asks for money, in the visitor's language.
+
+    Returns None when the asset takes no contribution. Otherwise:
+      preset      the chosen preset id, or 'custom' when the creator wrote it
+      is_default  True for plain "Donate" — everything then reads as it always did
+      cta         the button verb, already localised
+      title       heading over the amount picker
+      inst        the line under the checkout sheet's title
+      note        the small line under a free price, or None to keep the default
+    """
+    cfg = donation_config(asset)
+    if not cfg:
+        return None
+
+    from utils.translator import translate
+
+    lang = _lang()
+    custom = cfg.get('cta_custom')
+    custom = custom if isinstance(custom, dict) else {}
+    # Same fallback ladder as details['labels']: this language, then whichever
+    # side the creator actually filled in. A creator who wrote one label meant
+    # it to be read, not to disappear for half their visitors.
+    label = (custom.get(lang) or custom.get('en') or custom.get('sw') or '').strip()
+    preset = cfg.get('cta') if cfg.get('cta') in CTA_PRESET_MAP else DEFAULT_CTA_PRESET
+
+    if label:
+        cta, is_default = label[:CTA_MAX_LEN], False
+    elif preset == DEFAULT_CTA_PRESET:
+        cta, is_default = translate('donate_cta'), True
+    else:
+        words = CTA_PRESET_MAP[preset]
+        cta, is_default = (words.get(lang) or words['en']), False
+
+    return {
+        'preset': 'custom' if label else preset,
+        'is_default': is_default,
+        'cta': cta,
+        # A required contribution isn't a yes/no question — the visitor is past
+        # deciding and is only choosing how much.
+        'title': translate('contribution_choose_amount') if cfg.get('mandatory')
+        else translate('donation_title'),
+        'inst': translate('inst_donation') if is_default else translate('inst_contribution'),
+        'note': None if is_default else cta,
+    }
+
 
 def asset_type_key(asset):
     """Lowercase asset-type slug used to build translation keys."""
@@ -100,6 +195,12 @@ def asset_pricing(asset):
       cta_key     translation key for the storefront card's button
       note_key    translation key for the small line under the price, or None
       badge_key   translation key for the cover badge, or None
+      cta_label   ready-made button text that OVERRIDES cta_key, or None
+      note_label  ready-made note text that OVERRIDES note_key, or None
+
+    The two *_label fields carry a creator's own words ("Buy me a coffee"),
+    which have no translation key to look up. Every surface renders
+    `cta_label or translate(cta_key)`.
     """
     type_key = asset_type_key(asset)
     paid_cta, free_cta = _CARD_CTA.get(type_key, _DEFAULT_CTA)
@@ -114,6 +215,8 @@ def asset_pricing(asset):
         'note_key': None,
         'badge_key': None,
         'type_key': type_key,
+        'cta_label': None,
+        'note_label': None,
     }
 
     # 1. Donations. A donation asset is always priced 0 at the base (routes.py
@@ -121,6 +224,9 @@ def asset_pricing(asset):
     donation = donation_config(asset)
     if donation and base_price == 0:
         minimum = _to_float(donation.get('min_amount'), 0.0) or 0.0
+        # The creator's own verb, when they chose one. `voice` is None only for
+        # assets that take no contribution, which this branch has ruled out.
+        voice = contribution_voice(asset) or {}
         if donation.get('mandatory'):
             result.update({
                 'mode': DONATION,
@@ -128,7 +234,12 @@ def asset_pricing(asset):
                 'from_price': minimum > 0,
                 'cta_key': 'card_cta_donate',
                 'note_key': None if minimum > 0 else 'donation_any_amount',
-                'badge_key': 'label_donation',
+                # A "DONATION" tag over a cover that says "Buy me a coffee"
+                # contradicts it. Once the creator has named the exchange, the
+                # button and the price carry it and the tag only muddies things.
+                'badge_key': 'label_donation' if voice.get('is_default') else None,
+                # Paying IS the way in here, so the creator's verb is the button.
+                'cta_label': None if voice.get('is_default') else voice.get('cta'),
             })
         else:
             result.update({
@@ -138,6 +249,9 @@ def asset_pricing(asset):
                 'cta_key': free_cta,
                 'note_key': 'donations_welcome',
                 'badge_key': 'free',
+                # The item is free, so the button keeps saying so; the invitation
+                # moves to the line beneath it ("FREE — Buy me a coffee").
+                'note_label': None if voice.get('is_default') else voice.get('cta'),
             })
         return result
 

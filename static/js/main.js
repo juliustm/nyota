@@ -249,6 +249,112 @@ function withRecurrenceEditor(component) {
     return Object.defineProperties(component, Object.getOwnPropertyDescriptors(recurrenceEditor));
 }
 
+// --- Contribution call to action ---------------------------------------------
+// The verb on a pay-what-you-want button: "Donate", "Buy me a coffee", "Unlock".
+// Not every flexible-amount asset is charity — most hand something back — and a
+// visitor decides which one they are looking at from this one word, so the
+// creator gets to choose it.
+//
+// The creator works in an English admin while their visitors read Swahili, so
+// the picker shows both languages at once. The pool comes from the server
+// (utils/pricing.CTA_PRESETS) through a #cta-presets island, so the words
+// previewed here are the exact words that will render.
+const CTA_FALLBACK = { id: 'donate', en: 'Donate', sw: 'Changia' };
+
+let _ctaPresetPool = null;
+function ctaPresetPool() {
+    // Memoised outside Alpine: a getter that wrote to component state would be
+    // a reactive write during render.
+    if (_ctaPresetPool) return _ctaPresetPool;
+    try {
+        const el = document.getElementById('cta-presets');
+        _ctaPresetPool = el ? (JSON.parse(el.textContent || '[]') || []) : [];
+    } catch (e) { _ctaPresetPool = []; }
+    return _ctaPresetPool;
+}
+
+// Mixed into any component that has a `ctaTarget()` returning its donation
+// config object. Reads never mutate that object; only the two actions do.
+const ctaEditor = {
+    get ctaPresets() { return ctaPresetPool(); },
+
+    ctaConfig() {
+        const d = this.ctaTarget() || {};
+        return {
+            cta: d.cta || CTA_FALLBACK.id,
+            custom: (d.cta_custom && typeof d.cta_custom === 'object') ? d.cta_custom : { en: '', sw: '' },
+        };
+    },
+
+    // Once the creator has written their own words, "Write your own" is the
+    // selected option and no preset chip is.
+    get ctaIsCustom() {
+        const c = this.ctaConfig().custom;
+        return !!((c.en || '').trim() || (c.sw || '').trim());
+    },
+
+    ctaPresetSelected(id) {
+        return !this.ctaIsCustom && this.ctaConfig().cta === id;
+    },
+
+    // A required contribution puts this label on the main button; an optional one
+    // leaves the button offering the item free and moves the label under the price.
+    get ctaIsMandatory() { return !!(this.ctaTarget() || {}).mandatory; },
+
+    pickCtaPreset(id) {
+        const d = this.ctaTarget();
+        d.cta = id;
+        d.cta_custom = { en: '', sw: '' };
+    },
+
+    // Seed the custom boxes from the current preset. Editing real words beats
+    // facing two empty fields, and it means both languages start out filled.
+    startCustomCta() {
+        if (this.ctaIsCustom) return;
+        const d = this.ctaTarget();
+        const p = this.ctaPresets.find(x => x.id === (d.cta || CTA_FALLBACK.id)) || CTA_FALLBACK;
+        d.cta_custom = { en: p.en, sw: p.sw };
+    },
+
+    // x-model targets, so the partial can be dropped into any host component
+    // without knowing where that component keeps its donation config.
+    _ctaCustomWrite(lang, value) {
+        const d = this.ctaTarget();
+        if (!d.cta_custom || typeof d.cta_custom !== 'object') d.cta_custom = { en: '', sw: '' };
+        d.cta_custom[lang] = value;
+    },
+    get ctaCustomEn() { return this.ctaConfig().custom.en || ''; },
+    set ctaCustomEn(v) { this._ctaCustomWrite('en', v); },
+    get ctaCustomSw() { return this.ctaConfig().custom.sw || ''; },
+    set ctaCustomSw(v) { this._ctaCustomWrite('sw', v); },
+
+    // The amount half of the button, so the preview reads like the real thing
+    // instead of a bare verb. The first suggestion is what most people tap.
+    get ctaPreviewAmount() {
+        const d = this.ctaTarget() || {};
+        const suggested = String(d._suggestedRaw || '')
+            .split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0);
+        const amount = suggested[0] || parseFloat(d.min_amount) || 0;
+        return amount > 0 ? amount.toLocaleString('en-US') : '';
+    },
+
+    // The same fallback ladder the server uses (utils/pricing.contribution_voice):
+    // a creator who filled in one language meant it to be read, not to vanish
+    // for half their visitors.
+    get ctaPreview() {
+        const { cta, custom } = this.ctaConfig();
+        const en = (custom.en || '').trim();
+        const sw = (custom.sw || '').trim();
+        if (en || sw) return { en: en || sw, sw: sw || en };
+        const p = this.ctaPresets.find(x => x.id === cta) || CTA_FALLBACK;
+        return { en: p.en, sw: p.sw };
+    },
+};
+
+function withCtaEditor(component) {
+    return Object.defineProperties(component, Object.getOwnPropertyDescriptors(ctaEditor));
+}
+
 function bindMarkdownEditor(element, opts, getValue, setValue) {
     const mde = mountMarkdownEditor(element, opts);
     if (!mde) return null;
@@ -1152,7 +1258,8 @@ document.addEventListener('alpine:init', () => {
         clearAllFilters() { this.searchTerm = ''; this.statusFilter = 'all'; this.typeFilter = 'all'; },
     }));
 
-    Alpine.data('assetForm', () => withRecurrenceEditor({
+    Alpine.data('assetForm', () => withRecurrenceEditor(withCtaEditor({
+        ctaTarget() { return this.donation; },
         _recurrence() {
             if (!this.eventDetails.recurrence) {
                 this.eventDetails.recurrence = recurrenceEditor._hydrateRecurrence(null);
@@ -1173,7 +1280,7 @@ document.addEventListener('alpine:init', () => {
         subscriptionDetails: { welcomeContent: '', benefits: '' },
         newsletterDetails: { welcomeFile: null, welcomeDescription: '', frequency: 'monthly' },
         pricing: { type: 'one-time', amount: null, billingCycle: 'monthly', tiers: [] },
-        donation: { enabled: false, min_amount: 0, mandatory: false, _suggestedRaw: '' },
+        donation: { enabled: false, min_amount: 0, mandatory: false, _suggestedRaw: '', cta: CTA_FALLBACK.id, cta_custom: { en: '', sw: '' } },
         variations: [],
         // Default delivery questions (creator's language) seeded onto new physical
         // products; parsed from the #delivery-defaults JSON island.
@@ -1234,7 +1341,12 @@ document.addEventListener('alpine:init', () => {
                     enabled: !!dExisting.enabled,
                     min_amount: dExisting.min_amount || 0,
                     mandatory: !!dExisting.mandatory,
-                    _suggestedRaw: Array.isArray(dExisting.suggested_amounts) ? dExisting.suggested_amounts.join(', ') : ''
+                    _suggestedRaw: Array.isArray(dExisting.suggested_amounts) ? dExisting.suggested_amounts.join(', ') : '',
+                    cta: dExisting.cta || CTA_FALLBACK.id,
+                    cta_custom: {
+                        en: (dExisting.cta_custom || {}).en || '',
+                        sw: (dExisting.cta_custom || {}).sw || ''
+                    }
                 };
 
                 // FIX: Only jump to step 2 if we are EDITING an existing asset (has ID)
@@ -1307,7 +1419,12 @@ document.addEventListener('alpine:init', () => {
                 min_amount: parseFloat(this.donation.min_amount) || 0,
                 mandatory: !!this.donation.mandatory,
                 suggested_amounts: (this.donation._suggestedRaw || '')
-                    .split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0)
+                    .split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0),
+                cta: this.donation.cta || CTA_FALLBACK.id,
+                cta_custom: {
+                    en: (this.donation.cta_custom?.en || '').trim(),
+                    sw: (this.donation.cta_custom?.sw || '').trim()
+                }
             };
             // A donation asset is always free at base — the contribution is the charge.
             const pricing = donationEnabled ? { ...this.pricing, amount: 0 } : this.pricing;
@@ -1394,7 +1511,7 @@ document.addEventListener('alpine:init', () => {
         getAssetTypeDetails() { return this.assetTypeDetails[this.assetType] || { title: 'Asset', contentDescription: '', description: '', examples: [], guide: [] }; },
         mapEnumTypeToFormType(enumType) { const map = { 'VIDEO_SERIES': 'video-series', 'TICKET': 'ticket', 'DIGITAL_PRODUCT': 'digital-file', 'SUBSCRIPTION': 'subscription', 'NEWSLETTER': 'newsletter', 'PHYSICAL': 'physical' }; return map[enumType]; },
         mapFormTypeToEnumType(formType) { const map = { 'video-series': 'VIDEO_SERIES', 'ticket': 'TICKET', 'digital-file': 'DIGITAL_PRODUCT', 'subscription': 'SUBSCRIPTION', 'newsletter': 'NEWSLETTER', 'physical': 'PHYSICAL' }; return map[formType]; },
-    }));
+    })));
 
     Alpine.data('settingsPage', (initialSettings) => ({
         // --- State ---
@@ -1604,7 +1721,8 @@ document.addEventListener('alpine:init', () => {
         connectGoogle() { alert('Connecting to Google...'); },
     }));
 
-    Alpine.data('assetView', (initialAsset, allStatuses) => withRecurrenceEditor({
+    Alpine.data('assetView', (initialAsset, allStatuses) => withRecurrenceEditor(withCtaEditor({
+        ctaTarget() { return this.editableAsset.donation; },
         _recurrence() {
             if (!this.editableAsset.eventDetails) this.editableAsset.eventDetails = {};
             if (!this.editableAsset.eventDetails.recurrence) {
@@ -1686,7 +1804,9 @@ document.addEventListener('alpine:init', () => {
                     mandatory: !!d.mandatory,
                     suggested_amounts: Array.isArray(d.suggested_amounts) ? d.suggested_amounts.slice() : [],
                     // Editor-only helper: comma-separated string for the presets input.
-                    _suggestedRaw: Array.isArray(d.suggested_amounts) ? d.suggested_amounts.join(', ') : ''
+                    _suggestedRaw: Array.isArray(d.suggested_amounts) ? d.suggested_amounts.join(', ') : '',
+                    cta: d.cta || CTA_FALLBACK.id,
+                    cta_custom: { en: (d.cta_custom || {}).en || '', sw: (d.cta_custom || {}).sw || '' }
                 };
             }
 
@@ -1975,6 +2095,11 @@ document.addEventListener('alpine:init', () => {
                 enabled: donationEnabled,
                 min_amount: parseFloat(donationSrc.min_amount) || 0,
                 mandatory: !!donationSrc.mandatory,
+                cta: donationSrc.cta || CTA_FALLBACK.id,
+                cta_custom: {
+                    en: (donationSrc.cta_custom?.en || '').trim(),
+                    sw: (donationSrc.cta_custom?.sw || '').trim()
+                },
                 suggested_amounts: (donationSrc._suggestedRaw || '')
                     .split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0)
             };
@@ -2086,7 +2211,7 @@ document.addEventListener('alpine:init', () => {
         hideNotification() {
             this.notification.show = false;
         }
-    }));
+    })));
 
     Alpine.data('checkout', (asset, currencySymbol, paymentUrl) => ({
         isOpen: false,

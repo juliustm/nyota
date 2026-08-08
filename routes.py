@@ -1339,11 +1339,27 @@ def save_asset_from_form(asset, req):
         # Normalize whole numbers (5000.0 -> 5000) for clean display/serialization.
         def _norm(n):
             return int(n) if float(n).is_integer() else float(n)
+
+        # The call to action. An unknown preset id falls back to plain "Donate"
+        # rather than rendering a broken button; creator-written labels are
+        # trimmed to what fits beside an amount on a phone.
+        from utils.pricing import CTA_MAX_LEN, CTA_PRESET_MAP, DEFAULT_CTA_PRESET
+        cta = donation_in.get('cta')
+        cta = cta if cta in CTA_PRESET_MAP else DEFAULT_CTA_PRESET
+        raw_custom = donation_in.get('cta_custom')
+        raw_custom = raw_custom if isinstance(raw_custom, dict) else {}
+        cta_custom = {
+            lang: str(raw_custom.get(lang) or '').strip()[:CTA_MAX_LEN]
+            for lang in ('en', 'sw')
+        }
+
         asset.details['donation'] = {
             'enabled': True,
             'min_amount': _norm(min_amount),
             'mandatory': bool(donation_in.get('mandatory')),
             'suggested_amounts': sorted(_norm(n) for n in suggested),
+            'cta': cta,
+            'cta_custom': cta_custom,
         }
         # A donation asset is always free at base — the contribution is the charge.
         asset.price = decimal.Decimal('0')
@@ -3694,7 +3710,10 @@ def checkout(slug):
         DigitalAsset.status.in_(LINK_REACHABLE_STATUSES)
     ).first_or_404()
     creator = Creator.query.first()
-    return render_template('user/checkout.html', asset=asset.to_dict(), channel_id=str(uuid.uuid4()), creator=creator, store_name=creator.store_name if creator else 'Nyota')
+    # The template gets the asset as a plain dict, so the contribution wording is
+    # resolved here (off the model) rather than in Jinja.
+    from utils.pricing import contribution_voice
+    return render_template('user/checkout.html', asset=asset.to_dict(), channel_id=str(uuid.uuid4()), creator=creator, store_name=creator.store_name if creator else 'Nyota', voice=contribution_voice(asset))
 
 def _build_uza_refcode(creator, visitor_refcode):
     """Returns final refcode with # prefix, falling back to admin default."""

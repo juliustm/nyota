@@ -978,6 +978,8 @@
                                         class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                                     Require a contribution (no free option)
                                 </label>
+
+                                {% include 'admin/partials/cta_picker.html' %}
                                 <p class="text-[11px] text-amber-600 dark:text-amber-400">Base price is forced to Free. Set the
                                     linked UZA product's price to <strong>1 {{ currency_symbol }}</strong> — the contribution is
                                     sent as the quantity.</p>

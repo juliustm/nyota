@@ -111,7 +111,7 @@
             <div
                 class="group relative flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
                 <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}" class="flex-grow flex flex-col"
-                    aria-label="{{ asset.title }} — {{ translate(pricing.cta_key) }}">
+                    aria-label="{{ asset.title }} — {{ pricing.cta_label or translate(pricing.cta_key) }}">
                     <!-- Image Container. On a phone the cards are a single column, so
                          an uncapped 3:4 cover pushes the price and the button off the
                          first screen and every product costs a scroll to evaluate. The
@@ -328,8 +328,10 @@
                                 {% elif pricing.mode == 'free_donation' %}
                                 <span class="text-lg font-extrabold text-green-600 dark:text-green-400 block leading-tight">{{
                                     translate('free') }}</span>
+                                {# The creator's own invitation ("Buy me a coffee") when they
+                                   wrote one — the button stays "Free", this line does the asking. #}
                                 <span class="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{{
-                                    translate('donations_welcome') }}</span>
+                                    pricing.note_label or translate('donations_welcome') }}</span>
                                 {% elif pricing.amount is none %}
                                 {# Required donation with no floor — there is no number to
                                    quote, so say what the visitor actually gets to decide. #}
@@ -369,7 +371,7 @@
                             {% else %}
                             <span
                                 class="shrink-0 inline-flex items-center gap-1 px-3.5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-sm shadow-indigo-600/25 group-hover:bg-indigo-700 group-hover:shadow-md transition-all">
-                                {{ translate(pricing.cta_key) }}
+                                {{ pricing.cta_label or translate(pricing.cta_key) }}
                                 <svg class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" fill="none"
                                     viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"

@@ -40,6 +40,8 @@ from utils.translator import translate
 from utils.image_utils import optimize_cover_image
 from utils.phone import normalize_phone_number
 from utils.timezones import local_to_utc, utc_to_local, creator_tz_name
+from utils.pricing import asset_pricing, offer_schema
+from utils.site_meta import build_catalog_schema, absolute_media_url
 from extensions import limiter
 from services.sms_service import get_sms_provider
 
@@ -3169,37 +3171,66 @@ def landing_page():
             count += 1
             if count >= 3: break
 
-    # --- Dynamic Metadata for Social Sharing ---
-    # Priority: 1. Profile photo (if set), 2. Random asset cover, 3. Default fallback
-    random_asset = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED).order_by(func.random()).first()
-    
-    meta_title = creator.store_name or "Nyota ✨ Store"
-    meta_description = creator.get_setting('store_bio') or f"Discover amazing digital content on {creator.store_name}."
+    # --- Metadata for search engines and social sharing ---
+    # The storefront's identity must be stable: a title or description that
+    # changes with every crawl (this used to be built from a random asset) gives
+    # search engines nothing to rank and makes shared links look like a
+    # different store each time. So it's the store's own words, always.
+    store_title = creator.store_name or "Nyota ✨ Store"
+    store_bio = (creator.get_setting('store_bio') or '').strip()
+    tagline = store_bio or translate('meta_store_tagline')
+
+    # ~60 characters is what a result page shows before it truncates; past that
+    # the tagline is dead weight, so the store name goes on alone.
+    meta_title = f"{store_title} — {tagline}" if tagline else store_title
+    if len(meta_title) > 60:
+        room = 60 - len(store_title) - 3
+        meta_title = f"{store_title} — {tagline[:room].rstrip()}…" if room > 12 else store_title
+
+    description_parts = [tagline]
+    if sorted_assets and not search_query and not filter_type:
+        description_parts.append(translate('meta_items_count', count=len(sorted_assets)))
+    meta_description = ' '.join(p for p in description_parts if p)[:300]
+
+    if search_query:
+        meta_title = f"{translate('search_results_for')} “{search_query}” | {store_title}"
+
+    # Social image: the creator's own photo, else the top listed cover. Picking
+    # the top asset (not a random one) keeps the preview card stable.
     meta_image = url_for('static', filename='img/default-og.jpg', _external=True)
-    
-    # 1. Try profile photo first
     profile_photo = creator.get_setting('store_photo_url')
     if profile_photo:
-        if profile_photo.startswith('http'):
-            meta_image = profile_photo
-        else:
-            meta_image = request.host_url.rstrip('/') + profile_photo
-    elif random_asset and random_asset.cover_image_url:
-        # 2. Fall back to a random published asset's cover image
-        if random_asset.cover_image_url.startswith('http'):
-            meta_image = random_asset.cover_image_url
-        else:
-            meta_image = url_for('static', filename=random_asset.cover_image_url.lstrip('/'), _external=True)
-    
-    if random_asset:
-        # Build persuasive meta from random asset
-        meta_title = f"{random_asset.title} | {creator.store_name}"
-        
-        # Create description with CTA
-        desc_text = random_asset.description or ""
-        if len(desc_text) > 140:
-            desc_text = desc_text[:137] + "..."
-        meta_description = f"{desc_text} 🛒 Get instant access at {creator.store_name}!"
+        meta_image = absolute_media_url(profile_photo)
+    elif sorted_assets and sorted_assets[0].cover_image_url:
+        meta_image = absolute_media_url(sorted_assets[0].cover_image_url)
+
+    # Keywords in the visitor's language, drawn from what the store actually
+    # sells, instead of the hardcoded English list every storefront shipped.
+    type_labels = {
+        AssetType.VIDEO_SERIES: 'type_course',
+        AssetType.TICKET: 'type_ticket',
+        AssetType.NEWSLETTER: 'type_newsletter',
+        AssetType.DIGITAL_PRODUCT: 'type_digital_product',
+        AssetType.PHYSICAL: 'type_physical',
+        AssetType.SUBSCRIPTION: 'type_subscription',
+    }
+    keywords = [store_title]
+    keywords += [translate(type_labels[t]).lower() for t in available_types if t in type_labels]
+    keywords += [a.title for a in sorted_assets[:8] if a.title]
+    meta_keywords = ', '.join(dict.fromkeys(k for k in keywords if k))
+
+    # A search or filter view is a slice of the same catalogue: it must not
+    # compete with the storefront in the index, and it points home as canonical.
+    is_filtered_view = bool(search_query or filter_type)
+    canonical_url = url_for('main.landing_page', _external=True)
+
+    # Product listing markup, priced through the same helper as the cards. Only
+    # the full storefront publishes it — a filtered slice would describe the
+    # catalogue as smaller than it is.
+    catalog_schema = None if is_filtered_view else build_catalog_schema(
+        sorted_assets,
+        creator.get_setting('payment_uza_currency', 'TZS'),
+    )
 
     return render_template(
         'user/index.html',
@@ -3214,7 +3245,12 @@ def landing_page():
         available_types=available_types,
         meta_title=meta_title,
         meta_description=meta_description,
-        meta_image=meta_image
+        meta_keywords=meta_keywords,
+        meta_image=meta_image,
+        canonical_url=canonical_url,
+        robots_noindex=is_filtered_view,
+        robots_follow=True,
+        catalog_schema=catalog_schema,
     )
 
 @main_bp.route('/b/<refcode>')
@@ -3482,33 +3518,68 @@ def asset_detail(slug):
     meta_title = f"{asset_obj.title} | {store_name}"
     # Ensure the meta image URL is absolute for social previews
     if asset_obj.cover_image_url:
-        if asset_obj.cover_image_url.startswith('http'):
-            meta_image = asset_obj.cover_image_url
-        else:
-            # Assume it's a static path relative to the static folder
-            meta_image = url_for('static', filename=asset_obj.cover_image_url, _external=True)
+        meta_image = absolute_media_url(asset_obj.cover_image_url)
         # Append a short random query string to bust caches on platforms
         import uuid
         meta_image = f"{meta_image}?v={uuid.uuid4().hex[:8]}"
     else:
         meta_image = url_for('static', filename='img/default-og.jpg', _external=True)
     
-    # Description with persuasive CTA and price
+    # Description with the price and a CTA, in the visitor's language. The price
+    # comes from the same resolver as the page's own price block, so the snippet
+    # in a search result can't quote a number the page never shows.
     desc_text = asset_obj.description or ""
     if len(desc_text) > 130:
         desc_text = desc_text[:127] + "..."
-    
-    # Add price info for better conversion
-    price_text = ""
-    if asset_obj.is_subscription and asset_obj.details and asset_obj.details.get('subscription_tiers'):
-        min_price = min(float(tier.get('price', 0)) for tier in asset_obj.details['subscription_tiers'])
-        currency = creator.get_setting('payment_uza_currency', 'TZS')
-        price_text = f" From {currency} {min_price:,.0f}/month."
-    elif asset_obj.price:
-        currency = creator.get_setting('payment_uza_currency', 'TZS')
-        price_text = f" {currency} {float(asset_obj.price):,.0f}."
-    
-    meta_description = f"{desc_text}{price_text} 🚀 Get instant access at {store_name}!"
+
+    currency = creator.get_setting('payment_uza_currency', 'TZS') if creator else 'TZS'
+    pricing = asset_pricing(asset_obj)
+    if pricing['is_free']:
+        price_text = translate('meta_price_free')
+    elif pricing['amount'] is None:
+        # A required donation with no floor has no honest number to advertise.
+        price_text = translate('donation_any_amount')
+    else:
+        amount = f"{currency} {pricing['amount']:,.0f}"
+        if asset_obj.is_subscription:
+            price_text = translate('meta_price_monthly', price=amount)
+        elif pricing['from_price']:
+            price_text = translate('meta_price_from', price=amount)
+        else:
+            price_text = translate('meta_price_flat', price=amount)
+
+    meta_description = ' '.join(part for part in (
+        desc_text,
+        price_text,
+        translate('meta_cta_suffix', store=store_name),
+    ) if part)[:300]
+
+    type_label_key = {
+        AssetType.VIDEO_SERIES: 'type_course',
+        AssetType.TICKET: 'type_ticket',
+        AssetType.NEWSLETTER: 'type_newsletter',
+        AssetType.DIGITAL_PRODUCT: 'type_digital_product',
+        AssetType.PHYSICAL: 'type_physical',
+        AssetType.SUBSCRIPTION: 'type_subscription',
+    }.get(asset_obj.asset_type)
+    meta_keywords = ', '.join(dict.fromkeys(k for k in (
+        asset_obj.title,
+        translate(type_label_key).lower() if type_label_key else None,
+        store_name,
+    ) if k))
+
+    # Product markup for the crawler, built from the same resolved price.
+    product_schema = {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        'name': asset_obj.title,
+        'description': (asset_obj.description or '')[:500],
+        'image': meta_image,
+        'url': request.url,
+        'sku': asset_obj.slug,
+        'offers': offer_schema(asset_obj, currency, url=request.url),
+        'brand': {'@type': 'Organization', 'name': store_name},
+    }
 
     return render_template(
         'user/asset_detail.html',
@@ -3526,7 +3597,10 @@ def asset_detail(slug):
         creator=creator, # Pass creator for base.html branding
         meta_title=meta_title,
         meta_description=meta_description,
+        meta_keywords=meta_keywords,
         meta_image=meta_image,
+        product_schema=product_schema,
+        currency_code=currency,
         hide_navbar_search=True,
         # Only a genuinely published asset should be indexable. Unlisted pages are
         # reachable by link, so they must actively tell crawlers to stay away.

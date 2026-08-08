@@ -130,10 +130,14 @@ def create_app(config_class=Config):
     # --- Context Processors ---
     @app.context_processor
     def inject_global_vars():
+        from utils.pricing import asset_pricing
         return dict(
             store_name="Nyota ✨",
             currency_symbol=get_currency_symbol(),
-            translate=translate
+            translate=translate,
+            # Every surface that quotes a price resolves it through the same
+            # helper, so a card, an asset page and the JSON-LD can't disagree.
+            asset_pricing=asset_pricing,
         )
 
     @app.context_processor

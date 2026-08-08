@@ -44,6 +44,47 @@ def test_checkout_page_renders_for_a_plain_paid_asset(client, asset):
     assert '+255' in response.get_data(as_text=True)
 
 
+def _coffee_asset(creator, **donation):
+    """A contribution asset whose creator wrote their own button label."""
+    cfg = {
+        'enabled': True,
+        'mandatory': True,
+        'min_amount': 6000,
+        'suggested_amounts': [6000, 12000],
+        'cta': 'coffee',
+        'cta_custom': {'en': "Let's grab a coffee", 'sw': 'Tunywe Kahawa'},
+    }
+    cfg.update(donation)
+    return make_asset(creator, slug='karani-demo', price=0, details={'donation': cfg})
+
+
+def test_asset_page_speaks_the_creators_chosen_verb(client, creator):
+    asset = _coffee_asset(creator)
+    html = client.get(f'/{asset.slug}').get_data(as_text=True)
+
+    # Swahili is the default, so that is the side a visitor here reads.
+    assert 'Tunywe Kahawa' in html
+    assert 'Changia' not in html
+
+
+def test_checkout_page_speaks_the_creators_chosen_verb(client, creator):
+    asset = _coffee_asset(creator)
+    html = client.get(f'/checkout/{asset.slug}').get_data(as_text=True)
+
+    assert 'Tunywe Kahawa' in html
+
+
+def test_an_apostrophe_in_the_label_cannot_break_the_button(client, creator):
+    """The label goes into an Alpine expression, so it is escaped as JSON —
+    "Let's grab a coffee" must not terminate the attribute's string."""
+    asset = _coffee_asset(creator)
+    html = client.get(f'/{asset.slug}', headers={'CF-IPCountry': 'US'}).get_data(as_text=True)
+
+    assert "Let\\u0027s grab a coffee" in html
+    # The raw apostrophe never lands inside the x-text expression.
+    assert "x-text='Let's" not in html
+
+
 def test_physical_asset_page_renders(client, creator):
     """Physical products share the phone field but never show donation controls."""
     from models.nyota import AssetType

@@ -447,21 +447,28 @@
                                             class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
                                             placeholder="Leave empty for unlimited">
                                     </div>
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                            Event Date
-                                        </label>
-                                        <input type="date" x-model="eventDetails.date"
-                                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                            Event Time
-                                        </label>
-                                        <input type="time" x-model="eventDetails.time"
-                                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
-                                    </div>
+                                    <!-- A repeating event gets its dates from the schedule below instead -->
+                                    <template x-if="!recurrence.enabled">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                Event Date
+                                            </label>
+                                            <input type="date" x-model="eventDetails.date"
+                                                class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                                        </div>
+                                    </template>
+                                    <template x-if="!recurrence.enabled">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                Event Time
+                                            </label>
+                                            <input type="time" x-model="eventDetails.time"
+                                                class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                                        </div>
+                                    </template>
                                 </div>
+
+                                {% include 'admin/partials/recurrence_editor.html' %}
 
                                 <!-- Post-Purchase Instructions -->
                                 <div class="border-t border-gray-200 dark:border-gray-700 pt-6">
@@ -971,6 +978,8 @@
                                         class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                                     Require a contribution (no free option)
                                 </label>
+
+                                {% include 'admin/partials/cta_picker.html' %}
                                 <p class="text-[11px] text-amber-600 dark:text-amber-400">Base price is forced to Free. Set the
                                     linked UZA product's price to <strong>1 {{ currency_symbol }}</strong> — the contribution is
                                     sent as the quantity.</p>

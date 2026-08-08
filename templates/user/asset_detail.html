@@ -6,7 +6,17 @@ defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'di
    fallback label; the live buttons below refine it as the buyer picks a tier,
    a variation or a contribution. #}
 {% set pricing = asset_pricing(asset_obj) %}
-{% set page_cta = translate('donate_cta') if pricing.mode == 'donation'
+{# `voice` is the wording a contribution asset uses — the creator's chosen verb
+   ("Donate", "Buy me a coffee", "Unlock") plus the copy around it. None for
+   assets that take no contribution, so every use is guarded. #}
+{% set voice = contribution_voice(asset_obj) %}
+{# The contribution markup below is rendered for every asset and hidden by Alpine
+   on the ones that take no contribution, so each piece of it needs a value even
+   when `voice` is None. #}
+{% set voice_cta = voice.cta if voice else translate('donate_cta') %}
+{% set voice_title = voice.title if voice else translate('donation_title') %}
+{% set voice_inst = voice.inst if voice else translate('inst_donation') %}
+{% set page_cta = voice.cta if pricing.mode == 'donation'
 else (translate('cta_free_' ~ asset_type_key) if pricing.is_free else translate('cta_paid_' ~ asset_type_key)) %}
 {# Goods no longer need a server-computed "starts at" range: the buyer picks the
    option on the page, so every price on it is the price of a real chosen thing,
@@ -34,6 +44,11 @@ else (translate('cta_free_' ~ asset_type_key) if pricing.is_free else translate(
    is handled by tojson rather than by hand-quoting values into a JSON literal. #}
 {% if product_schema %}
 <script type="application/ld+json">{{ product_schema | tojson }}</script>
+{% endif %}
+{# Events also publish an Event/EventSeries node so the next date — or the
+   "every Thursday" cadence — is machine-readable alongside the offer. #}
+{% if event_schema %}
+<script type="application/ld+json">{{ event_schema | tojson }}</script>
 {% endif %}
 {% endblock %}
 
@@ -111,7 +126,12 @@ else (translate('cta_free_' ~ asset_type_key) if pricing.is_free else translate(
     "behind": {{ translate('tz_behind')|tojson|safe }},
     "yourTime": {{ translate('tz_your_time')|tojson|safe }},
     "hourShort": {{ translate('tz_hour_short')|tojson|safe }},
-    "minShort": {{ translate('tz_min_short')|tojson|safe }}
+    "minShort": {{ translate('tz_min_short')|tojson|safe }},
+    "every": {{ translate('event_every')|tojson|safe }},
+    "nextSession": {{ translate('event_next_session')|tojson|safe }},
+    "happeningNow": {{ translate('event_happening_now')|tojson|safe }},
+    "upcomingSessions": {{ translate('event_upcoming_sessions')|tojson|safe }},
+    "seriesEnded": {{ translate('event_series_ended')|tojson|safe }}
 }</script>
 <script type="application/json" id="purchase-data">
     {{ latest_purchase.to_dict()|tojson|safe if (latest_purchase and not subscription_expired) else 'null' }}
@@ -686,7 +706,22 @@ null
                                             </svg>
                                             <div class="min-w-0">
                                                 <p class="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">{{ translate('event_when') }}</p>
-                                                <p class="text-sm font-semibold text-gray-900 dark:text-white" x-text="eventInfo.adminDisplay"></p>
+                                                {# Ticket holder of a repeating event: lead with the cadence, then
+                                                   the session they should turn up to next. #}
+                                                <template x-if="eventInfo.isRecurring && eventInfo.cadence">
+                                                    <p class="text-sm font-semibold text-indigo-600 dark:text-indigo-400" x-text="eventInfo.cadence"></p>
+                                                </template>
+                                                <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                                                    <span x-show="eventInfo.isRecurring && !eventInfo.ended" class="text-gray-400 font-normal"
+                                                          x-text="(eventInfo.inProgress ? eventI18n.happeningNow : eventI18n.nextSession) + ':'"></span>
+                                                    <span x-text="eventInfo.adminDisplay"></span>
+                                                </p>
+                                                <template x-if="eventInfo.sessionLabel">
+                                                    <p class="text-xs font-medium text-indigo-600 dark:text-indigo-400 mt-0.5" x-text="eventInfo.sessionLabel"></p>
+                                                </template>
+                                                <template x-if="eventInfo.sessionNote">
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" x-text="eventInfo.sessionNote"></p>
+                                                </template>
                                                 <template x-if="eventInfo.userDisplay && !eventInfo.sameZone">
                                                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span x-text="eventInfo.userDisplay"></span> <span x-text="eventI18n.yourTime"></span> — <span x-text="eventInfo.relation"></span></p>
                                                 </template>
@@ -984,12 +1019,24 @@ null
                                     {{ translate('save_to_calendar') }}
                                 </h3>
                                 <div class="mt-1 space-y-1" x-show="eventInfo" x-cloak>
+                                    {# A repeating event saves as a recurring calendar entry, so say so
+                                       here — the buyer is adding the whole series, not one date. #}
+                                    <template x-if="eventInfo && eventInfo.isRecurring">
+                                        <p class="text-indigo-100 text-xs font-semibold flex items-center justify-center sm:justify-start gap-1.5">
+                                            <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                            </svg>
+                                            <span x-text="eventInfo.cadence"></span>
+                                        </p>
+                                    </template>
                                     <!-- Canonical event time (creator's timezone) -->
                                     <p class="text-white text-sm font-semibold flex items-center justify-center sm:justify-start gap-1.5">
                                         <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
+                                        <span x-show="eventInfo && eventInfo.isRecurring && !eventInfo.ended" class="opacity-80"
+                                              x-text="(eventInfo?.inProgress ? eventI18n.happeningNow : eventI18n.nextSession) + ':'"></span>
                                         <span x-text="eventInfo?.adminDisplay"></span>
                                     </p>
                                     <!-- Buyer's local equivalent + how their zone relates -->
@@ -1194,12 +1241,17 @@ null
                     {% if asset_obj.asset_type.name == 'TICKET' %}
                     <!-- Event Details (pre-purchase): surface date/time/location/capacity up front -->
                     <div class="mt-6 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-900/10 overflow-hidden"
-                        x-show="asset.eventDetails && (asset.eventDetails.date || asset.eventDetails.link || asset.eventDetails.maxAttendees)" x-cloak>
+                        x-show="asset.eventDetails && (asset.eventDetails.date || asset.eventDetails.isRecurring || asset.eventDetails.link || asset.eventDetails.maxAttendees)" x-cloak>
                         <div class="px-4 py-3 border-b border-indigo-100 dark:border-indigo-900/50 flex items-center gap-2">
                             <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
                             <h3 class="text-sm font-bold text-indigo-900 dark:text-indigo-100">{{ translate('event_details') }}</h3>
+                            {# Repeating series: the cadence is the headline promise ("every Thursday"),
+                               the resolved date below it is just the next one coming up. #}
+                            <template x-if="eventInfo && eventInfo.isRecurring">
+                                <span class="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-600 text-white text-right leading-snug max-w-[60%]" x-text="eventInfo.cadence"></span>
+                            </template>
                         </div>
                         <div class="p-4 space-y-3">
                             <!-- Date & time in the creator's timezone (+ buyer's local equivalent) -->
@@ -1209,13 +1261,39 @@ null
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                     </svg>
                                     <div class="min-w-0">
+                                        <template x-if="eventInfo.isRecurring && !eventInfo.ended">
+                                            <p class="text-[11px] uppercase tracking-wide font-semibold mb-0.5"
+                                               :class="eventInfo.inProgress ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
+                                               x-text="eventInfo.inProgress ? eventI18n.happeningNow : eventI18n.nextSession"></p>
+                                        </template>
                                         <p class="text-sm font-semibold text-gray-900 dark:text-white" x-text="eventInfo.adminDisplay"></p>
+                                        <template x-if="eventInfo.sessionLabel">
+                                            <p class="text-xs font-medium text-indigo-600 dark:text-indigo-400 mt-0.5" x-text="eventInfo.sessionLabel"></p>
+                                        </template>
                                         <template x-if="eventInfo.userDisplay && !eventInfo.sameZone">
                                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span x-text="eventInfo.userDisplay"></span> <span x-text="eventI18n.yourTime"></span> — <span x-text="eventInfo.relation"></span></p>
                                         </template>
                                         <template x-if="eventInfo.sameZone">
                                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" x-text="eventInfo.relation"></p>
                                         </template>
+                                    </div>
+                                </div>
+                            </template>
+                            <!-- The sessions after the next one, so a series reads as a series -->
+                            <template x-if="eventInfo && eventInfo.isRecurring && upcomingSessions.length > 1">
+                                <div class="flex items-start gap-3">
+                                    <svg class="w-4 h-4 mt-0.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" />
+                                    </svg>
+                                    <div class="min-w-0">
+                                        <p class="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-1" x-text="eventI18n.upcomingSessions"></p>
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <template x-for="session in upcomingSessions.slice(1, 4)" :key="session.key">
+                                                <span class="text-xs px-2 py-1 rounded-lg bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900/50 text-gray-700 dark:text-gray-300">
+                                                    <span x-text="session.display"></span><template x-if="session.label"><span class="text-indigo-500"> · <span x-text="session.label"></span></span></template>
+                                                </span>
+                                            </template>
+                                        </div>
                                     </div>
                                 </div>
                             </template>
@@ -1399,7 +1477,7 @@ null
                                 <span class="text-4xl font-extrabold text-green-600 dark:text-green-400">{{
                                     translate('free') }}</span>
                                 <span class="text-sm font-semibold text-rose-600 dark:text-rose-400 mt-1">{{
-                                    translate('donations_welcome') }}</span>
+                                    pricing.note_label or translate('donations_welcome') }}</span>
                             </div>
                             {% elif pricing.is_free %}
                             <div class="flex items-baseline gap-2">
@@ -1801,7 +1879,7 @@ null
                                 {{ translate('free') }}
                             </p>
                             <p class="text-[10px] text-rose-600 dark:text-rose-400 font-semibold truncate">{{
-                                translate('donations_welcome') }}</p>
+                                pricing.note_label or translate('donations_welcome') }}</p>
                             {% elif pricing.is_free %}
                             <p class="font-extrabold text-xl text-green-600 dark:text-green-400 truncate">
                                 {{ translate('free') }}
@@ -1863,7 +1941,7 @@ null
                     <div class="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-6 sm:hidden"></div>
                     <div x-show="status === 'ready' || status === 'failed'">
                         <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                            <span x-show="isDonating" x-cloak>{{ translate('donate_cta') }}</span>
+                            <span x-show="isDonating" x-cloak>{{ voice_cta }}</span>
                             <span x-show="!isDonating && isFree">{{ translate('cta_free_' ~ asset_type_key) }}</span>
                             <span x-show="!isDonating && !isFree">{{ translate('cta_paid_' ~ asset_type_key) }}</span>
                         </h3>
@@ -1915,7 +1993,7 @@ null
                         </div>
 
                         <p class="text-gray-600 dark:text-gray-400 mb-6">
-                            <span x-show="isDonating" x-cloak>{{ translate('inst_donation') }}</span>
+                            <span x-show="isDonating" x-cloak>{{ voice_inst }}</span>
                             <span x-show="!isDonating && isFree">{{ translate('inst_free_' ~ asset_type_key) }}</span>
                             <span x-show="!isDonating && !isFree">{{ translate('inst_paid_' ~ asset_type_key) }}</span>
                         </p>
@@ -1944,7 +2022,7 @@ null
                                  so a supporter can adjust any suggestion. -->
                             <div x-show="isDonation" x-cloak
                                 class="mb-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
-                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-2.5">{{ translate('donation_title') }}</p>
+                                <p class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-2.5">{{ voice_title }}</p>
 
                                 <!-- Quick-pick amounts (tap again to clear when optional) -->
                                 <div x-show="suggestedAmounts.length" class="grid grid-cols-3 gap-2 mb-2.5">
@@ -1988,11 +2066,14 @@ null
                                 <span x-show="!isDonation && isFree && !(isPhysical && $store.order.soldOut)">{{ translate('cta_free_' ~ asset_type_key) }}</span>
                                 <span x-show="!isDonation && !isFree && !(isPhysical && $store.order.soldOut)"
                                     x-text="'{{ translate('cta_paid_' ~ asset_type_key) }} • ' + currency + formatCurrency(effectiveAmount)"></span>
-                                <!-- Donation assets: communicate whether they're donating -->
+                                <!-- Contribution assets: the creator's verb, then the amount.
+                                     The label is creator-written, so it goes in as a JSON
+                                     literal inside a single-quoted attribute — an apostrophe
+                                     in "Let's grab a coffee" would otherwise end the string. -->
                                 <span x-show="isDonation && contributionAmount > 0"
-                                    x-text="'{{ translate('donate_cta') }} ' + currency + formatAmount(contributionAmount)"></span>
+                                    x-text='{{ voice_cta|tojson }} + " • " + currency + formatAmount(contributionAmount)'></span>
                                 <span x-show="isDonation && contributionAmount === 0 && !donationCfg.mandatory">{{ translate('continue_without_donating') }}</span>
-                                <span x-show="isDonation && contributionAmount === 0 && donationCfg.mandatory">{{ translate('donate_cta') }}</span>
+                                <span x-show="isDonation && contributionAmount === 0 && donationCfg.mandatory">{{ voice_cta }}</span>
                             </button>
                         </form>
                     </div>

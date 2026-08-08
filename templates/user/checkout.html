@@ -165,7 +165,7 @@
                              supporter can adjust any suggestion. -->
                         <div x-show="isDonation" x-cloak
                             class="mb-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-4">
-                            <p class="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2.5">{{ translate('donation_title') }}</p>
+                            <p class="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2.5">{{ voice.title if voice else translate('donation_title') }}</p>
 
                             <div x-show="suggestedAmounts.length" class="grid grid-cols-3 gap-2 mb-2.5">
                                 <template x-for="amt in suggestedAmounts" :key="amt">
@@ -206,11 +206,14 @@
                             <!-- Non-donation assets -->
                             <span x-show="!isDonation">{{ translate('pay_now', amount='') }} {{ currency_symbol }}<span
                                     x-text="formatAmount(totalPrice)"></span></span>
-                            <!-- Donation assets: communicate whether they're donating -->
+                            <!-- Contribution assets: the creator's verb, then the amount.
+                                 JSON literal in a single-quoted attribute — the label is
+                                 creator-written and may contain an apostrophe. -->
+                            {% set voice_cta = voice.cta if voice else translate('donate_cta') %}
                             <span x-show="isDonation && contributionAmount > 0"
-                                x-text="'{{ translate('donate_cta') }} {{ currency_symbol }}' + formatAmount(contributionAmount)"></span>
+                                x-text='{{ voice_cta|tojson }} + " • {{ currency_symbol }}" + formatAmount(contributionAmount)'></span>
                             <span x-show="isDonation && contributionAmount === 0 && !donationCfg.mandatory">{{ translate('continue_without_donating') }}</span>
-                            <span x-show="isDonation && contributionAmount === 0 && donationCfg.mandatory">{{ translate('donate_cta') }}</span>
+                            <span x-show="isDonation && contributionAmount === 0 && donationCfg.mandatory">{{ voice_cta }}</span>
                         </button>
                     </form>
 

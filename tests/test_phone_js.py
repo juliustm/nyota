@@ -34,3 +34,9 @@ def test_nyota_phone_helper():
 @needs_node
 def test_checkout_components():
     run_node('checkout.test.js')
+
+
+@needs_node
+def test_calendar_and_recurrence():
+    """What "Save to Calendar" / "Scan to Save" actually put in a calendar."""
+    run_node('calendar.test.js')

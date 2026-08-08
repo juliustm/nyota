@@ -1,0 +1,78 @@
+{# The verb on a pay-what-you-want button — shared by the create wizard and the
+   asset edit page. Both host components mix in `ctaEditor` (static/js/main.js),
+   which owns the preset pool, the selection helpers and the live preview, so
+   this markup binds to the same state in either place without being told where
+   that component keeps its donation config.
+
+   Why it exists: a flexible amount is not always charity. "Buy me a coffee" and
+   "Unlock" take money and hand something back, and a visitor works out which one
+   they are looking at from this single word. #}
+<div class="space-y-3">
+    <div>
+        <span class="block text-xs font-medium text-gray-500 dark:text-gray-400">Button label</span>
+        <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+            The words supporters tap. Pick one that matches what they actually get — each shows in
+            the visitor's own language.
+        </p>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+        <template x-for="p in ctaPresets" :key="p.id">
+            <button type="button" @click="pickCtaPreset(p.id)"
+                :class="ctaPresetSelected(p.id)
+                    ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+                    : 'border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-gray-400'"
+                class="px-3 py-1.5 rounded-lg border text-left transition-colors">
+                <span class="block text-xs font-semibold" x-text="p.en"></span>
+                <span class="block text-[10px] opacity-70" x-text="p.sw"></span>
+            </button>
+        </template>
+        <button type="button" @click="startCustomCta()"
+            :class="ctaIsCustom
+                ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+                : 'border-dashed border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'"
+            class="px-3 py-1.5 rounded-lg border text-left transition-colors">
+            <span class="block text-xs font-semibold">Write your own</span>
+            <span class="block text-[10px] opacity-70">Both languages</span>
+        </button>
+    </div>
+
+    <div x-show="ctaIsCustom" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+            <label class="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">English</label>
+            <input type="text" maxlength="28" x-model="ctaCustomEn" placeholder="e.g. Buy me a coffee"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+        </div>
+        <div>
+            <label class="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Swahili</label>
+            <input type="text" maxlength="28" x-model="ctaCustomSw" placeholder="e.g. Ninunulie Kahawa"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-sm">
+        </div>
+        <p class="md:col-span-2 text-[11px] text-gray-500 dark:text-gray-400">
+            Fill in one and the other falls back to it. Short wins — the label sits next to the amount
+            on a phone.
+        </p>
+    </div>
+
+    {# Shows the button as it will actually render, in both languages, so the
+       creator never has to guess what a Swahili visitor reads. #}
+    <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 p-3">
+        <p class="text-[10px] uppercase tracking-wide font-bold text-gray-400 dark:text-gray-500 mb-2">Visitors see</p>
+        <div class="flex flex-wrap gap-2">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold">
+                <span class="opacity-50 font-normal">EN</span>
+                <span x-text="ctaPreview.en + (ctaPreviewAmount ? ' • {{ currency_symbol }} ' + ctaPreviewAmount : '')"></span>
+            </span>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-bold">
+                <span class="opacity-50 font-normal">SW</span>
+                <span x-text="ctaPreview.sw + (ctaPreviewAmount ? ' • {{ currency_symbol }} ' + ctaPreviewAmount : '')"></span>
+            </span>
+        </div>
+        {# Without a required contribution the item is still free to take, so the
+           button keeps saying so and this label moves to the line under the price. #}
+        <p x-show="!ctaIsMandatory" x-cloak class="text-[11px] text-gray-500 dark:text-gray-400 mt-2">
+            Because contributing is optional, the main button still offers the item free — this label
+            appears under the price as the invitation.
+        </p>
+    </div>
+</div>

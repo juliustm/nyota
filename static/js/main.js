@@ -108,6 +108,253 @@ const NyotaPhone = {
 if (typeof window !== 'undefined') window.NyotaPhone = NyotaPhone;
 if (typeof module !== 'undefined' && module.exports) module.exports = { NyotaPhone };
 
+// --- Repeating events (admin) ----------------------------------------------
+// Shared by the create wizard (assetForm) and the edit page (assetView) so both
+// build the exact same details['recurrence'] payload the server normalizes:
+//   { enabled, interval, slots: [{id, day, time, duration, label, link, note}],
+//     starts_on, until, skip_dates }
+// `day` is 0=Sunday..6=Saturday, matching Date.getDay() and the ICS BYDAY table.
+const recurrenceEditor = {
+    recurrenceDays: [
+        { value: 1, name: 'Monday' }, { value: 2, name: 'Tuesday' }, { value: 3, name: 'Wednesday' },
+        { value: 4, name: 'Thursday' }, { value: 5, name: 'Friday' }, { value: 6, name: 'Saturday' },
+        { value: 0, name: 'Sunday' }
+    ],
+
+    // Fill in anything a stored (or missing) recurrence lacks, so the form can
+    // bind to it directly without null checks in every x-model.
+    _hydrateRecurrence(stored) {
+        const rec = stored && typeof stored === 'object' ? stored : {};
+        return {
+            enabled: !!rec.enabled,
+            interval: rec.interval || 1,
+            starts_on: rec.starts_on || '',
+            until: rec.until || '',
+            skip_dates: Array.isArray(rec.skip_dates) ? [...rec.skip_dates] : [],
+            slots: (rec.slots || []).map(s => ({
+                id: s.id || newRecurrenceSlotId(),
+                day: Number(s.day) || 0,
+                time: s.time || '18:00',
+                duration: s.duration || 60,
+                label: s.label || '',
+                link: s.link || '',
+                note: s.note || ''
+            }))
+        };
+    },
+
+    // The recurrence object the form is bound to. Each host component keeps its
+    // event state somewhere different, so it supplies `_recurrence()`.
+    get recurrence() { return this._recurrence(); },
+
+    toggleRecurrence() {
+        const rec = this.recurrence;
+        rec.enabled = !rec.enabled;
+        // Turning it on with nothing configured yet: start from the day/time the
+        // creator already picked for the one-off, so nothing has to be retyped.
+        if (rec.enabled && !rec.slots.length) this.addRecurrenceSlot();
+    },
+
+    addRecurrenceSlot() {
+        const rec = this.recurrence;
+        const seed = this._eventSeed();
+        const last = rec.slots[rec.slots.length - 1];
+        rec.slots.push({
+            id: newRecurrenceSlotId(),
+            day: last ? (last.day + 1) % 7 : (seed.date ? new Date(seed.date + 'T00:00').getDay() : 4),
+            time: last ? last.time : (seed.time || '18:00'),
+            duration: last ? last.duration : 60,
+            label: '', link: '', note: ''
+        });
+    },
+
+    removeRecurrenceSlot(id) {
+        const rec = this.recurrence;
+        rec.slots = rec.slots.filter(s => s.id !== id);
+        if (!rec.slots.length) rec.enabled = false;
+    },
+
+    recurrenceDayName(day) {
+        return (this.recurrenceDays.find(d => d.value === Number(day)) || {}).name || '';
+    },
+
+    // The next few dates this schedule produces — the admin's proof that "every
+    // Thursday" lands where they expect. Times are echoed back exactly as typed
+    // (they are store wall-clock); only "which day is today" comes from the
+    // browser, so the server stays the authority on what buyers are shown.
+    get recurrencePreview() {
+        const rec = this.recurrence;
+        if (!rec.enabled || !rec.slots.length) return [];
+        const skip = new Set(rec.skip_dates || []);
+        const startsOn = rec.starts_on ? new Date(rec.starts_on + 'T00:00') : null;
+        const until = rec.until ? new Date(rec.until + 'T23:59') : null;
+        const interval = Math.max(1, Number(rec.interval) || 1);
+        const anchor = startsOn ? new Date(startsOn) : new Date(1970, 0, 4);
+        anchor.setDate(anchor.getDate() - anchor.getDay()); // back to that Sunday
+
+        const out = [];
+        const cursor = new Date();
+        cursor.setHours(0, 0, 0, 0);
+        if (startsOn && startsOn > cursor) cursor.setTime(startsOn.getTime());
+        for (let i = 0; i < 120 && out.length < 4; i++) {
+            const iso = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+            const weekIndex = Math.floor((cursor - anchor) / (7 * 86400000));
+            if ((!until || cursor <= until) && !skip.has(iso) && (interval === 1 || weekIndex % interval === 0)) {
+                rec.slots.filter(s => Number(s.day) === cursor.getDay()).forEach(slot => {
+                    if (out.length >= 4) return;
+                    const when = new Date(cursor);
+                    const [h, m] = String(slot.time || '00:00').split(':').map(Number);
+                    when.setHours(h || 0, m || 0);
+                    if (when < new Date()) return; // already gone today
+                    out.push({
+                        key: iso + slot.id,
+                        text: when.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+                        label: slot.label || ''
+                    });
+                });
+            }
+            cursor.setDate(cursor.getDate() + 1);
+        }
+        return out;
+    },
+
+    // The payload shape the server expects; '' dates become null.
+    buildRecurrencePayload() {
+        const rec = this.recurrence;
+        if (!rec || !rec.enabled || !rec.slots.length) return { enabled: false, slots: [] };
+        return {
+            enabled: true,
+            interval: Math.max(1, Number(rec.interval) || 1),
+            starts_on: rec.starts_on || null,
+            until: rec.until || null,
+            skip_dates: rec.skip_dates || [],
+            slots: rec.slots.map(s => ({
+                id: s.id, day: Number(s.day), time: s.time,
+                duration: Number(s.duration) || 60,
+                label: (s.label || '').trim(), link: (s.link || '').trim(), note: (s.note || '').trim()
+            }))
+        };
+    }
+};
+
+function newRecurrenceSlotId() {
+    return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+// Mix the editor into a component. Copying descriptors (rather than spreading)
+// keeps `recurrence` and `recurrencePreview` as accessors — a spread would *call*
+// them against a half-built component. Alpine reads getters as accessors too, so
+// they stay reactive.
+function withRecurrenceEditor(component) {
+    return Object.defineProperties(component, Object.getOwnPropertyDescriptors(recurrenceEditor));
+}
+
+// --- Contribution call to action ---------------------------------------------
+// The verb on a pay-what-you-want button: "Donate", "Buy me a coffee", "Unlock".
+// Not every flexible-amount asset is charity — most hand something back — and a
+// visitor decides which one they are looking at from this one word, so the
+// creator gets to choose it.
+//
+// The creator works in an English admin while their visitors read Swahili, so
+// the picker shows both languages at once. The pool comes from the server
+// (utils/pricing.CTA_PRESETS) through a #cta-presets island, so the words
+// previewed here are the exact words that will render.
+const CTA_FALLBACK = { id: 'donate', en: 'Donate', sw: 'Changia' };
+
+let _ctaPresetPool = null;
+function ctaPresetPool() {
+    // Memoised outside Alpine: a getter that wrote to component state would be
+    // a reactive write during render.
+    if (_ctaPresetPool) return _ctaPresetPool;
+    try {
+        const el = document.getElementById('cta-presets');
+        _ctaPresetPool = el ? (JSON.parse(el.textContent || '[]') || []) : [];
+    } catch (e) { _ctaPresetPool = []; }
+    return _ctaPresetPool;
+}
+
+// Mixed into any component that has a `ctaTarget()` returning its donation
+// config object. Reads never mutate that object; only the two actions do.
+const ctaEditor = {
+    get ctaPresets() { return ctaPresetPool(); },
+
+    ctaConfig() {
+        const d = this.ctaTarget() || {};
+        return {
+            cta: d.cta || CTA_FALLBACK.id,
+            custom: (d.cta_custom && typeof d.cta_custom === 'object') ? d.cta_custom : { en: '', sw: '' },
+        };
+    },
+
+    // Once the creator has written their own words, "Write your own" is the
+    // selected option and no preset chip is.
+    get ctaIsCustom() {
+        const c = this.ctaConfig().custom;
+        return !!((c.en || '').trim() || (c.sw || '').trim());
+    },
+
+    ctaPresetSelected(id) {
+        return !this.ctaIsCustom && this.ctaConfig().cta === id;
+    },
+
+    // A required contribution puts this label on the main button; an optional one
+    // leaves the button offering the item free and moves the label under the price.
+    get ctaIsMandatory() { return !!(this.ctaTarget() || {}).mandatory; },
+
+    pickCtaPreset(id) {
+        const d = this.ctaTarget();
+        d.cta = id;
+        d.cta_custom = { en: '', sw: '' };
+    },
+
+    // Seed the custom boxes from the current preset. Editing real words beats
+    // facing two empty fields, and it means both languages start out filled.
+    startCustomCta() {
+        if (this.ctaIsCustom) return;
+        const d = this.ctaTarget();
+        const p = this.ctaPresets.find(x => x.id === (d.cta || CTA_FALLBACK.id)) || CTA_FALLBACK;
+        d.cta_custom = { en: p.en, sw: p.sw };
+    },
+
+    // x-model targets, so the partial can be dropped into any host component
+    // without knowing where that component keeps its donation config.
+    _ctaCustomWrite(lang, value) {
+        const d = this.ctaTarget();
+        if (!d.cta_custom || typeof d.cta_custom !== 'object') d.cta_custom = { en: '', sw: '' };
+        d.cta_custom[lang] = value;
+    },
+    get ctaCustomEn() { return this.ctaConfig().custom.en || ''; },
+    set ctaCustomEn(v) { this._ctaCustomWrite('en', v); },
+    get ctaCustomSw() { return this.ctaConfig().custom.sw || ''; },
+    set ctaCustomSw(v) { this._ctaCustomWrite('sw', v); },
+
+    // The amount half of the button, so the preview reads like the real thing
+    // instead of a bare verb. The first suggestion is what most people tap.
+    get ctaPreviewAmount() {
+        const d = this.ctaTarget() || {};
+        const suggested = String(d._suggestedRaw || '')
+            .split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0);
+        const amount = suggested[0] || parseFloat(d.min_amount) || 0;
+        return amount > 0 ? amount.toLocaleString('en-US') : '';
+    },
+
+    // The same fallback ladder the server uses (utils/pricing.contribution_voice):
+    // a creator who filled in one language meant it to be read, not to vanish
+    // for half their visitors.
+    get ctaPreview() {
+        const { cta, custom } = this.ctaConfig();
+        const en = (custom.en || '').trim();
+        const sw = (custom.sw || '').trim();
+        if (en || sw) return { en: en || sw, sw: sw || en };
+        const p = this.ctaPresets.find(x => x.id === cta) || CTA_FALLBACK;
+        return { en: p.en, sw: p.sw };
+    },
+};
+
+function withCtaEditor(component) {
+    return Object.defineProperties(component, Object.getOwnPropertyDescriptors(ctaEditor));
+}
+
 function bindMarkdownEditor(element, opts, getValue, setValue) {
     const mde = mountMarkdownEditor(element, opts);
     if (!mde) return null;
@@ -202,13 +449,20 @@ document.addEventListener('alpine:init', () => {
         // Translatable fragments for the timezone hints; overridden from #event-i18n.
         eventI18n: {
             same: 'This is your local time', ahead: "You're {d} ahead", behind: "You're {d} behind",
-            yourTime: 'your time', hourShort: 'h', minShort: 'm'
+            yourTime: 'your time', hourShort: 'h', minShort: 'm',
+            every: 'Every {days}', nextSession: 'Next session', happeningNow: 'Happening now',
+            upcomingSessions: 'Upcoming sessions', seriesEnded: 'This series has ended'
         },
 
         init() {
             try { const dataElement = document.getElementById('asset-data'); if (dataElement) this.asset = JSON.parse(dataElement.textContent); } catch (e) { console.error('Error parsing asset detail data:', e); }
             try { const i18nEl = document.getElementById('event-i18n'); if (i18nEl) this.eventI18n = Object.assign(this.eventI18n, JSON.parse(i18nEl.textContent)); } catch (e) { /* keep defaults */ }
-            if (this.asset.asset_type === 'TICKET' && this.asset.event_date) { this.countdownInterval = setInterval(() => this.updateCountdown(), 1000); this.updateCountdown(); }
+            // Anchor the countdown on the resolved UTC instant — for a repeating
+            // event that is the next occurrence, so it rolls over on its own.
+            if (this.asset.asset_type === 'TICKET' && this.asset.eventDetails?.utc) {
+                this.countdownInterval = setInterval(() => this.updateCountdown(), 1000);
+                this.updateCountdown();
+            }
         },
 
         showToast(message, type = 'success') {
@@ -218,7 +472,7 @@ document.addEventListener('alpine:init', () => {
             setTimeout(() => { this.toast.show = false; }, 3000);
         },
 
-        updateCountdown() { const eventDate = new Date(this.asset.event_date).getTime(); const now = new Date().getTime(); const distance = eventDate - now; if (distance < 0) { this.countdown = "EVENT HAS PASSED"; if (this.countdownInterval) clearInterval(this.countdownInterval); return; } const d = Math.floor(distance / (1000 * 60 * 60 * 24)); const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)); const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)); const s = Math.floor((distance % (1000 * 60)) / 1000); this.countdown = `${d}d ${h}h ${m}m ${s}s`; },
+        updateCountdown() { const eventDate = new Date(this.asset.eventDetails?.utc || this.asset.event_date).getTime(); const now = new Date().getTime(); const distance = eventDate - now; if (distance < 0) { this.countdown = "EVENT HAS PASSED"; if (this.countdownInterval) clearInterval(this.countdownInterval); return; } const d = Math.floor(distance / (1000 * 60 * 60 * 24)); const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)); const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)); const s = Math.floor((distance % (1000 * 60)) / 1000); this.countdown = `${d}d ${h}h ${m}m ${s}s`; },
         get averageRating() { if (!this.asset.reviews || this.asset.reviews.length === 0) return 'N/A'; const total = this.asset.reviews.reduce((sum, review) => sum + review.rating, 0); return (total / this.asset.reviews.length).toFixed(1); },
         showMoreReviews() { this.visibleReviews += 5; },
         renderMarkdown(text) {
@@ -252,14 +506,33 @@ document.addEventListener('alpine:init', () => {
         // anchor, also tell the buyer how their own zone relates to it.
         get eventInfo() {
             const ev = this.asset.eventDetails || {};
-            if (!ev.date) return null;
+            // A repeating series that has run past its end date has no date left to
+            // show, but the card must still explain why rather than vanish.
+            if (!ev.date) {
+                if (ev.seriesEnded) {
+                    return { hasTime: false, tzLabel: ev.tzLabel || '', adminDisplay: this.eventI18n.seriesEnded,
+                             userDisplay: null, relation: null, sameZone: null,
+                             isRecurring: true, ended: true, cadence: this.recurrenceCadence,
+                             sessionLabel: '', inProgress: false };
+                }
+                return null;
+            }
             const info = {
                 hasTime: !!ev.time,
                 tzLabel: ev.tzLabel || '',
                 adminDisplay: this._formatWallClock(ev.date, ev.time, ev.tzLabel),
                 userDisplay: null,
                 relation: null,
-                sameZone: null
+                sameZone: null,
+                // Repeating-event context: the cadence ("Every Thursday, 7:00 PM"),
+                // the label the creator gave this particular day, and whether the
+                // session advertised is running right now.
+                isRecurring: !!ev.isRecurring,
+                ended: false,
+                cadence: this.recurrenceCadence,
+                sessionLabel: ev.sessionLabel || '',
+                sessionNote: ev.sessionNote || '',
+                inProgress: !!ev.inProgress
             };
             // Buyer-relative info needs the UTC anchor + the creator's offset.
             if (ev.utc && ev.tzOffsetMinutes !== undefined && ev.tzOffsetMinutes !== null) {
@@ -292,6 +565,55 @@ document.addEventListener('alpine:init', () => {
             return out;
         },
 
+        // "Every Thursday, 7:00 PM EAT" — built from the structured slots so day
+        // and time names follow the visitor's locale, while the numbers stay the
+        // creator's wall-clock (the canonical time everyone is quoted).
+        get recurrenceCadence() {
+            const rec = this.asset.eventDetails?.recurrence;
+            if (!rec || !(rec.slots || []).length) return '';
+            const tzLabel = this.asset.eventDetails?.tzLabel || '';
+            const parts = rec.slots.map(slot => {
+                const dayName = this._weekdayName(slot.day);
+                const time = this._formatClockTime(slot.time);
+                return time ? `${dayName} ${time}` : dayName;
+            });
+            const joined = parts.length > 1
+                ? parts.slice(0, -1).join(', ') + ' & ' + parts[parts.length - 1]
+                : parts[0];
+            let out = (this.eventI18n.every || 'Every {days}').replace('{days}', joined);
+            if (tzLabel) out += ' ' + tzLabel;
+            if (rec.interval > 1) out += ` (every ${rec.interval} weeks)`;
+            return out;
+        },
+
+        // The next few sessions, ready for a list. Each keeps the creator's
+        // wall-clock plus that day's own label, so a Thursday masterclass and a
+        // Saturday clinic read as the different things they are.
+        get upcomingSessions() {
+            const list = this.asset.eventDetails?.occurrences || [];
+            return list.map(o => ({
+                key: o.utc,
+                display: this._formatWallClock(o.date, o.time, ''),
+                label: o.label || '',
+                inProgress: !!o.inProgress
+            }));
+        },
+
+        // 0 = Sunday, matching the stored slot day and JS getDay().
+        _weekdayName(day) {
+            const ref = new Date(Date.UTC(2024, 0, 7 + (Number(day) || 0))); // 2024-01-07 was a Sunday
+            return ref.toLocaleDateString(undefined, { weekday: 'long', timeZone: 'UTC' });
+        },
+
+        // 'HH:MM' wall-clock -> locale time string, with no timezone shift applied.
+        _formatClockTime(timeStr) {
+            if (!timeStr) return '';
+            const [h, m] = String(timeStr).split(':').map(Number);
+            if (isNaN(h)) return timeStr;
+            const dt = new Date(2024, 0, 1, h, m || 0);
+            return dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        },
+
         _describeOffset(diffMinutes) {
             if (diffMinutes === 0) return this.eventI18n.same;
             const ahead = diffMinutes > 0;
@@ -308,11 +630,18 @@ document.addEventListener('alpine:init', () => {
 
             // Preferred path: anchor to the server-computed UTC instant so the saved
             // calendar entry lands at the correct absolute moment in every timezone.
+            // For a repeating event that instant is the next occurrence, and the
+            // RRULE added by generateICSString carries the rest of the series.
             const evUtc = this.asset.eventDetails?.utc;
             if (evUtc) {
                 const start = new Date(evUtc);
                 if (!isNaN(start.getTime())) {
-                    const end = new Date(start.getTime() + 60 * 60 * 1000);
+                    const evEndUtc = this.asset.eventDetails?.endUtc;
+                    let end = evEndUtc ? new Date(evEndUtc) : null;
+                    if (!end || isNaN(end.getTime())) {
+                        const mins = this.asset.eventDetails?.durationMinutes || 60;
+                        end = new Date(start.getTime() + mins * 60 * 1000);
+                    }
                     const stamp = toUtcStamp(start), endStamp = toUtcStamp(end);
                     return { icsStart: stamp, icsEnd: endStamp, googleStart: stamp, googleEnd: endStamp };
                 }
@@ -393,17 +722,60 @@ document.addEventListener('alpine:init', () => {
             return fullDescription;
         },
 
+        // --- Calendar rules for a repeating event ------------------------------
+        // ICS BYDAY codes, indexed the same way as the stored slot day (0 = Sunday).
+        _icsDayCodes: ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'],
+
+        // 'YYYY-MM-DD' + 'HH:MM' in the CREATOR's zone -> a UTC ICS stamp. Uses the
+        // offset the server resolved for the next occurrence, which is the right
+        // one for every rule anchored near it.
+        _creatorStampToUtc(dateStr, timeStr) {
+            const offset = this.asset.eventDetails?.tzOffsetMinutes || 0;
+            const [y, m, d] = String(dateStr || '').split('-').map(Number);
+            if (!y || !m || !d) return null;
+            const [hh, mm] = String(timeStr || '00:00').split(':').map(Number);
+            const utcMs = Date.UTC(y, m - 1, d, hh || 0, mm || 0) - offset * 60 * 1000;
+            return new Date(utcMs).toISOString().replace(/[-:]|\.\d{3}/g, '');
+        },
+
+        // The RRULE (plus any EXDATEs) for one repeating day.
+        _slotRecurrenceRule(slot) {
+            const rec = this.asset.eventDetails?.recurrence;
+            if (!rec) return '';
+            let rule = `RRULE:FREQ=WEEKLY;BYDAY=${this._icsDayCodes[slot.day] || 'MO'}`;
+            if (rec.interval > 1) rule += `;INTERVAL=${rec.interval}`;
+            if (rec.until) {
+                // End of the final day in the creator's zone, expressed as UTC.
+                const untilStamp = this._creatorStampToUtc(rec.until, '23:59');
+                if (untilStamp) rule += `;UNTIL=${untilStamp}`;
+            }
+            let out = rule + '\n';
+            // Cancelled dates only exclude the sessions that actually fall on them.
+            const skipped = (rec.skip_dates || []).filter(dateStr => {
+                const [y, m, d] = String(dateStr).split('-').map(Number);
+                if (!y) return false;
+                return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === slot.day;
+            }).map(dateStr => this._creatorStampToUtc(dateStr, slot.time)).filter(Boolean);
+            if (skipped.length) out += `EXDATE:${skipped.join(',')}\n`;
+            return out;
+        },
+
         generateICSString(isForQR = false) {
             const asset = this.asset;
             const title = asset.title || 'Event';
-            let description = this.getEventDescription().replace(/\n/g, '\\n');
-            const location = asset.eventDetails?.link || '';
-            const dates = this.getEventDates();
+            const ev = asset.eventDetails || {};
+            const rec = ev.recurrence;
+            const uidBase = asset.id || Date.now();
+            const now = new Date().toISOString().replace(/-|:|\.\d\d\d/g, "");
 
-            // Truncate description for QR codes to maintain scannability
-            if (isForQR && description.length > 300) {
-                description = description.substring(0, 297) + '...';
-            }
+            const baseDescription = this.getEventDescription();
+            // Keep QR payloads scannable — harder when a series adds a rule per day.
+            const descLimit = isForQR ? (rec && rec.slots.length > 1 ? 150 : 300) : Infinity;
+            const describe = (extra) => {
+                let text = extra ? `${extra}\n\n${baseDescription}` : baseDescription;
+                if (text.length > descLimit) text = text.substring(0, descLimit - 3) + '...';
+                return text.replace(/\n/g, '\\n');
+            };
 
             let alarms = '';
             // Omit alarms for QR to reduce string length
@@ -419,16 +791,51 @@ document.addEventListener('alpine:init', () => {
                 });
             }
 
-            const now = new Date().toISOString().replace(/-|:|\.\d\d\d/g, "");
-            return `BEGIN:VCALENDAR\nVERSION:2.0\nPROID:-//Nyota//Asset Calendar//EN\nBEGIN:VEVENT\nUID:${asset.id || Date.now()}@nyota.app\nDTSTAMP:${now}\nDTSTART:${dates.icsStart}\nDTEND:${dates.icsEnd}\nSUMMARY:${title}\nDESCRIPTION:${description}\nLOCATION:${location}\n${alarms}END:VEVENT\nEND:VCALENDAR`;
+            let events = '';
+            if (rec && (rec.slots || []).length) {
+                // One VEVENT per repeating day, each anchored on that day's next
+                // session and carrying its own RRULE — so the buyer's calendar gets
+                // the whole series, not just the next date, and each day keeps its
+                // own time, length, title and link.
+                (rec.slots || []).forEach(slot => {
+                    const first = (ev.occurrences || []).find(o => o.slotId === slot.id);
+                    if (!first) return; // this day has no session left to schedule
+                    const start = new Date(first.utc);
+                    const end = new Date(first.endUtc || (start.getTime() + (slot.duration || 60) * 60000));
+                    if (isNaN(start.getTime())) return;
+                    const stamp = (d) => d.toISOString().replace(/[-:]|\.\d{3}/g, '');
+                    const summary = slot.label ? `${title} — ${slot.label}` : title;
+                    const location = slot.link || ev.link || '';
+                    events += `BEGIN:VEVENT\nUID:${uidBase}-${slot.id}@nyota.app\nDTSTAMP:${now}\n`
+                        + `DTSTART:${stamp(start)}\nDTEND:${stamp(end)}\n`
+                        + this._slotRecurrenceRule(slot)
+                        + `SUMMARY:${summary}\nDESCRIPTION:${describe(slot.note)}\nLOCATION:${location}\n`
+                        + `${alarms}END:VEVENT\n`;
+                });
+            }
+
+            if (!events) {
+                // One-off event (or a series with nothing scheduled ahead).
+                const dates = this.getEventDates();
+                events = `BEGIN:VEVENT\nUID:${uidBase}@nyota.app\nDTSTAMP:${now}\n`
+                    + `DTSTART:${dates.icsStart}\nDTEND:${dates.icsEnd}\n`
+                    + `SUMMARY:${title}\nDESCRIPTION:${describe('')}\nLOCATION:${ev.link || ''}\n`
+                    + `${alarms}END:VEVENT\n`;
+            }
+
+            return `BEGIN:VCALENDAR\nVERSION:2.0\nPROID:-//Nyota//Asset Calendar//EN\n${events}END:VCALENDAR`;
         },
 
         smartCalendarSave() {
             try {
                 const userAgent = navigator.userAgent || navigator.vendor || window.opera;
                 const isAndroid = /android/i.test(userAgent);
+                // Google's template URL can only express ONE event, so a series
+                // that repeats on several days takes the ICS path everywhere —
+                // dropping the other days would be worse than the extra download.
+                const multiDaySeries = ((this.asset.eventDetails?.recurrence?.slots || []).length > 1);
 
-                if (isAndroid) {
+                if (isAndroid && !multiDaySeries) {
                     window.open(this.getGoogleCalendarUrl(), '_blank');
                 } else {
                     const icsString = this.generateICSString();
@@ -448,12 +855,26 @@ document.addEventListener('alpine:init', () => {
 
         getGoogleCalendarUrl() {
             const asset = this.asset;
-            const title = encodeURIComponent(asset.title || 'Event');
-            const description = encodeURIComponent(this.getEventDescription());
-            const location = encodeURIComponent(asset.eventDetails?.link || '');
+            const ev = asset.eventDetails || {};
             const dates = this.getEventDates();
+            // Google's template URL holds a single event, so it carries the next
+            // session and — for a series — the rule for the day that session falls
+            // on. Days beyond that come through the ICS path (the multi-day
+            // "Save to calendar" fallback below).
+            const nextSlot = ev.recurrence
+                ? (ev.recurrence.slots || []).find(s => s.id === (ev.occurrences || [])[0]?.slotId)
+                : null;
+            const summary = nextSlot && nextSlot.label ? `${asset.title || 'Event'} — ${nextSlot.label}` : (asset.title || 'Event');
+            const title = encodeURIComponent(summary);
+            const description = encodeURIComponent(this.getEventDescription());
+            const location = encodeURIComponent((nextSlot && nextSlot.link) || ev.link || '');
 
-            return `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${description}&location=${location}&dates=${dates.googleStart}/${dates.googleEnd}`;
+            let url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&details=${description}&location=${location}&dates=${dates.googleStart}/${dates.googleEnd}`;
+            if (nextSlot) {
+                const rule = this._slotRecurrenceRule(nextSlot).split('\n')[0]; // RRULE line only
+                if (rule) url += `&recur=${encodeURIComponent(rule)}`;
+            }
+            return url;
         }
     }));
 
@@ -837,18 +1258,29 @@ document.addEventListener('alpine:init', () => {
         clearAllFilters() { this.searchTerm = ''; this.statusFilter = 'all'; this.typeFilter = 'all'; },
     }));
 
-    Alpine.data('assetForm', () => ({
+    Alpine.data('assetForm', () => withRecurrenceEditor(withCtaEditor({
+        ctaTarget() { return this.donation; },
+        _recurrence() {
+            if (!this.eventDetails.recurrence) {
+                this.eventDetails.recurrence = recurrenceEditor._hydrateRecurrence(null);
+            }
+            return this.eventDetails.recurrence;
+        },
+        _eventSeed() { return { date: this.eventDetails.date, time: this.eventDetails.time }; },
         step: 1,
         asset: { id: null, title: '', description: '', cover_image_url: null, story_snippet: '' },
         assetType: '',
         assetTypeEnum: '',
         contentItems: [],
         customFields: [],
-        eventDetails: { link: '', maxAttendees: null, date: '', time: '', postPurchaseInstructions: '' },
+        eventDetails: {
+            link: '', maxAttendees: null, date: '', time: '', postPurchaseInstructions: '',
+            recurrence: recurrenceEditor._hydrateRecurrence(null)
+        },
         subscriptionDetails: { welcomeContent: '', benefits: '' },
         newsletterDetails: { welcomeFile: null, welcomeDescription: '', frequency: 'monthly' },
         pricing: { type: 'one-time', amount: null, billingCycle: 'monthly', tiers: [] },
-        donation: { enabled: false, min_amount: 0, mandatory: false, _suggestedRaw: '' },
+        donation: { enabled: false, min_amount: 0, mandatory: false, _suggestedRaw: '', cta: CTA_FALLBACK.id, cta_custom: { en: '', sw: '' } },
         variations: [],
         // Default delivery questions (creator's language) seeded onto new physical
         // products; parsed from the #delivery-defaults JSON island.
@@ -885,7 +1317,8 @@ document.addEventListener('alpine:init', () => {
                     maxAttendees: existing.eventDetails?.maxAttendees || existing.max_attendees,
                     date: existing.eventDetails?.date || existing.event_date,
                     time: existing.eventDetails?.time || existing.event_time,
-                    postPurchaseInstructions: existing.details?.postPurchaseInstructions || ''
+                    postPurchaseInstructions: existing.details?.postPurchaseInstructions || '',
+                    recurrence: recurrenceEditor._hydrateRecurrence(existing.eventDetails?.recurrence)
                 };
 
                 // Initialize pricing and tiers
@@ -908,7 +1341,12 @@ document.addEventListener('alpine:init', () => {
                     enabled: !!dExisting.enabled,
                     min_amount: dExisting.min_amount || 0,
                     mandatory: !!dExisting.mandatory,
-                    _suggestedRaw: Array.isArray(dExisting.suggested_amounts) ? dExisting.suggested_amounts.join(', ') : ''
+                    _suggestedRaw: Array.isArray(dExisting.suggested_amounts) ? dExisting.suggested_amounts.join(', ') : '',
+                    cta: dExisting.cta || CTA_FALLBACK.id,
+                    cta_custom: {
+                        en: (dExisting.cta_custom || {}).en || '',
+                        sw: (dExisting.cta_custom || {}).sw || ''
+                    }
                 };
 
                 // FIX: Only jump to step 2 if we are EDITING an existing asset (has ID)
@@ -981,7 +1419,12 @@ document.addEventListener('alpine:init', () => {
                 min_amount: parseFloat(this.donation.min_amount) || 0,
                 mandatory: !!this.donation.mandatory,
                 suggested_amounts: (this.donation._suggestedRaw || '')
-                    .split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0)
+                    .split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0),
+                cta: this.donation.cta || CTA_FALLBACK.id,
+                cta_custom: {
+                    en: (this.donation.cta_custom?.en || '').trim(),
+                    sw: (this.donation.cta_custom?.sw || '').trim()
+                }
             };
             // A donation asset is always free at base — the contribution is the charge.
             const pricing = donationEnabled ? { ...this.pricing, amount: 0 } : this.pricing;
@@ -994,7 +1437,7 @@ document.addEventListener('alpine:init', () => {
                 contentItems: this.contentItems,
                 customFields: cleanedCustomFields,
                 collect_info_mode: this.collectInfoMode || 'optional',
-                eventDetails: this.eventDetails,
+                eventDetails: { ...this.eventDetails, recurrence: this.buildRecurrencePayload() },
                 subscriptionDetails: this.subscriptionDetails,
                 newsletterDetails: { ...this.newsletterDetails, welcomeFile: null },
                 donation: donation,
@@ -1068,7 +1511,7 @@ document.addEventListener('alpine:init', () => {
         getAssetTypeDetails() { return this.assetTypeDetails[this.assetType] || { title: 'Asset', contentDescription: '', description: '', examples: [], guide: [] }; },
         mapEnumTypeToFormType(enumType) { const map = { 'VIDEO_SERIES': 'video-series', 'TICKET': 'ticket', 'DIGITAL_PRODUCT': 'digital-file', 'SUBSCRIPTION': 'subscription', 'NEWSLETTER': 'newsletter', 'PHYSICAL': 'physical' }; return map[enumType]; },
         mapFormTypeToEnumType(formType) { const map = { 'video-series': 'VIDEO_SERIES', 'ticket': 'TICKET', 'digital-file': 'DIGITAL_PRODUCT', 'subscription': 'SUBSCRIPTION', 'newsletter': 'NEWSLETTER', 'physical': 'PHYSICAL' }; return map[formType]; },
-    }));
+    })));
 
     Alpine.data('settingsPage', (initialSettings) => ({
         // --- State ---
@@ -1278,7 +1721,16 @@ document.addEventListener('alpine:init', () => {
         connectGoogle() { alert('Connecting to Google...'); },
     }));
 
-    Alpine.data('assetView', (initialAsset, allStatuses) => ({
+    Alpine.data('assetView', (initialAsset, allStatuses) => withRecurrenceEditor(withCtaEditor({
+        ctaTarget() { return this.editableAsset.donation; },
+        _recurrence() {
+            if (!this.editableAsset.eventDetails) this.editableAsset.eventDetails = {};
+            if (!this.editableAsset.eventDetails.recurrence) {
+                this.editableAsset.eventDetails.recurrence = recurrenceEditor._hydrateRecurrence(null);
+            }
+            return this.editableAsset.eventDetails.recurrence;
+        },
+        _eventSeed() { return { date: this.editableAsset.eventDetails?.date, time: this.editableAsset.eventDetails?.time }; },
         // Original data from the server. Guard against null.
         // Original data from the server. Guard against null.
         asset: initialAsset || {},
@@ -1321,6 +1773,15 @@ document.addEventListener('alpine:init', () => {
                 // Ensure postPurchaseInstructions is populated if eventDetails exists but field is missing
                 this.editableAsset.eventDetails.postPurchaseInstructions = this.asset.details?.postPurchaseInstructions || '';
             }
+            // eventDetails.date/time carry the NEXT occurrence for a repeating event —
+            // useful to display, but they must not be re-saved as a fixed date. The
+            // schedule itself is edited through this hydrated recurrence object.
+            this.editableAsset.eventDetails.recurrence =
+                this._hydrateRecurrence(this.asset.eventDetails?.recurrence);
+            if (this.editableAsset.eventDetails.recurrence.enabled) {
+                this.editableAsset.eventDetails.date = '';
+                this.editableAsset.eventDetails.time = '';
+            }
 
             if (!this.editableAsset.details) {
                 this.editableAsset.details = { welcomeContent: '', benefits: '', subscription_tiers: [], labels: { en: '', sw: '' } };
@@ -1343,7 +1804,9 @@ document.addEventListener('alpine:init', () => {
                     mandatory: !!d.mandatory,
                     suggested_amounts: Array.isArray(d.suggested_amounts) ? d.suggested_amounts.slice() : [],
                     // Editor-only helper: comma-separated string for the presets input.
-                    _suggestedRaw: Array.isArray(d.suggested_amounts) ? d.suggested_amounts.join(', ') : ''
+                    _suggestedRaw: Array.isArray(d.suggested_amounts) ? d.suggested_amounts.join(', ') : '',
+                    cta: d.cta || CTA_FALLBACK.id,
+                    cta_custom: { en: (d.cta_custom || {}).en || '', sw: (d.cta_custom || {}).sw || '' }
                 };
             }
 
@@ -1632,6 +2095,11 @@ document.addEventListener('alpine:init', () => {
                 enabled: donationEnabled,
                 min_amount: parseFloat(donationSrc.min_amount) || 0,
                 mandatory: !!donationSrc.mandatory,
+                cta: donationSrc.cta || CTA_FALLBACK.id,
+                cta_custom: {
+                    en: (donationSrc.cta_custom?.en || '').trim(),
+                    sw: (donationSrc.cta_custom?.sw || '').trim()
+                },
                 suggested_amounts: (donationSrc._suggestedRaw || '')
                     .split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0)
             };
@@ -1656,7 +2124,7 @@ document.addEventListener('alpine:init', () => {
                 contentItems: contentItems,
                 customFields: cleanedCustomFields,
                 collect_info_mode: this.editableAsset.collect_info_mode || 'optional',
-                eventDetails: this.editableAsset.eventDetails || {},
+                eventDetails: { ...(this.editableAsset.eventDetails || {}), recurrence: this.buildRecurrencePayload() },
                 subscriptionDetails: {
                     welcomeContent: this.editableAsset.details?.welcomeContent || '',
                     benefits: this.editableAsset.details?.benefits || '',
@@ -1743,7 +2211,7 @@ document.addEventListener('alpine:init', () => {
         hideNotification() {
             this.notification.show = false;
         }
-    }));
+    })));
 
     Alpine.data('checkout', (asset, currencySymbol, paymentUrl) => ({
         isOpen: false,

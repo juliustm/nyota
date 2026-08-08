@@ -35,6 +35,11 @@ else (translate('cta_free_' ~ asset_type_key) if pricing.is_free else translate(
 {% if product_schema %}
 <script type="application/ld+json">{{ product_schema | tojson }}</script>
 {% endif %}
+{# Events also publish an Event/EventSeries node so the next date — or the
+   "every Thursday" cadence — is machine-readable alongside the offer. #}
+{% if event_schema %}
+<script type="application/ld+json">{{ event_schema | tojson }}</script>
+{% endif %}
 {% endblock %}
 
 {% block head_extra %}
@@ -111,7 +116,12 @@ else (translate('cta_free_' ~ asset_type_key) if pricing.is_free else translate(
     "behind": {{ translate('tz_behind')|tojson|safe }},
     "yourTime": {{ translate('tz_your_time')|tojson|safe }},
     "hourShort": {{ translate('tz_hour_short')|tojson|safe }},
-    "minShort": {{ translate('tz_min_short')|tojson|safe }}
+    "minShort": {{ translate('tz_min_short')|tojson|safe }},
+    "every": {{ translate('event_every')|tojson|safe }},
+    "nextSession": {{ translate('event_next_session')|tojson|safe }},
+    "happeningNow": {{ translate('event_happening_now')|tojson|safe }},
+    "upcomingSessions": {{ translate('event_upcoming_sessions')|tojson|safe }},
+    "seriesEnded": {{ translate('event_series_ended')|tojson|safe }}
 }</script>
 <script type="application/json" id="purchase-data">
     {{ latest_purchase.to_dict()|tojson|safe if (latest_purchase and not subscription_expired) else 'null' }}
@@ -686,7 +696,22 @@ null
                                             </svg>
                                             <div class="min-w-0">
                                                 <p class="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-0.5">{{ translate('event_when') }}</p>
-                                                <p class="text-sm font-semibold text-gray-900 dark:text-white" x-text="eventInfo.adminDisplay"></p>
+                                                {# Ticket holder of a repeating event: lead with the cadence, then
+                                                   the session they should turn up to next. #}
+                                                <template x-if="eventInfo.isRecurring && eventInfo.cadence">
+                                                    <p class="text-sm font-semibold text-indigo-600 dark:text-indigo-400" x-text="eventInfo.cadence"></p>
+                                                </template>
+                                                <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                                                    <span x-show="eventInfo.isRecurring && !eventInfo.ended" class="text-gray-400 font-normal"
+                                                          x-text="(eventInfo.inProgress ? eventI18n.happeningNow : eventI18n.nextSession) + ':'"></span>
+                                                    <span x-text="eventInfo.adminDisplay"></span>
+                                                </p>
+                                                <template x-if="eventInfo.sessionLabel">
+                                                    <p class="text-xs font-medium text-indigo-600 dark:text-indigo-400 mt-0.5" x-text="eventInfo.sessionLabel"></p>
+                                                </template>
+                                                <template x-if="eventInfo.sessionNote">
+                                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" x-text="eventInfo.sessionNote"></p>
+                                                </template>
                                                 <template x-if="eventInfo.userDisplay && !eventInfo.sameZone">
                                                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span x-text="eventInfo.userDisplay"></span> <span x-text="eventI18n.yourTime"></span> — <span x-text="eventInfo.relation"></span></p>
                                                 </template>
@@ -984,12 +1009,24 @@ null
                                     {{ translate('save_to_calendar') }}
                                 </h3>
                                 <div class="mt-1 space-y-1" x-show="eventInfo" x-cloak>
+                                    {# A repeating event saves as a recurring calendar entry, so say so
+                                       here — the buyer is adding the whole series, not one date. #}
+                                    <template x-if="eventInfo && eventInfo.isRecurring">
+                                        <p class="text-indigo-100 text-xs font-semibold flex items-center justify-center sm:justify-start gap-1.5">
+                                            <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                            </svg>
+                                            <span x-text="eventInfo.cadence"></span>
+                                        </p>
+                                    </template>
                                     <!-- Canonical event time (creator's timezone) -->
                                     <p class="text-white text-sm font-semibold flex items-center justify-center sm:justify-start gap-1.5">
                                         <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
+                                        <span x-show="eventInfo && eventInfo.isRecurring && !eventInfo.ended" class="opacity-80"
+                                              x-text="(eventInfo?.inProgress ? eventI18n.happeningNow : eventI18n.nextSession) + ':'"></span>
                                         <span x-text="eventInfo?.adminDisplay"></span>
                                     </p>
                                     <!-- Buyer's local equivalent + how their zone relates -->
@@ -1194,12 +1231,17 @@ null
                     {% if asset_obj.asset_type.name == 'TICKET' %}
                     <!-- Event Details (pre-purchase): surface date/time/location/capacity up front -->
                     <div class="mt-6 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-900/10 overflow-hidden"
-                        x-show="asset.eventDetails && (asset.eventDetails.date || asset.eventDetails.link || asset.eventDetails.maxAttendees)" x-cloak>
+                        x-show="asset.eventDetails && (asset.eventDetails.date || asset.eventDetails.isRecurring || asset.eventDetails.link || asset.eventDetails.maxAttendees)" x-cloak>
                         <div class="px-4 py-3 border-b border-indigo-100 dark:border-indigo-900/50 flex items-center gap-2">
                             <svg class="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
                             <h3 class="text-sm font-bold text-indigo-900 dark:text-indigo-100">{{ translate('event_details') }}</h3>
+                            {# Repeating series: the cadence is the headline promise ("every Thursday"),
+                               the resolved date below it is just the next one coming up. #}
+                            <template x-if="eventInfo && eventInfo.isRecurring">
+                                <span class="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-600 text-white text-right leading-snug max-w-[60%]" x-text="eventInfo.cadence"></span>
+                            </template>
                         </div>
                         <div class="p-4 space-y-3">
                             <!-- Date & time in the creator's timezone (+ buyer's local equivalent) -->
@@ -1209,13 +1251,39 @@ null
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                     </svg>
                                     <div class="min-w-0">
+                                        <template x-if="eventInfo.isRecurring && !eventInfo.ended">
+                                            <p class="text-[11px] uppercase tracking-wide font-semibold mb-0.5"
+                                               :class="eventInfo.inProgress ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
+                                               x-text="eventInfo.inProgress ? eventI18n.happeningNow : eventI18n.nextSession"></p>
+                                        </template>
                                         <p class="text-sm font-semibold text-gray-900 dark:text-white" x-text="eventInfo.adminDisplay"></p>
+                                        <template x-if="eventInfo.sessionLabel">
+                                            <p class="text-xs font-medium text-indigo-600 dark:text-indigo-400 mt-0.5" x-text="eventInfo.sessionLabel"></p>
+                                        </template>
                                         <template x-if="eventInfo.userDisplay && !eventInfo.sameZone">
                                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"><span x-text="eventInfo.userDisplay"></span> <span x-text="eventI18n.yourTime"></span> — <span x-text="eventInfo.relation"></span></p>
                                         </template>
                                         <template x-if="eventInfo.sameZone">
                                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" x-text="eventInfo.relation"></p>
                                         </template>
+                                    </div>
+                                </div>
+                            </template>
+                            <!-- The sessions after the next one, so a series reads as a series -->
+                            <template x-if="eventInfo && eventInfo.isRecurring && upcomingSessions.length > 1">
+                                <div class="flex items-start gap-3">
+                                    <svg class="w-4 h-4 mt-0.5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" />
+                                    </svg>
+                                    <div class="min-w-0">
+                                        <p class="text-[11px] uppercase tracking-wide text-gray-400 font-semibold mb-1" x-text="eventI18n.upcomingSessions"></p>
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <template x-for="session in upcomingSessions.slice(1, 4)" :key="session.key">
+                                                <span class="text-xs px-2 py-1 rounded-lg bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-900/50 text-gray-700 dark:text-gray-300">
+                                                    <span x-text="session.display"></span><template x-if="session.label"><span class="text-indigo-500"> · <span x-text="session.label"></span></span></template>
+                                                </span>
+                                            </template>
+                                        </div>
                                     </div>
                                 </div>
                             </template>

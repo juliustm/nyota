@@ -1,0 +1,120 @@
+{# Repeating event schedule — shared by the create wizard and the asset edit page.
+   Both host components mix in `recurrenceEditor` (static/js/main.js), which owns
+   `recurrence`, the slot helpers and the live preview, so this markup binds to the
+   same state in either place. Each repeating day carries its own time, length and
+   optional details; the server resolves the next one on every page render. #}
+<div class="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-5 border border-gray-200 dark:border-gray-600">
+    <div class="flex items-start justify-between gap-4 mb-4">
+        <div>
+            <h4 class="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <svg class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Repeating Schedule
+            </h4>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                For events that happen again and again — "every Thursday". The page always shows the
+                next session, and calendar saves add the whole series.
+            </p>
+        </div>
+        <button type="button" @click="toggleRecurrence()" role="switch" :aria-checked="recurrence.enabled"
+            class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            :class="recurrence.enabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-600'">
+            <span class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform ring-0 transition ease-in-out duration-200"
+                :class="recurrence.enabled ? 'translate-x-5' : 'translate-x-0'"></span>
+        </button>
+    </div>
+
+    <div x-show="recurrence.enabled" x-cloak class="space-y-4">
+        <!-- Repeating days: one row per day, each with its own time and details -->
+        <template x-for="(slot, index) in recurrence.slots" :key="slot.id">
+            <div class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-indigo-600 dark:text-indigo-400"
+                        x-text="'Session ' + (index + 1)"></span>
+                    <button type="button" @click="removeRecurrenceSlot(slot.id)"
+                        class="text-xs text-red-500 hover:text-red-600 font-medium">Remove</button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                        <label class="input-label">Day</label>
+                        <select x-model.number="slot.day" class="input-field">
+                            <template x-for="d in recurrenceDays" :key="d.value">
+                                <option :value="d.value" x-text="d.name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="input-label">Start time</label>
+                        <input type="time" x-model="slot.time" class="input-field">
+                    </div>
+                    <div>
+                        <label class="input-label">Length (minutes)</label>
+                        <input type="number" min="5" step="5" x-model.number="slot.duration" class="input-field"
+                            placeholder="60">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="input-label">Session name <span class="font-normal text-gray-400">(optional)</span></label>
+                        <input type="text" x-model="slot.label" class="input-field"
+                            placeholder="e.g., Digital Masterclass">
+                    </div>
+                    <div>
+                        <label class="input-label">Link / venue for this day <span class="font-normal text-gray-400">(optional)</span></label>
+                        <input type="text" x-model="slot.link" class="input-field"
+                            placeholder="Overrides the main location">
+                    </div>
+                </div>
+                <div>
+                    <label class="input-label">Note for this day <span class="font-normal text-gray-400">(optional)</span></label>
+                    <input type="text" x-model="slot.note" class="input-field"
+                        placeholder="e.g., Bring your laptop — we build live">
+                </div>
+            </div>
+        </template>
+
+        <button type="button" @click="addRecurrenceSlot()"
+            class="w-full py-2.5 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:border-indigo-400 hover:text-indigo-600 transition-colors">
+            + Add another day
+        </button>
+
+        <!-- Cadence and the window the series runs for -->
+        <div class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+                <label class="input-label">Repeats</label>
+                <select x-model.number="recurrence.interval" class="input-field">
+                    <option :value="1">Every week</option>
+                    <option :value="2">Every 2 weeks</option>
+                    <option :value="3">Every 3 weeks</option>
+                    <option :value="4">Every 4 weeks</option>
+                </select>
+            </div>
+            <div>
+                <label class="input-label">Starts on <span class="font-normal text-gray-400">(optional)</span></label>
+                <input type="date" x-model="recurrence.starts_on" class="input-field">
+            </div>
+            <div>
+                <label class="input-label">Ends on <span class="font-normal text-gray-400">(optional)</span></label>
+                <input type="date" x-model="recurrence.until" class="input-field">
+            </div>
+        </div>
+
+        <!-- Live proof the schedule lands where the creator expects -->
+        <div x-show="recurrencePreview.length"
+            class="p-4 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800">
+            <p class="text-[11px] uppercase tracking-wide text-indigo-500 font-semibold mb-2">Next sessions</p>
+            <div class="flex flex-wrap gap-2">
+                <template x-for="item in recurrencePreview" :key="item.key">
+                    <span class="text-xs px-2 py-1 rounded-lg bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-800 text-gray-700 dark:text-gray-200">
+                        <span x-text="item.text"></span><template x-if="item.label"><span class="text-indigo-500"> · <span x-text="item.label"></span></span></template>
+                    </span>
+                </template>
+            </div>
+            <p class="text-[11px] text-indigo-500/80 mt-2">Times are in your store timezone and shown to buyers in theirs.</p>
+        </div>
+        <p x-show="!recurrencePreview.length" class="text-xs text-amber-600 dark:text-amber-400">
+            No upcoming sessions — check the days, the start date and the end date.
+        </p>
+    </div>
+</div>

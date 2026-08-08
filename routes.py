@@ -41,6 +41,7 @@ from utils.image_utils import optimize_cover_image
 from utils.phone import normalize_phone_number
 from utils.timezones import local_to_utc, utc_to_local, creator_tz_name
 from utils.pricing import asset_pricing, offer_schema
+from utils.recurrence import normalize_recurrence, schedule_schema, summary as recurrence_summary
 from utils.site_meta import build_catalog_schema, absolute_media_url
 from extensions import limiter
 from services.sms_service import get_sms_provider
@@ -778,6 +779,46 @@ def asset_edit(asset_id):
         activity_json=activity_json,
     )
 
+def _apply_event_details(asset, event_details):
+    """
+    Writes a TICKET's schedule from an admin payload. Shared by the creation form
+    and the asset-view API so both understand one-off *and* repeating events.
+
+    A repeating schedule lives in details['recurrence']; event_date is still kept
+    in sync with the next occurrence so anything sorting or filtering on the
+    column (and any legacy reader) keeps working. Turning the repeat off restores
+    the plain date/time fields.
+    """
+    if not isinstance(event_details, dict):
+        event_details = {}
+
+    asset.event_location = event_details.get('link')
+    asset.max_attendees = int(event_details.get('maxAttendees')) if event_details.get('maxAttendees') else None
+
+    asset.details = dict(asset.details or {})
+    recurrence = normalize_recurrence(event_details.get('recurrence'))
+    if recurrence:
+        asset.details['recurrence'] = recurrence
+        # event_date mirrors the next session so admin lists, exports and any
+        # code still reading the column show a meaningful date.
+        asset.event_date = None
+        occurrence = asset.next_event_occurrence()
+        if occurrence:
+            asset.event_date = occurrence['start_local']
+    else:
+        asset.details.pop('recurrence', None)
+        if event_details.get('date') and event_details.get('time'):
+            try:
+                asset.event_date = datetime.strptime(
+                    f"{event_details['date']} {event_details['time']}", '%Y-%m-%d %H:%M')
+            except (ValueError, TypeError):
+                asset.event_date = None
+        elif not event_details.get('date'):
+            asset.event_date = None
+
+    flag_modified(asset, 'details')
+
+
 @admin_bp.route('/api/assets/<int:asset_id>/update', methods=['POST'])
 @creator_login_required
 def update_asset_details(asset_id):
@@ -826,11 +867,7 @@ def update_asset_details(asset_id):
         
         # Update type-specific fields
         if asset.asset_type == AssetType.TICKET:
-            event_details = data.get('eventDetails', {})
-            asset.event_location = event_details.get('link')
-            if event_details.get('date') and event_details.get('time'):
-                asset.event_date = datetime.strptime(f"{event_details['date']} {event_details['time']}", '%Y-%m-%d %H:%M')
-            asset.max_attendees = int(event_details.get('maxAttendees')) if event_details.get('maxAttendees') else None
+            _apply_event_details(asset, data.get('eventDetails', {}))
         elif asset.asset_type in [AssetType.SUBSCRIPTION, AssetType.NEWSLETTER]:
             asset.details = data.get('details', asset.details)
 
@@ -1346,11 +1383,7 @@ def save_asset_from_form(asset, req):
 
     if asset.asset_type == AssetType.TICKET:
         event_details = form_data.get('eventDetails', {})
-        asset.event_location = event_details.get('link')
-        if event_details.get('date') and event_details.get('time'):
-            try: asset.event_date = datetime.strptime(f"{event_details['date']} {event_details['time']}", '%Y-%m-%d %H:%M')
-            except (ValueError, TypeError): asset.event_date = None
-        asset.max_attendees = int(event_details.get('maxAttendees')) if event_details.get('maxAttendees') else None
+        _apply_event_details(asset, event_details)
 
         # Store post-purchase instructions
         asset.details['postPurchaseInstructions'] = event_details.get('postPurchaseInstructions', '')
@@ -3480,6 +3513,14 @@ def asset_detail(slug):
         ev = asset_dict.get('eventDetails') or {}
         if ev.get('isOnline'):
             ev['link'] = None
+        # A repeating series can carry a per-session join link; redact those the
+        # same way, on both the cadence description and the resolved sessions.
+        for occ in (ev.get('occurrences') or []):
+            if str(occ.get('link') or '').startswith('http'):
+                occ['link'] = ''
+        for slot in ((ev.get('recurrence') or {}).get('slots') or []):
+            if str(slot.get('link') or '').startswith('http'):
+                slot['link'] = ''
     asset_json = json.dumps(asset_dict, default=json_serial)
 
     # --- Construct Asset Metadata (Files & Types) ---
@@ -3581,6 +3622,44 @@ def asset_detail(slug):
         'brand': {'@type': 'Organization', 'name': store_name},
     }
 
+    # Events get their own markup so the date (or the "every Thursday" cadence)
+    # is machine-readable. A repeating ticket is an EventSeries carrying a
+    # Schedule per repeating day; a one-off is a plain Event on its date.
+    event_schema = None
+    ev_data = asset_dict.get('eventDetails') or {}
+    if asset_obj.asset_type == AssetType.TICKET and (ev_data.get('utc') or ev_data.get('isRecurring')):
+        recurrence = ev_data.get('recurrence')
+        event_schema = {
+            '@context': 'https://schema.org',
+            '@type': 'EventSeries' if recurrence else 'Event',
+            'name': asset_obj.title,
+            'description': (asset_obj.description or '')[:500],
+            'image': meta_image,
+            'url': request.url,
+            'eventAttendanceMode': ('https://schema.org/OnlineEventAttendanceMode'
+                                    if ev_data.get('isOnline')
+                                    else 'https://schema.org/OfflineEventAttendanceMode'),
+            'eventStatus': 'https://schema.org/EventScheduled',
+            'organizer': {'@type': 'Organization', 'name': store_name},
+            'offers': offer_schema(asset_obj, currency, url=request.url),
+        }
+        if ev_data.get('utc'):
+            event_schema['startDate'] = ev_data['utc']
+            if ev_data.get('endUtc'):
+                event_schema['endDate'] = ev_data['endUtc']
+        if recurrence:
+            event_schema['eventSchedule'] = schedule_schema(recurrence, ev_data.get('timezone'))
+            event_schema['description'] = (
+                f"{recurrence_summary(recurrence)}. {event_schema['description']}".strip()
+            )[:500]
+        # Location: a venue string is public; an online series points at the page
+        # itself, since the real join link is only released to ticket holders.
+        if ev_data.get('isOnline') or not asset_obj.event_location:
+            event_schema['location'] = {'@type': 'VirtualLocation', 'url': request.url}
+        else:
+            event_schema['location'] = {'@type': 'Place', 'name': asset_obj.event_location,
+                                        'address': asset_obj.event_location}
+
     return render_template(
         'user/asset_detail.html',
         asset=asset_obj,
@@ -3600,6 +3679,7 @@ def asset_detail(slug):
         meta_keywords=meta_keywords,
         meta_image=meta_image,
         product_schema=product_schema,
+        event_schema=event_schema,
         currency_code=currency,
         hide_navbar_search=True,
         # Only a genuinely published asset should be indexable. Unlisted pages are

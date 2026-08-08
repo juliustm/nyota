@@ -447,21 +447,28 @@
                                             class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
                                             placeholder="Leave empty for unlimited">
                                     </div>
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                            Event Date
-                                        </label>
-                                        <input type="date" x-model="eventDetails.date"
-                                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
-                                    </div>
-                                    <div>
-                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                            Event Time
-                                        </label>
-                                        <input type="time" x-model="eventDetails.time"
-                                            class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
-                                    </div>
+                                    <!-- A repeating event gets its dates from the schedule below instead -->
+                                    <template x-if="!recurrence.enabled">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                Event Date
+                                            </label>
+                                            <input type="date" x-model="eventDetails.date"
+                                                class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                                        </div>
+                                    </template>
+                                    <template x-if="!recurrence.enabled">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                Event Time
+                                            </label>
+                                            <input type="time" x-model="eventDetails.time"
+                                                class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
+                                        </div>
+                                    </template>
                                 </div>
+
+                                {% include 'admin/partials/recurrence_editor.html' %}
 
                                 <!-- Post-Purchase Instructions -->
                                 <div class="border-t border-gray-200 dark:border-gray-700 pt-6">

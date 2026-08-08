@@ -336,18 +336,24 @@
                                         <label for="event_location" class="input-label">Location / Link</label>
                                         <input type="text" id="event_location" x-model="editableAsset.eventDetails.link"
                                             class="input-field" placeholder="e.g., Zoom Link or Physical Address">
+                                        <p class="input-hint">Used for every session unless a repeating day overrides it below.</p>
                                     </div>
-                                    <div>
-                                        <label for="event_date" class="input-label">Date</label>
-                                        <input type="date" id="event_date" x-model="editableAsset.eventDetails.date"
-                                            class="input-field">
-                                    </div>
-                                    <div>
-                                        <label for="event_time" class="input-label">Time</label>
-                                        <input type="time" id="event_time" x-model="editableAsset.eventDetails.time"
-                                            class="input-field">
-                                    </div>
-                                    <div>
+                                    <!-- One-off date/time. Hidden once the event repeats — the schedule below owns the dates then. -->
+                                    <template x-if="!recurrence.enabled">
+                                        <div>
+                                            <label for="event_date" class="input-label">Date</label>
+                                            <input type="date" id="event_date" x-model="editableAsset.eventDetails.date"
+                                                class="input-field">
+                                        </div>
+                                    </template>
+                                    <template x-if="!recurrence.enabled">
+                                        <div>
+                                            <label for="event_time" class="input-label">Time</label>
+                                            <input type="time" id="event_time" x-model="editableAsset.eventDetails.time"
+                                                class="input-field">
+                                        </div>
+                                    </template>
+                                    <div :class="recurrence.enabled ? 'md:col-span-3' : ''">
                                         <label for="max_attendees" class="input-label">Max Attendees</label>
                                         <input type="number" id="max_attendees"
                                             x-model="editableAsset.eventDetails.maxAttendees" class="input-field"
@@ -355,6 +361,8 @@
                                     </div>
                                 </div>
                             </div>
+
+                            {% include 'admin/partials/recurrence_editor.html' %}
 
                             <!-- Post-Purchase Instructions -->
                             <div

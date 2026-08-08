@@ -11,12 +11,19 @@ with a professional, scalable model for creator settings and preferences.
 import enum
 import uuid
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from slugify import slugify
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from sqlalchemy.types import JSON
+
+from utils.recurrence import (
+    DEFAULT_DURATION,
+    normalize_recurrence,
+    next_occurrence,
+    occurrences,
+)
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -398,35 +405,79 @@ class DigitalAsset(db.Model):
     ratings = db.relationship('Rating', back_populates='asset')
     comments = db.relationship('Comment', back_populates='asset')
 
+    def creator_timezone(self):
+        """(IANA name, ZoneInfo) for the creator, falling back to the store's region."""
+        tz_name = None
+        try:
+            if self.creator:
+                tz_name = self.creator.get_setting('creator_timezone')
+        except Exception:
+            tz_name = None
+        tz_name = tz_name or 'Africa/Nairobi'  # sensible default for the store's region
+        try:
+            return tz_name, ZoneInfo(tz_name)
+        except Exception:
+            return 'Africa/Nairobi', ZoneInfo('Africa/Nairobi')
+
+    def event_recurrence(self):
+        """The normalized repeating schedule, or None when this is a one-off event."""
+        return normalize_recurrence((self.details or {}).get('recurrence'))
+
+    def next_event_occurrence(self, now=None):
+        """
+        The occurrence a repeating event should currently advertise (None for a
+        one-off, or once a series has run past its end date).
+        """
+        recurrence = self.event_recurrence()
+        if not recurrence:
+            return None
+        _, tz = self.creator_timezone()
+        return next_occurrence(recurrence, tz, now=now)
+
     def to_dict(self):
         """Serializes the asset object to a dictionary for JSON conversion."""
-        
-        # Helper to format date and time if they exist. event_date is stored as a
-        # NAIVE datetime holding the creator's wall-clock time (what the admin typed).
-        event_date_str = self.event_date.strftime('%Y-%m-%d') if self.event_date else None
-        event_time_str = self.event_date.strftime('%H:%M') if self.event_date else None
+
+        # A repeating event ("every Thursday") has no fixed event_date — the date
+        # shown everywhere is the NEXT occurrence, recomputed on each render. It is
+        # published through the same eventDetails keys as a one-off, so the asset
+        # page, countdown, calendar files and QR all roll forward untouched.
+        recurrence = self.event_recurrence()
+        occurrence = None
+        upcoming = []
+        tz_name, tz = (None, None)
+        if recurrence or self.event_date:
+            tz_name, tz = self.creator_timezone()
+        if recurrence:
+            # Every repeating day must appear at least once: the frontend anchors
+            # one calendar rule per slot on that slot's first upcoming session.
+            upcoming = occurrences(recurrence, tz, limit=max(6, 2 * len(recurrence['slots'])))
+            occurrence = upcoming[0] if upcoming else None
+
+        # event_date is stored as a NAIVE datetime holding the creator's wall-clock
+        # time (what the admin typed); a recurrence supplies the same shape.
+        if occurrence:
+            event_dt = occurrence['start_local']
+        else:
+            event_dt = None if recurrence else self.event_date
+        event_date_str = event_dt.strftime('%Y-%m-%d') if event_dt else None
+        event_time_str = event_dt.strftime('%H:%M') if event_dt else None
 
         # Resolve the event against the creator's configured timezone so the public
         # always sees the SAME canonical wall-clock the admin set, while the calendar
         # files / "your local time" hints can be anchored to a real UTC instant.
         event_utc_str = None        # absolute instant, e.g. "2026-06-27T18:32:00Z"
+        event_end_utc_str = None    # end of the session, drives calendar duration
         event_tz_name = None        # IANA name, e.g. "Africa/Nairobi"
         event_tz_label = None       # friendly label, e.g. "EAT" or "GMT+3"
         event_tz_offset_min = None  # creator offset from UTC at the event, e.g. 180
-        if self.event_date:
-            tz_name = None
-            try:
-                if self.creator:
-                    tz_name = self.creator.get_setting('creator_timezone')
-            except Exception:
-                tz_name = None
-            tz_name = tz_name or 'Africa/Nairobi'  # sensible default for the store's region
-            try:
-                tz = ZoneInfo(tz_name)
-            except Exception:
-                tz_name, tz = 'Africa/Nairobi', ZoneInfo('Africa/Nairobi')
-            aware = self.event_date.replace(tzinfo=tz)
+        event_duration_min = None
+        if event_dt:
+            aware = event_dt.replace(tzinfo=tz)
             event_utc_str = aware.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+            event_duration_min = occurrence['duration'] if occurrence else DEFAULT_DURATION
+            event_end_utc_str = (occurrence['end_utc'] if occurrence else
+                                 (aware + timedelta(minutes=event_duration_min))
+                                 .astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
             event_tz_name = tz_name
             offset = aware.utcoffset()
             event_tz_offset_min = int(offset.total_seconds() // 60) if offset else 0
@@ -438,6 +489,24 @@ class DigitalAsset(db.Model):
                 sign = '+' if event_tz_offset_min >= 0 else '-'
                 hrs, mins = divmod(abs(event_tz_offset_min), 60)
                 event_tz_label = f"GMT{sign}{hrs}" + (f":{mins:02d}" if mins else "")
+
+        # A slot may override the join link / venue for its own day (e.g. a
+        # Thursday Zoom room and a Saturday studio address).
+        event_link = self.event_location
+        if occurrence and occurrence['slot'].get('link'):
+            event_link = occurrence['slot']['link']
+
+        # A copy of details, with the raw stored schedule swapped for the
+        # normalized one published under eventDetails. They share slot objects on
+        # purpose: a caller redacting a private per-session link (the asset page
+        # does this for non-buyers) then covers both copies, and never mutates
+        # the model's own JSON.
+        details_out = dict(self.details or {})
+        if 'recurrence' in details_out:
+            if recurrence:
+                details_out['recurrence'] = recurrence
+            else:
+                details_out.pop('recurrence')
 
         asset_data = {
             'id': self.id,
@@ -466,25 +535,51 @@ class DigitalAsset(db.Model):
             'reviews': [r.to_dict() for r in self.ratings],
             # Create nested objects that the frontend component expects
             'eventDetails': {
-                'link': self.event_location,
+                'link': event_link,
                 # A URL location is a private join link (the deliverable for a webinar);
                 # the route redacts the actual URL for non-buyers but keeps this flag so
                 # the public view can still show "Online event".
-                'isOnline': bool(self.event_location and str(self.event_location).startswith('http')),
+                'isOnline': bool(event_link and str(event_link).startswith('http')),
                 'date': event_date_str,
                 'time': event_time_str,
                 'maxAttendees': self.max_attendees,
                 # Timezone context so the frontend can show the canonical creator time
                 # and compute the buyer's local equivalent / offset.
                 'utc': event_utc_str,
+                'endUtc': event_end_utc_str,
+                'durationMinutes': event_duration_min,
                 'timezone': event_tz_name,
                 'tzLabel': event_tz_label,
-                'tzOffsetMinutes': event_tz_offset_min
+                'tzOffsetMinutes': event_tz_offset_min,
+                # --- Repeating series ------------------------------------------
+                # `recurrence` describes the cadence (so the page can say "Every
+                # Thursday" and the ICS can carry an RRULE); `occurrences` lists the
+                # next few resolved sessions. Both are absent for a one-off event.
+                'isRecurring': bool(recurrence),
+                'recurrence': recurrence,
+                'occurrences': [{
+                    'date': o['date'],
+                    'time': o['time'],
+                    'utc': o['utc'],
+                    'endUtc': o['end_utc'],
+                    'durationMinutes': o['duration'],
+                    'label': o['slot'].get('label') or '',
+                    'link': o['slot'].get('link') or '',
+                    'note': o['slot'].get('note') or '',
+                    'slotId': o['slot'].get('id'),
+                    'inProgress': o['in_progress'],
+                } for o in upcoming],
+                # A series whose end date has passed: no date to advertise, and the
+                # frontend should say so rather than silently hide the card.
+                'seriesEnded': bool(recurrence and not upcoming),
+                'inProgress': bool(occurrence and occurrence['in_progress']),
+                'sessionLabel': (occurrence['slot'].get('label') if occurrence else '') or '',
+                'sessionNote': (occurrence['slot'].get('note') if occurrence else '') or '',
             },
             
             # The 'details' column is JSON, so it can be used directly.
             # Provide a default empty dict to prevent frontend errors.
-            'details': self.details or {} 
+            'details': details_out
         }
         return asset_data
         

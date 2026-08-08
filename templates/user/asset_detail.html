@@ -1,51 +1,47 @@
 {% extends "user/base.html" %}
 {% set asset_type_key = asset_obj.asset_type.name.lower() if asset_obj.asset_type and asset_obj.asset_type.name is
 defined else (asset_obj.asset_type|string|lower if asset_obj.asset_type else 'digital_product') %}
+{# Same resolver the storefront card used (utils/pricing.py), so the promise the
+   visitor tapped is the promise this page keeps. `page_cta` is the server-rendered
+   fallback label; the live buttons below refine it as the buyer picks a tier,
+   a variation or a contribution. #}
+{% set pricing = asset_pricing(asset_obj) %}
+{% set page_cta = translate('donate_cta') if pricing.mode == 'donation'
+else (translate('cta_free_' ~ asset_type_key) if pricing.is_free else translate('cta_paid_' ~ asset_type_key)) %}
 {# Goods no longer need a server-computed "starts at" range: the buyer picks the
    option on the page, so every price on it is the price of a real chosen thing,
    rendered live from $store.order. #}
 
 {% block title %}{{ asset_obj.title }} | {{ store_name }}{% endblock %}
 
-{% block meta_description %}{{ asset_obj.description | striptags | truncate(160) }}{% endblock %}
+{# The route composes the description (summary + resolved price + CTA, localised)
+   and an absolute image URL. Re-deriving them here published "None" whenever an
+   asset had no description, and a relative cover URL social platforms can't fetch. #}
+{% block meta_description %}{{ meta_description }}{% endblock %}
 
 {% block og_title %}{{ asset_obj.title }}{% endblock %}
-{% block og_description %}{{ asset_obj.description | striptags | truncate(200) }}{% endblock %}
-{% block og_image %}{{ asset_obj.cover_image_url }}{% endblock %}
+{% block og_description %}{{ meta_description }}{% endblock %}
+{% block og_image %}{{ meta_image }}{% endblock %}
 {% block og_type %}product{% endblock %}
 
 {% block twitter_title %}{{ asset_obj.title }}{% endblock %}
-{% block twitter_description %}{{ asset_obj.description | striptags | truncate(200) }}{% endblock %}
-{% block twitter_image %}{{ asset_obj.cover_image_url }}{% endblock %}
+{% block twitter_description %}{{ meta_description }}{% endblock %}
+{% block twitter_image %}{{ meta_image }}{% endblock %}
 
 {% block structured_data %}
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "Product",
-  "name": "{{ asset_obj.title }}",
-  "description": "{{ asset_obj.description | striptags | truncate(500) }}",
-  "image": "{{ meta_image }}",
-  "url": "{{ request.url }}",
-  "offers": {
-    "@type": "Offer",
-    "price": "{{ asset_obj.price }}",
-    "priceCurrency": "{{ currency_symbol }}",
-    "availability": "https://schema.org/InStock",
-    "url": "{{ request.url }}"
-  },
-  "brand": {
-    "@type": "Organization",
-    "name": "{{ store_name }}"
-  }
-}
-</script>
+{# Built in the route from utils/pricing.py, so the offer a crawler reads is the
+   offer the page makes — donation minimums and "from" ranges included. Escaping
+   is handled by tojson rather than by hand-quoting values into a JSON literal. #}
+{% if product_schema %}
+<script type="application/ld+json">{{ product_schema | tojson }}</script>
+{% endif %}
 {% endblock %}
 
 {% block head_extra %}
 <!-- Product Meta Data -->
-<meta property="product:price:amount" content="{{ asset_obj.price }}">
-<meta property="product:price:currency" content="{{ currency_code or 'KES' }}">
+{% set og_pricing = asset_pricing(asset_obj) %}
+<meta property="product:price:amount" content="{{ '%.2f' | format(og_pricing.amount or 0) }}">
+<meta property="product:price:currency" content="{{ currency_code or currency_symbol }}">
 <!-- Global Helpers -->
 <script>
     function getFileType(url) {
@@ -1382,33 +1378,39 @@ null
                                     x-show="$store.order.quantity > 1"> × <span
                                         x-text="$store.order.quantity"></span></span>
                             </p>
-                            {% else %}
-                            {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
-                            {% set _don = asset_obj.details.donation if asset_obj.details and asset_obj.details.donation and asset_obj.details.donation.enabled else None %}
-                            {% if _don and _don.mandatory and (_don.min_amount|float > 0) %}
-                            <p class="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">{{ translate('starts_at') }}</p>
+                            {% elif pricing.mode == 'donation' %}
+                            {% if pricing.amount %}
+                            <p class="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">{{
+                                translate('price_from') }}</p>
                             <div class="flex items-baseline gap-2">
                                 <span class="text-4xl font-extrabold text-gray-900 dark:text-white break-words"
-                                    x-text="currency + formatCurrency({{ _don.min_amount }})"></span>
-                            </div>
-                            {% elif _don %}
-                            <div class="flex flex-col">
-                                <span class="text-4xl font-extrabold text-green-600 dark:text-green-400">{{
-                                    translate('free') or 'Free' }}</span>
-                                <span class="text-sm font-semibold text-indigo-600 dark:text-indigo-400 mt-1">{{ translate('donations_welcome') }}</span>
+                                    x-text="currency + formatCurrency({{ pricing.amount }})"></span>
                             </div>
                             {% else %}
+                            {# A required contribution with no floor: there is no number to
+                               quote, so say what the supporter actually decides. #}
                             <div class="flex items-baseline gap-2">
-                                <span class="text-4xl font-extrabold text-green-600 dark:text-green-400">{{
-                                    translate('free') or 'Free' }}</span>
+                                <span class="text-3xl font-extrabold text-gray-900 dark:text-white break-words">{{
+                                    translate('donation_any_amount') }}</span>
                             </div>
                             {% endif %}
+                            {% elif pricing.mode == 'free_donation' %}
+                            <div class="flex flex-col">
+                                <span class="text-4xl font-extrabold text-green-600 dark:text-green-400">{{
+                                    translate('free') }}</span>
+                                <span class="text-sm font-semibold text-rose-600 dark:text-rose-400 mt-1">{{
+                                    translate('donations_welcome') }}</span>
+                            </div>
+                            {% elif pricing.is_free %}
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-4xl font-extrabold text-green-600 dark:text-green-400">{{
+                                    translate('free') }}</span>
+                            </div>
                             {% else %}
                             <div class="flex items-baseline gap-2">
                                 <span class="text-4xl font-extrabold text-gray-900 dark:text-white break-words"
                                     x-text="currency + formatCurrency(asset.price)"></span>
                             </div>
-                            {% endif %}
                             {% endif %}
                         </div>
                         <!-- Dynamic Purchase Interface -->
@@ -1571,11 +1573,7 @@ null
                                                 <span x-show="$store.order.isPhysical && $store.order.soldOut"
                                                     x-cloak>{{ translate('sold_out') }}</span>
                                                 <span x-show="!($store.order.isPhysical && $store.order.soldOut)">
-                                                    {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
-                                                    {{ translate('cta_free_' ~ asset_type_key) }}
-                                                    {% else %}
-                                                    {{ translate('cta_paid_' ~ asset_type_key) }}
-                                                    {% endif %}
+                                                    {{ page_cta }}
                                                 </span>
                                             </span>
                                             <span x-show="isProcessing" class="flex items-center gap-2">
@@ -1786,29 +1784,32 @@ null
                                     </p>
                                 </div>
                             </div>
-                            {% else %}
-                            {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
-                            {% set _don = asset_obj.details.donation if asset_obj.details and asset_obj.details.donation and asset_obj.details.donation.enabled else None %}
-                            {% if _don and _don.mandatory and (_don.min_amount|float > 0) %}
-                            <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide font-bold">{{ translate('starts_at') }}</p>
+                            {% elif pricing.mode == 'donation' %}
+                            {% if pricing.amount %}
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide font-bold">{{
+                                translate('price_from') }}</p>
                             <p class="font-extrabold text-xl text-gray-900 dark:text-white truncate">
-                                <span x-text="currency"></span><span x-text="formatCurrency({{ _don.min_amount }})"></span>
+                                <span x-text="currency"></span><span
+                                    x-text="formatCurrency({{ pricing.amount }})"></span>
                             </p>
-                            {% elif _don %}
-                            <p class="font-extrabold text-xl text-green-600 dark:text-green-400 truncate">
-                                {{ translate('free') or 'Free' }}
-                            </p>
-                            <p class="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold truncate">{{ translate('donations_welcome') }}</p>
                             {% else %}
-                            <p class="font-extrabold text-xl text-green-600 dark:text-green-400 truncate">
-                                {{ translate('free') or 'Free' }}
-                            </p>
+                            <p class="font-bold text-base text-gray-900 dark:text-white truncate">{{
+                                translate('donation_any_amount') }}</p>
                             {% endif %}
+                            {% elif pricing.mode == 'free_donation' %}
+                            <p class="font-extrabold text-xl text-green-600 dark:text-green-400 truncate">
+                                {{ translate('free') }}
+                            </p>
+                            <p class="text-[10px] text-rose-600 dark:text-rose-400 font-semibold truncate">{{
+                                translate('donations_welcome') }}</p>
+                            {% elif pricing.is_free %}
+                            <p class="font-extrabold text-xl text-green-600 dark:text-green-400 truncate">
+                                {{ translate('free') }}
+                            </p>
                             {% else %}
                             <p class="font-extrabold text-xl text-gray-900 dark:text-white truncate">
                                 <span x-text="currency"></span><span x-text="formatCurrency(asset.price)"></span>
                             </p>
-                            {% endif %}
                             {% endif %}
                         </div>
                         <button @click="handlePurchaseAction()"
@@ -1818,11 +1819,7 @@ null
                                 <span x-show="$store.order.isPhysical && $store.order.soldOut" x-cloak>{{
                                     translate('sold_out') }}</span>
                                 <span x-show="!($store.order.isPhysical && $store.order.soldOut)">
-                                    {% if asset_obj.price is not none and asset_obj.price|float == 0 %}
-                                    {{ translate('cta_free_' ~ asset_type_key) }}
-                                    {% else %}
-                                    {{ translate('cta_paid_' ~ asset_type_key) }}
-                                    {% endif %}
+                                    {{ page_cta }}
                                 </span>
                             </span>
                             <span x-show="isProcessing" class="flex items-center justify-center">
@@ -1866,8 +1863,9 @@ null
                     <div class="w-12 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mx-auto mb-6 sm:hidden"></div>
                     <div x-show="status === 'ready' || status === 'failed'">
                         <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                            <span x-show="isFree">{{ translate('cta_free_' ~ asset_type_key) }}</span>
-                            <span x-show="!isFree">{{ translate('cta_paid_' ~ asset_type_key) }}</span>
+                            <span x-show="isDonating" x-cloak>{{ translate('donate_cta') }}</span>
+                            <span x-show="!isDonating && isFree">{{ translate('cta_free_' ~ asset_type_key) }}</span>
+                            <span x-show="!isDonating && !isFree">{{ translate('cta_paid_' ~ asset_type_key) }}</span>
                         </h3>
 
                         <!-- Order summary (physical products).
@@ -1917,8 +1915,9 @@ null
                         </div>
 
                         <p class="text-gray-600 dark:text-gray-400 mb-6">
-                            <span x-show="isFree">{{ translate('inst_free_' ~ asset_type_key) }}</span>
-                            <span x-show="!isFree">{{ translate('inst_paid_' ~ asset_type_key) }}</span>
+                            <span x-show="isDonating" x-cloak>{{ translate('inst_donation') }}</span>
+                            <span x-show="!isDonating && isFree">{{ translate('inst_free_' ~ asset_type_key) }}</span>
+                            <span x-show="!isDonating && !isFree">{{ translate('inst_paid_' ~ asset_type_key) }}</span>
                         </p>
 
                         <form @submit.prevent="initiatePayment()">

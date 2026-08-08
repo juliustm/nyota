@@ -109,6 +109,17 @@ def _visibility(settings, key):
     return value if value in _VIEWER_RANK else VISIBILITY_PUBLIC
 
 
+def absolute_media_url(url):
+    """Turn a stored media path (/static/…, /media/…) into a full URL.
+
+    Cover paths are already root-relative, so passing them through
+    `url_for('static', …)` produced /static/static/… — which is what social
+    previews and JSON-LD were pointing at. Everything that publishes a media URL
+    goes through here instead.
+    """
+    return _absolute(url)
+
+
 def _absolute(url):
     """Make a stored media path absolute; schema.org requires full URLs."""
     url = _clean(url)
@@ -467,3 +478,57 @@ def build_structured_data(creator, footer, description=''):
     }
 
     return {'@context': 'https://schema.org', '@graph': [org, website]}
+
+
+def build_catalog_schema(assets, currency):
+    """ItemList of the storefront's products, for the landing page.
+
+    The Organization/WebSite graph tells a crawler who the store is; this tells
+    it what the store sells, with the same price the card shows (via
+    utils.pricing, so a donation asset can never be listed at a price the page
+    never quotes). Emitted only for a listing a visitor actually sees.
+    """
+    if not assets:
+        return None
+
+    from utils.pricing import offer_schema
+
+    try:
+        home = url_for('main.landing_page', _external=True)
+    except RuntimeError:
+        return None
+
+    elements = []
+    for position, asset in enumerate(assets, start=1):
+        try:
+            item_url = url_for('main.asset_detail', slug=asset.slug, _external=True)
+        except RuntimeError:
+            continue
+        product = {
+            '@type': 'Product',
+            'name': asset.title,
+            'url': item_url,
+            'offers': offer_schema(asset, currency, url=item_url),
+        }
+        if asset.description:
+            product['description'] = _clean(asset.description)[:300]
+        image = _absolute(asset.cover_image_url)
+        if image:
+            product['image'] = image
+        elements.append({
+            '@type': 'ListItem',
+            'position': position,
+            'item': product,
+        })
+
+    if not elements:
+        return None
+
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        '@id': f'{home.rstrip("/")}/#catalog',
+        'url': home,
+        'numberOfItems': len(elements),
+        'itemListElement': elements,
+    }

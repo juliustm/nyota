@@ -1,22 +1,27 @@
 {% extends "user/base.html" %}
 
-{% block title %}{{ store_name }}{% endblock %}
+{# Title, description and image are resolved once in the route (stable across
+   crawls, localised, and search-aware) — the page just renders them. #}
+{% block title %}{{ meta_title or store_name }}{% endblock %}
 
-{% block meta_description %}{{ creator.get_setting('store_bio') or 'Discover amazing digital content on ' + store_name
-}}{% endblock %}
+{% block meta_description %}{{ meta_description }}{% endblock %}
 
-{% block og_title %}{{ store_name }}{% endblock %}
-{% block og_description %}{{ creator.get_setting('store_bio') or 'Discover amazing digital content on ' + store_name
-}}{% endblock %}
-<!-- Use meta_image from route: profile photo > random asset cover > default -->
+{% block og_title %}{{ meta_title or store_name }}{% endblock %}
+{% block og_description %}{{ meta_description }}{% endblock %}
+<!-- Use meta_image from route: profile photo > top listed cover > default -->
 {% block og_image %}{{ meta_image }}{% endblock %}
 
-{% block twitter_title %}{{ store_name }}{% endblock %}
-{% block twitter_description %}{{ creator.get_setting('store_bio') or 'Discover amazing digital content on ' +
-store_name }}{% endblock %}
+{% block twitter_title %}{{ meta_title or store_name }}{% endblock %}
+{% block twitter_description %}{{ meta_description }}{% endblock %}
 {% block twitter_image %}{{ meta_image }}{% endblock %}
 
-
+{% block structured_data %}
+{{ super() }}
+{# What the store sells, priced exactly as the cards below quote it. #}
+{% if catalog_schema %}
+<script type="application/ld+json">{{ catalog_schema | tojson }}</script>
+{% endif %}
+{% endblock %}
 
 
 {% block content %}
@@ -98,11 +103,22 @@ store_name }}{% endblock %}
         {% if assets %}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {% for asset in assets %}
+            {# One resolved price per card (utils/pricing.py): the same mode, the
+               same number and the same verb the asset page will use, so the card
+               never promises something the next screen contradicts. #}
+            {% set pricing = asset_pricing(asset) %}
+            {% set purchase_status = user_purchases.get(asset.id) %}
             <div
                 class="group relative flex flex-col bg-white dark:bg-gray-800 rounded-xl border border-gray-200/80 dark:border-gray-700/80 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
-                <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}" class="flex-grow flex flex-col">
-                    <!-- Image Container -->
-                    <div class="relative aspect-[3/4] overflow-hidden bg-gray-100 dark:bg-gray-900">
+                <a href="{{ url_for('main.asset_detail', slug=asset.slug) }}" class="flex-grow flex flex-col"
+                    aria-label="{{ asset.title }} — {{ translate(pricing.cta_key) }}">
+                    <!-- Image Container. On a phone the cards are a single column, so
+                         an uncapped 3:4 cover pushes the price and the button off the
+                         first screen and every product costs a scroll to evaluate. The
+                         cap keeps cover, price and action visible together; desktop
+                         keeps the full portrait crop. -->
+                    <div
+                        class="relative aspect-[3/4] max-h-[52vh] sm:max-h-none overflow-hidden bg-gray-100 dark:bg-gray-900">
                         <img src="{{ asset.cover_image_url }}" alt="{{ asset.title }}" loading="lazy" decoding="async"
                             width="900" height="1200"
                             class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105">
@@ -112,10 +128,23 @@ store_name }}{% endblock %}
                             class="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/30 to-transparent pointer-events-none">
                         </div>
 
+                        <!-- Price Badge: the one thing a scroller must never have to
+                             open the card to learn. Only shown when the answer is a
+                             word ("Free", "Donation") rather than a number — a price
+                             belongs in the footer row where it can be read next to
+                             the button that acts on it. -->
+                        {% if pricing.badge_key and purchase_status != 'COMPLETED' %}
+                        <div class="absolute top-2.5 right-2.5">
+                            <div
+                                class="{{ 'bg-green-500/95 text-white' if pricing.badge_key == 'free' else 'bg-rose-500/95 text-white' }} backdrop-blur-md px-2.5 py-1 rounded-full text-xs font-extrabold shadow-sm border border-white/20 uppercase tracking-wide">
+                                {{ translate(pricing.badge_key) }}
+                            </div>
+                        </div>
+                        {% endif %}
+
                         <!-- Badges Container -->
                         <div class="absolute top-2.5 left-2.5 flex flex-col gap-1.5 items-start">
                             <!-- Purchase Status Badge -->
-                            {% set purchase_status = user_purchases.get(asset.id) %}
                             {% if purchase_status == 'COMPLETED' %}
                             <div
                                 class="bg-green-500/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-xs font-bold text-white shadow-sm flex items-center gap-1">
@@ -138,11 +167,12 @@ store_name }}{% endblock %}
                             </div>
                             {% endif %}
 
-                            <!-- NEW Badge -->
-                            {% if asset.id in new_asset_ids and purchase_status != 'COMPLETED' %}
+                            <!-- NEW Badge — never alongside a purchase state; someone
+                                 mid-payment doesn't need to be told it's new. -->
+                            {% if asset.id in new_asset_ids and not purchase_status %}
                             <div
-                                class="bg-blue-600/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-xs font-bold text-white shadow-sm animate-pulse">
-                                NEW
+                                class="bg-blue-600/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-xs font-bold text-white shadow-sm">
+                                {{ translate('badge_new') }}
                             </div>
                             {% endif %}
 
@@ -150,7 +180,7 @@ store_name }}{% endblock %}
                             {% if asset.is_subscription %}
                             <div
                                 class="bg-purple-600/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-xs font-bold text-white shadow-sm border border-white/20">
-                                SUBSCRIPTION
+                                {{ translate('type_subscription') }}
                             </div>
                             {% endif %}
 
@@ -196,7 +226,16 @@ store_name }}{% endblock %}
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                                 </svg>
-                                {{ custom_label or 'Digital Product' }}
+                                {{ custom_label or translate('type_digital_product') }}
+                            </div>
+                            {% elif asset.asset_type.name == 'PHYSICAL' %}
+                            <div
+                                class="bg-teal-600/90 backdrop-blur-md px-2.5 py-0.5 rounded-full text-xs font-bold text-white shadow-sm border border-white/20 flex items-center gap-1">
+                                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                </svg>
+                                {{ custom_label or translate('type_physical') }}
                             </div>
                             {% endif %}
                         </div>
@@ -271,29 +310,73 @@ store_name }}{% endblock %}
                         </div>
                         {% endif %}
 
+                        <!-- Price + action. Read as one line: what it costs, and the
+                             exact word the button on the asset page will use. The
+                             action is a filled pill, not a link, because it is the
+                             card's whole purpose and has to survive a thumb on a
+                             phone (44px tap target). -->
                         <div
-                            class="flex items-center justify-between mt-auto pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                            <div class="text-lg font-extrabold text-gray-900 dark:text-white">
-                                {% if asset.is_subscription and asset.details and asset.details.subscription_tiers %}
-                                {% set min_price = asset.details.subscription_tiers | map(attribute='price') |
-                                map('float') | min %}
-                                <div class="flex flex-col">
-                                    <span class="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">{{
-                                        translate('starts_at') }}</span>
-                                    <span>{{ currency_symbol }} {{ "{:,.0f}".format(min_price) }}</span>
-                                </div>
+                            class="flex items-center justify-between gap-3 mt-auto pt-3 border-t border-gray-100 dark:border-gray-700/50">
+                            <div class="min-w-0">
+                                {% if purchase_status == 'COMPLETED' %}
+                                {# A price is noise to someone who already paid it. #}
+                                <span class="text-sm font-bold text-green-600 dark:text-green-400">{{
+                                    translate('you_own_this') }}</span>
+                                {% elif pricing.mode == 'free' %}
+                                <span class="text-lg font-extrabold text-green-600 dark:text-green-400">{{
+                                    translate('free') }}</span>
+                                {% elif pricing.mode == 'free_donation' %}
+                                <span class="text-lg font-extrabold text-green-600 dark:text-green-400 block leading-tight">{{
+                                    translate('free') }}</span>
+                                <span class="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{{
+                                    translate('donations_welcome') }}</span>
+                                {% elif pricing.amount is none %}
+                                {# Required donation with no floor — there is no number to
+                                   quote, so say what the visitor actually gets to decide. #}
+                                <span class="text-sm font-bold text-gray-900 dark:text-white leading-tight block">{{
+                                    translate('donation_any_amount') }}</span>
                                 {% else %}
-                                {{ currency_symbol }} {{ "{:,.0f}".format(asset.price|float) }}
+                                {% if pricing.from_price %}
+                                <span
+                                    class="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide font-bold block leading-none mb-0.5">{{
+                                    translate('price_from') }}</span>
+                                {% endif %}
+                                <span class="text-lg font-extrabold text-gray-900 dark:text-white">{{ currency_symbol }}
+                                    {{ "{:,.0f}".format(pricing.amount) }}</span>
                                 {% endif %}
                             </div>
+
+                            {% if purchase_status == 'COMPLETED' %}
                             <span
-                                class="text-s font-semibold text-indigo-600 dark:text-indigo-400 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                                {{ translate('view_details') }}
-                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                class="shrink-0 inline-flex items-center gap-1 px-3.5 py-2.5 rounded-xl bg-green-600 text-white text-sm font-bold shadow-sm shadow-green-600/20 group-hover:bg-green-700 transition-colors">
+                                {{ translate('access_content') }}
+                                <svg class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" fill="none"
+                                    viewBox="0 0 24 24" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M9 5l7 7-7 7" />
                                 </svg>
                             </span>
+                            {% elif purchase_status == 'PENDING' %}
+                            <span
+                                class="shrink-0 inline-flex items-center gap-1 px-3.5 py-2.5 rounded-xl bg-yellow-500 text-white text-sm font-bold shadow-sm shadow-yellow-500/20 group-hover:bg-yellow-600 transition-colors">
+                                {{ translate('awaiting_payment') }}
+                                <svg class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" fill="none"
+                                    viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 5l7 7-7 7" />
+                                </svg>
+                            </span>
+                            {% else %}
+                            <span
+                                class="shrink-0 inline-flex items-center gap-1 px-3.5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-sm shadow-indigo-600/25 group-hover:bg-indigo-700 group-hover:shadow-md transition-all">
+                                {{ translate(pricing.cta_key) }}
+                                <svg class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" fill="none"
+                                    viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 5l7 7-7 7" />
+                                </svg>
+                            </span>
+                            {% endif %}
                         </div>
                     </div>
                 </a>

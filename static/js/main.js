@@ -1786,6 +1786,14 @@ document.addEventListener('alpine:init', () => {
             const n = parseFloat(this.contribution);
             return isNaN(n) || n < 0 ? 0 : n;
         },
+        // Is this checkout a contribution rather than a purchase? True when the
+        // asset requires one, or when the supporter has chosen to give on an
+        // asset that only invites it. The wording of the whole modal hangs off
+        // this: a required donation is priced 0 at the base, so `isFree` alone
+        // would greet the supporter with "Get this, Free!" and then charge them.
+        get isDonating() {
+            return this.isDonation && (!!this.donationCfg?.mandatory || this.contributionAmount > 0);
+        },
         // Quick-pick chips: unique, sorted, and never below the minimum — offering a
         // chip the server would reject is a dead end for the supporter.
         get suggestedAmounts() {

@@ -1,6 +1,6 @@
 {% extends "salesperson/base.html" %}
 
-{% block title %}{{ _('sales_dashboard') }}{% endblock %}
+{% block title %}{{ translate('sales_dashboard') }}{% endblock %}
 
 {% block content %}
 <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6 pb-24" x-data="salesDashboard()" x-init="init()"
@@ -20,7 +20,7 @@
                 <div x-data="{ menuOpen: false }" class="relative">
                     <button @click="menuOpen = !menuOpen"
                         class="flex-shrink-0 p-3 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-xl transition-all duration-200 shadow-sm"
-                        title="{{ _('more_options') }}">
+                        title="{{ translate('more_options') }}">
                         <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
                             stroke-width="1.5" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round"
@@ -33,8 +33,7 @@
 
                         <!-- Theme Switcher -->
                         <div class="p-2">
-                            <p class="px-2 py-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">{{
-                                _('theme') }}</p>
+                            <p class="px-2 py-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">{{ translate('theme') }}</p>
                             <div class="grid grid-cols-3 gap-1">
                                 <button @click="$dispatch('set-theme', 'light')"
                                     :class="{ 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300': theme === 'light' }"
@@ -65,8 +64,7 @@
 
                         <!-- Language Switcher -->
                         <div class="border-t border-gray-100 dark:border-gray-700 p-2">
-                            <p class="px-2 py-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">{{
-                                _('language') }}</p>
+                            <p class="px-2 py-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">{{ translate('language') }}</p>
                             <a href="#"
                                 class="block text-sm px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">English</a>
                             <a href="#"
@@ -78,7 +76,7 @@
                 <!-- Logout Button -->
                 <button @click="lockSession()"
                     class="flex-shrink-0 p-3 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all duration-200 shadow-sm"
-                    title="{{ _('logout') }}">
+                    title="{{ translate('logout') }}">
                     <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -97,12 +95,12 @@
                         <span x-show="pendingOrders.length > 0"
                             class="bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center"
                             x-text="pendingOrders.length" x-cloak></span>
-                        <span>{{ _('pending_sync') }}</span>
+                        <span>{{ translate('pending_sync') }}</span>
                     </button>
                     <button @click="activeTab = 'all'"
                         :class="activeTab === 'all' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200'"
                         class="whitespace-nowrap py-2 px-1 border-b-2 font-semibold text-sm transition-colors duration-200">
-                        {{ _('all_orders') }}
+                        {{ translate('all_orders') }}
                     </button>
                 </nav>
             </div>
@@ -118,7 +116,7 @@
                     class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
                     <!-- Compact Pending Orders Header -->
                     <div class="p-2 flex items-center justify-between">
-                        <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ _('pending_orders_to_sync') }}
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ translate('pending_orders_to_sync') }}
                         </h3>
                         <button @click="syncAll()" :disabled="pendingOrders.length === 0 || isSyncing"
                             class="bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-all duration-200 flex items-center space-x-2 text-sm shadow-md hover:shadow-lg disabled:shadow-none">
@@ -135,7 +133,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round"
                                     d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
                             </svg>
-                            <span x-text="isSyncing ? '{{ _('syncing') }}...' : '{{ _('sync_all_now') }}'"></span>
+                            <span x-text="isSyncing ? '{{ translate('syncing') }}...' : '{{ translate('sync_all_now') }}'"></span>
                         </button>
                     </div>
 
@@ -157,8 +155,8 @@
                 <div
                     class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
                     <div class="p-6 border-b border-gray-100 dark:border-gray-700">
-                        <h3 class="text-xl font-bold text-gray-900 dark:text-white">{{ _('all_saved_orders') }}</h3>
-                        <p class="text-gray-600 dark:text-gray-400 text-sm">{{ _('your_sales_summary') }}</p>
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-white">{{ translate('all_saved_orders') }}</h3>
+                        <p class="text-gray-600 dark:text-gray-400 text-sm">{{ translate('your_sales_summary') }}</p>
                     </div>
 
                     <div class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -174,9 +172,8 @@
                                         d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                                 </svg>
                             </div>
-                            <h4 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">{{
-                                _('no_orders_placed_yet') }}</h4>
-                            <p class="text-gray-600 dark:text-gray-400">{{ _('click_add_new_to_start') }}</p>
+                            <h4 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">{{ translate('no_orders_placed_yet') }}</h4>
+                            <p class="text-gray-600 dark:text-gray-400">{{ translate('click_add_new_to_start') }}</p>
                         </div>
                     </div>
                 </div>
@@ -193,7 +190,7 @@
     <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
     </svg>
-    <span class="text-lg">{{ _('create_new_order') }}</span>
+    <span class="text-lg">{{ translate('create_new_order') }}</span>
 </a>
 {% endblock %}
 
@@ -254,12 +251,12 @@
                 try {
                     const result = await syncOutboxWithServer(this.userId);
                     if (!result.success) {
-                        alert(result.message || '{{ _('sync_failed') }}');
+                        alert(result.message || '{{ translate('sync_failed') }}');
                     }
                     await this.loadData();
                 } catch (error) {
                     console.error('Sync error:', error);
-                    alert('{{ _('sync_failed') }}');
+                    alert('{{ translate('sync_failed') }}');
                 } finally {
                     this.isSyncing = false;
                 }
@@ -285,14 +282,14 @@
                     await this.loadData();
                 } catch (error) {
                     console.error('Single sync error:', error);
-                    alert('{{ _('sync_failed') }}');
+                    alert('{{ translate('sync_failed') }}');
                 } finally {
                     this.isSyncing = false;
                 }
             },
 
             async deleteOrder(localId) {
-                if (confirm('{{ _('confirm_delete_order') }}')) {
+                if (confirm('{{ translate('confirm_delete_order') }}')) {
                     try {
                         await deleteOrderFromOutbox(localId, this.userId);
                         await this.loadData();
@@ -322,7 +319,7 @@
             // Function to share the order as a PDF
             async shareAsPDF(order) {
                 // PDF generation currently disabled
-                alert('{{ _('pdf_generation_failed') }}');
+                alert('{{ translate('pdf_generation_failed') }}');
             }
         }));
     });

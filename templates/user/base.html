@@ -9,6 +9,16 @@
          every slice of the same catalogue credits one page. -->
     <link rel="canonical" href="{{ canonical_url or request.url }}">
 
+    {# The same page in the other language. Without these a crawler only ever sees
+       whichever language it happened to be served and the other one is invisible;
+       with them both get indexed and a searcher lands on the one they can read.
+       x-default points at the bare URL, which picks a language from the visitor. #}
+    {% set _alt_base = canonical_url or request.base_url %}
+    {% for code in supported_languages %}
+    <link rel="alternate" hreflang="{{ code }}" href="{{ _alt_base }}?lang={{ code }}">
+    {% endfor %}
+    <link rel="alternate" hreflang="x-default" href="{{ _alt_base }}">
+
     <!-- PWA Manifest -->
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 

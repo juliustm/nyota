@@ -6,14 +6,13 @@
 
 {% block content %}
 <script type="application/json" id="asset-form-data">{{ asset|tojson|safe }}</script>
-{# Default delivery questions seeded onto new physical products, in the creator's
-   current UI language. The admin can reword or delete them before saving. #}
-<script type="application/json" id="delivery-defaults">[
-    {"type": "text", "question": {{ translate('delivery_q_name')|tojson|safe }}, "required": true},
-    {"type": "phone", "question": {{ translate('delivery_q_phone')|tojson|safe }}, "required": true},
-    {"type": "textarea", "question": {{ translate('delivery_q_where')|tojson|safe }}, "required": true},
-    {"type": "location", "question": {{ translate('delivery_q_location')|tojson|safe }}, "required": false}
-]</script>
+{# Default delivery questions seeded onto new physical products — in the creator's
+   writing language, and already carrying the other one. They used to be resolved
+   in whatever language the ADMIN happened to be browsing in, which froze one
+   language into data every buyer reads (and, since a question's text is the key
+   its answers are stored under, froze it for good). The admin can reword or
+   delete them before saving. #}
+<script type="application/json" id="delivery-defaults">{{ delivery_defaults|tojson|safe }}</script>
 
 <div x-data="assetForm()" x-init="init()" class="max-w-6xl mx-auto">
     <!-- Simple Header -->

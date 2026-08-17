@@ -29,6 +29,10 @@ function mountMarkdownEditor(element, { minHeight = '160px', placeholder = '' } 
 // state in sync as the creator types.
 // Client-side id for a product variation. Server keeps it (sanitized to
 // [A-Za-z0-9_-]) and pairs it with the matching variation_photo_<id> upload.
+function newTierId() {
+    return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
 function newVariationId() {
     return 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -353,6 +357,215 @@ const ctaEditor = {
 
 function withCtaEditor(component) {
     return Object.defineProperties(component, Object.getOwnPropertyDescriptors(ctaEditor));
+}
+
+// --- The second language ------------------------------------------------------
+// A creator writes an asset once, in their own language, and publishes. Later they
+// come back and write it again in the other one. Rather than doubling every field
+// on the page — two title boxes, two 340px markdown editors, two of everything on
+// four tabs — the editor keeps ONE set of fields and swaps what they are pointed
+// at. The page never gets longer, and a creator who only ever works in one
+// language sees exactly the form they saw before this existed.
+//
+// The manifest of what can be translated comes from the server
+// (utils/i18n.TRANSLATABLE_*) through a #translatable-fields island, so the boxes
+// drawn here and the fields the save route will accept cannot drift apart.
+
+let _translationManifest = null;
+function translationManifest() {
+    if (_translationManifest) return _translationManifest;
+    try {
+        const el = document.getElementById('translatable-fields');
+        _translationManifest = el ? (JSON.parse(el.textContent || '{}') || {}) : {};
+    } catch (e) { _translationManifest = {}; }
+    _translationManifest.fields = _translationManifest.fields || [];
+    _translationManifest.collections = _translationManifest.collections || [];
+    _translationManifest.languages = _translationManifest.languages || [];
+    return _translationManifest;
+}
+
+// Mixed into any component exposing `translationBase(path)` — the canonical value
+// a given path holds — and keeping its other-language copy in `translations`.
+const contentI18n = {
+    contentLang: '',
+    primaryLang: '',
+    translations: {},
+
+    get isTranslating() { return this.contentLang !== this.primaryLang; },
+    get contentLanguages() { return translationManifest().languages; },
+    get translatableFields() { return translationManifest().fields; },
+    get translatableCollections() { return translationManifest().collections; },
+
+    initContentI18n(primary, translations) {
+        this.primaryLang = primary || translationManifest().primary || 'sw';
+        this.translations = JSON.parse(JSON.stringify(translations || {}));
+        // Come back to the language they were last writing in — but never to a
+        // language this asset doesn't have, and never before the manifest loads.
+        const saved = localStorage.getItem('adminAssetContentLang');
+        const known = this.contentLanguages.map(l => l.code);
+        this.contentLang = (saved && known.includes(saved)) ? saved : this.primaryLang;
+    },
+
+    setContentLang(code) {
+        this.contentLang = code;
+        localStorage.setItem('adminAssetContentLang', code);
+    },
+
+    languageLabel(code) {
+        const found = this.contentLanguages.find(l => l.code === code);
+        return found ? found.label : code;
+    },
+
+    // --- reading and writing a dotted path ---------------------------------
+    // 'title' | 'details.welcomeContent' | 'details.variations.<id>.name'
+
+    _slot(create) {
+        if (!this.translations[this.contentLang]) {
+            if (!create) return null;
+            this.translations[this.contentLang] = {};
+        }
+        return this.translations[this.contentLang];
+    },
+
+    tGet(path) {
+        if (!this.isTranslating) return this.translationBase(path) ?? '';
+        let node = this._slot(false);
+        for (const part of path.split('.')) {
+            if (!node || typeof node !== 'object') return '';
+            node = node[part];
+        }
+        return (node === null || node === undefined) ? '' : node;
+    },
+
+    tSet(path, value) {
+        if (!this.isTranslating) { this.translationBaseSet(path, value); return; }
+        const parts = path.split('.');
+        const text = value === null || value === undefined ? '' : String(value);
+        let node = this._slot(true);
+        for (const part of parts.slice(0, -1)) {
+            if (!node[part] || typeof node[part] !== 'object') node[part] = {};
+            node = node[part];
+        }
+        // An empty box means "no translation", not "translated to nothing" — drop
+        // it so the reader falls back to the original instead of seeing a blank.
+        if (text.trim()) node[parts.at(-1)] = text;
+        else delete node[parts.at(-1)];
+    },
+
+    // The original, shown as the placeholder and copied by the button beside it.
+    // Doubles as the source text to translate FROM, so the creator never has to
+    // hunt for what a box is supposed to say.
+    tBase(path) {
+        const value = this.translationBase(path);
+        return (value === null || value === undefined) ? '' : String(value);
+    },
+
+    tCopyFromBase(path) { this.tSet(path, this.tBase(path)); },
+
+    // Dropdown choices are the one list-shaped thing a creator translates. They
+    // are matched to the originals BY POSITION — the value a buyer submits is
+    // always the original string, and only the label changes — so a short or
+    // reordered translation must not shift a label onto a different choice.
+    // Padding to the original's length keeps the alignment explicit.
+    optionsBase(field) {
+        const raw = field._optionsRaw !== undefined && field._optionsRaw !== null
+            ? String(field._optionsRaw)
+            : (Array.isArray(field.options) ? field.options.join(', ') : '');
+        return raw;
+    },
+
+    _baseOptions(field) {
+        return this.optionsBase(field).split(',').map(s => s.trim()).filter(Boolean);
+    },
+
+    tSetOptions(field, value) {
+        const originals = this._baseOptions(field);
+        const items = String(value || '').split(',').map(s => s.trim());
+        const aligned = originals.map((_, i) => items[i] || '');
+        const path = `custom_fields.${field.key}.options`;
+        if (aligned.some(v => v)) {
+            const parts = path.split('.');
+            let node = this._slot(true);
+            for (const part of parts.slice(0, -1)) {
+                if (!node[part] || typeof node[part] !== 'object') node[part] = {};
+                node = node[part];
+            }
+            node[parts.at(-1)] = aligned;
+        } else {
+            this.tSet(path, '');
+        }
+    },
+
+    // --- Content items -----------------------------------------------------
+    // A content item's translation lives on its OWN row (asset_file.translations)
+    // rather than in the asset's blob, because those rows are deleted and rebuilt
+    // on every save and are addressed by position, not by a stable id.
+
+    fGet(file, field) {
+        if (!this.isTranslating) return file[field] || '';
+        return ((file.translations || {})[this.contentLang] || {})[field] || '';
+    },
+
+    fSet(file, field, value) {
+        if (!this.isTranslating) { file[field] = value; return; }
+        if (!file.translations) file.translations = {};
+        if (!file.translations[this.contentLang]) file.translations[this.contentLang] = {};
+        const text = String(value ?? '');
+        if (text.trim()) file.translations[this.contentLang][field] = text;
+        else delete file.translations[this.contentLang][field];
+    },
+
+    fBase(file, field) { return file[field] || ''; },
+
+    // Read one path out of a specific language's slot, whichever is active.
+    _readIn(code, path) {
+        let node = this.translations[code];
+        for (const part of path.split('.')) {
+            if (!node || typeof node !== 'object') return '';
+            node = node[part];
+        }
+        return (node === null || node === undefined) ? '' : node;
+    },
+
+    // How much of a language is written, for the badge on its chip. Counts only
+    // what this asset actually HAS: an asset with no options is not missing an
+    // option name, and an empty session note is not untranslated work. Otherwise
+    // the badge would tell every creator they are permanently incomplete.
+    tProgressFor(code) {
+        if (code === this.primaryLang) return { done: 0, total: 0 };
+        let done = 0, total = 0;
+        const tally = (path, original) => {
+            if (!String(original ?? '').trim()) return;
+            total++;
+            if (String(this._readIn(code, path) || '').trim()) done++;
+        };
+        for (const spec of this.translatableFields) {
+            tally(spec.path, this.translationBase(spec.path));
+        }
+        for (const spec of this.translatableCollections) {
+            for (const row of (this.translationRows(spec.path) || [])) {
+                const id = this.translationRowId(spec, row);
+                if (!id) continue;
+                for (const field of spec.fields) {
+                    tally(`${spec.path}.${id}.${field.key}`, row[field.key]);
+                }
+            }
+        }
+        return { done, total };
+    },
+
+    get tProgress() { return this.tProgressFor(this.contentLang); },
+
+    // Exactly what a reader of `code` would get for `path`, applying the same
+    // two-rung ladder the server does: their own language, else the original.
+    previewFor(code, path) {
+        if (code === this.primaryLang) return this.translationBase(path) || '';
+        return this._readIn(code, path) || this.translationBase(path) || '';
+    },
+};
+
+function withContentI18n(component) {
+    return Object.defineProperties(component, Object.getOwnPropertyDescriptors(contentI18n));
 }
 
 function bindMarkdownEditor(element, opts, getValue, setValue) {
@@ -1075,14 +1288,14 @@ document.addEventListener('alpine:init', () => {
                     if (field.type !== 'file') continue;
                     const file = this.fileData[field.question];
                     if (!file && field.required) {
-                        alert(`Please select a file for "${field.question}".`);
+                        alert(`Please select a file for "${field.question_display || field.question}".`);
                         return;
                     }
                     if (!file) continue;
 
                     const maxBytes = (field.maxSizeMb || 5) * 1024 * 1024;
                     if (file.size > maxBytes) {
-                        alert(`"${field.question}": file exceeds the ${field.maxSizeMb || 5} MB limit.`);
+                        alert(`"${field.question_display || field.question}": file exceeds the ${field.maxSizeMb || 5} MB limit.`);
                         return;
                     }
 
@@ -1095,7 +1308,7 @@ document.addEventListener('alpine:init', () => {
                     });
                     const fres = await fr.json();
                     if (!fr.ok || !fres.success) {
-                        alert(fres.message || `Error uploading file for "${field.question}".`);
+                        alert(fres.message || `Error uploading file for "${field.question_display || field.question}".`);
                         return;
                     }
                 }
@@ -1258,8 +1471,58 @@ document.addEventListener('alpine:init', () => {
         clearAllFilters() { this.searchTerm = ''; this.statusFilter = 'all'; this.typeFilter = 'all'; },
     }));
 
-    Alpine.data('assetForm', () => withRecurrenceEditor(withCtaEditor({
+    Alpine.data('assetForm', () => withRecurrenceEditor(withCtaEditor(withContentI18n({
         ctaTarget() { return this.donation; },
+
+        // The create wizard is deliberately single-language: the fastest path from
+        // "I have a thing to sell" to a live page. It mixes in the translation
+        // editor only so the partials it SHARES with the edit page (the recurrence
+        // schedule) can bind the same way in both. With contentLang pinned to the
+        // primary language, tGet/tSet are a straight pass-through to the fields.
+        translationRows(collectionPath) {
+            if (collectionPath === 'custom_fields') return this.customFields || [];
+            if (collectionPath === 'details.recurrence.slots') {
+                return (this.eventDetails.recurrence && this.eventDetails.recurrence.slots) || [];
+            }
+            if (collectionPath === 'details.variations') return this.variations || [];
+            if (collectionPath === 'details.subscription_tiers') return this.pricing.tiers || [];
+            return [];
+        },
+        translationRowId(spec, row) {
+            return String((spec.id_key === 'key' ? row.key : row.id) || '');
+        },
+        _formScalarTarget(path) {
+            if (path === 'event_location') return [this.eventDetails, 'link'];
+            if (path === 'details.postPurchaseInstructions') return [this.eventDetails, 'postPurchaseInstructions'];
+            if (path === 'story') return [this.asset, 'story_snippet'];
+            if (path.startsWith('details.')) return [this.subscriptionDetails, path.slice('details.'.length)];
+            return [this.asset, path];
+        },
+        translationBase(path) {
+            for (const spec of this.translatableCollections) {
+                const prefix = spec.path + '.';
+                if (!path.startsWith(prefix)) continue;
+                const rest = path.slice(prefix.length).split('.');
+                const row = this.translationRows(spec.path)
+                    .find(r => this.translationRowId(spec, r) === rest[0]);
+                return row ? row[rest[1]] : '';
+            }
+            const [obj, key] = this._formScalarTarget(path);
+            return obj ? obj[key] : '';
+        },
+        translationBaseSet(path, value) {
+            for (const spec of this.translatableCollections) {
+                const prefix = spec.path + '.';
+                if (!path.startsWith(prefix)) continue;
+                const rest = path.slice(prefix.length).split('.');
+                const row = this.translationRows(spec.path)
+                    .find(r => this.translationRowId(spec, r) === rest[0]);
+                if (row) row[rest[1]] = value;
+                return;
+            }
+            const [obj, key] = this._formScalarTarget(path);
+            if (obj) obj[key] = value;
+        },
         _recurrence() {
             if (!this.eventDetails.recurrence) {
                 this.eventDetails.recurrence = recurrenceEditor._hydrateRecurrence(null);
@@ -1294,6 +1557,9 @@ document.addEventListener('alpine:init', () => {
                 const dd = document.getElementById('delivery-defaults');
                 this._deliveryDefaults = dd ? (JSON.parse(dd.textContent || '[]') || []) : [];
             } catch (e) { this._deliveryDefaults = []; }
+
+            // Single-language wizard: pinned to the language this creator writes in.
+            this.initContentI18n(null, {});
 
             const dataElement = document.getElementById('asset-form-data');
             if (dataElement && dataElement.textContent.trim() !== '{}') {
@@ -1378,8 +1644,19 @@ document.addEventListener('alpine:init', () => {
                 if (!this.customFields.length && this._deliveryDefaults.length) {
                     this.customFields = this._deliveryDefaults.map(f => ({
                         type: f.type || 'text', question: f.question || '', required: !!f.required,
+                        key: f.key || '',
                         options: [], _optionsRaw: '', accept: '', maxSizeMb: 5
                     }));
+                    // ...and they arrive already written in the other language, so a
+                    // physical product is bilingual from its first save without the
+                    // creator translating four boilerplate questions by hand.
+                    this._deliveryDefaults.forEach(f => {
+                        Object.entries(f.translations || {}).forEach(([lang, entry]) => {
+                            if (!this.translations[lang]) this.translations[lang] = {};
+                            if (!this.translations[lang].custom_fields) this.translations[lang].custom_fields = {};
+                            if (f.key) this.translations[lang].custom_fields[f.key] = { ...entry };
+                        });
+                    });
                     this.collectInfoMode = 'reminder';
                 }
             }
@@ -1388,7 +1665,7 @@ document.addEventListener('alpine:init', () => {
         removeContentItem(index) { this.contentItems.splice(index, 1); },
         addCustomField() { this.customFields.push({ type: 'text', question: '', required: false, options: [], _optionsRaw: '', accept: '', maxSizeMb: 5 }); },
         removeCustomField(index) { this.customFields.splice(index, 1); },
-        addPricingTier() { this.pricing.tiers.push({ name: '', price: null, interval: 'monthly', description: '' }); },
+        addPricingTier() { this.pricing.tiers.push({ id: newTierId(), name: '', price: null, interval: 'monthly', description: '' }); },
         removePricingTier(index) { this.pricing.tiers.splice(index, 1); },
         addVariation() { this.variations.push({ id: newVariationId(), name: '', price: null, photo_url: null, sold_out: false }); },
         removeVariation(index) { this.variations.splice(index, 1); },
@@ -1400,7 +1677,8 @@ document.addEventListener('alpine:init', () => {
         submitForm(action) {
             // Clean custom fields: derive dropdown options + drop editor-only helpers.
             const cleanedCustomFields = (this.customFields || []).map(f => {
-                const out = { type: f.type || 'text', question: f.question || '', required: !!f.required };
+                const out = { type: f.type || 'text', question: f.question || '', required: !!f.required,
+                              key: f.key || '' };
                 if (f.type === 'select') {
                     out.options = (f._optionsRaw || (Array.isArray(f.options) ? f.options.join(', ') : ''))
                         .split(',').map(s => s.trim()).filter(Boolean);
@@ -1434,6 +1712,13 @@ document.addEventListener('alpine:init', () => {
                 action: action,
                 asset: this.asset,
                 assetTypeEnum: this.assetTypeEnum,
+                // Which language these columns are written in. Fixed at creation;
+                // the edit page adds the other one later.
+                primary_language: this.primaryLang,
+                // Normally empty — the wizard has no translation UI. Physical
+                // products are the exception: their delivery questions arrive
+                // pre-translated.
+                translations: this.translations,
                 contentItems: this.contentItems,
                 customFields: cleanedCustomFields,
                 collect_info_mode: this.collectInfoMode || 'optional',
@@ -1511,7 +1796,7 @@ document.addEventListener('alpine:init', () => {
         getAssetTypeDetails() { return this.assetTypeDetails[this.assetType] || { title: 'Asset', contentDescription: '', description: '', examples: [], guide: [] }; },
         mapEnumTypeToFormType(enumType) { const map = { 'VIDEO_SERIES': 'video-series', 'TICKET': 'ticket', 'DIGITAL_PRODUCT': 'digital-file', 'SUBSCRIPTION': 'subscription', 'NEWSLETTER': 'newsletter', 'PHYSICAL': 'physical' }; return map[enumType]; },
         mapFormTypeToEnumType(formType) { const map = { 'video-series': 'VIDEO_SERIES', 'ticket': 'TICKET', 'digital-file': 'DIGITAL_PRODUCT', 'subscription': 'SUBSCRIPTION', 'newsletter': 'NEWSLETTER', 'physical': 'PHYSICAL' }; return map[formType]; },
-    })));
+    }))));
 
     Alpine.data('settingsPage', (initialSettings) => ({
         // --- State ---
@@ -1721,7 +2006,7 @@ document.addEventListener('alpine:init', () => {
         connectGoogle() { alert('Connecting to Google...'); },
     }));
 
-    Alpine.data('assetView', (initialAsset, allStatuses) => withRecurrenceEditor(withCtaEditor({
+    Alpine.data('assetView', (initialAsset, allStatuses) => withRecurrenceEditor(withCtaEditor(withContentI18n({
         ctaTarget() { return this.editableAsset.donation; },
         _recurrence() {
             if (!this.editableAsset.eventDetails) this.editableAsset.eventDetails = {};
@@ -1742,10 +2027,18 @@ document.addEventListener('alpine:init', () => {
         isSaving: false,
         notification: { show: false, message: '', type: 'success' },
         previewImage: null,
+        // Per-language cover files chosen but not yet uploaded, and their local
+        // preview URLs. Keyed by language code.
+        translationCovers: {},
+        translationCoverPreviews: {},
 
         init() {
             // Initialize preview image
             this.previewImage = this.asset.cover_image_url;
+
+            // Which language this editor is writing in, and the other language's
+            // copy of everything. Done first — the field bindings read through it.
+            this.initContentI18n(this.asset.primary_language, this.asset.translations);
 
             // Restore the last-open tab so a refresh returns to the same view.
             // Fall back to General if the saved tab isn't valid for this asset type.
@@ -1883,33 +2176,141 @@ document.addEventListener('alpine:init', () => {
         },
 
         _initMDEditors() {
+            // The two markdown boxes read and write through tGet/tSet like every
+            // other field, so switching language switches what they are editing.
+            // `_mdSwapping` guards the push below: setValue() fires CodeMirror's
+            // own change handler, which would otherwise write the language we just
+            // left into the slot for the language we just arrived at.
             this._mdEditors = [
-                bindMarkdownEditor(
-                    document.getElementById('description'), { minHeight: '110px' },
-                    () => this.editableAsset.description,
-                    v => { this.editableAsset.description = v; }
-                ),
-                bindMarkdownEditor(
-                    document.getElementById('story'), { minHeight: '340px' },
-                    () => this.editableAsset.story,
-                    v => { this.editableAsset.story = v; }
-                )
-            ].filter(Boolean);
+                ['description', '110px'],
+                ['story', '340px'],
+            ].map(([path, minHeight]) => {
+                const mde = bindMarkdownEditor(
+                    document.getElementById(path), { minHeight },
+                    () => this.tGet(path),
+                    v => { if (!this._mdSwapping) this.tSet(path, v); }
+                );
+                return mde ? { path, mde } : null;
+            }).filter(Boolean);
+
+            this.$watch('contentLang', () => {
+                this._mdSwapping = true;
+                this._mdEditors.forEach(({ path, mde }) => mde.value(this.tGet(path) || ''));
+                this.$nextTick(() => { this._mdSwapping = false; });
+            });
 
             // CodeMirror measures 0px while its tab is display:none, so an editor
             // mounted under a restored non-General tab renders blank until refreshed.
             this.$watch('activeTab', tab => {
                 if (tab !== 'general') return;
-                this.$nextTick(() => this._mdEditors.forEach(mde => mde.codemirror.refresh()));
+                this.$nextTick(() => this._mdEditors.forEach(({ mde }) => mde.codemirror.refresh()));
             });
         },
+
+        _mdSwapping: false,
 
         handleCoverSelect(event) {
             const file = event.target.files[0];
             if (file) {
-                this.previewImage = URL.createObjectURL(file);
-                this.editableAsset.newCoverImage = file;
+                if (this.isTranslating) {
+                    // A cover with words baked into it needs its own version per
+                    // language. Held until save, then uploaded as cover_image_<lang>.
+                    this.translationCovers[this.contentLang] = file;
+                    this.translationCoverPreviews[this.contentLang] = URL.createObjectURL(file);
+                } else {
+                    this.previewImage = URL.createObjectURL(file);
+                    this.editableAsset.newCoverImage = file;
+                }
             }
+        },
+
+        // What the cover slot shows right now: this language's own cover if it has
+        // one, otherwise the original — which is exactly what a visitor would see.
+        get activeCover() {
+            if (!this.isTranslating) return this.previewImage;
+            return this.translationCoverPreviews[this.contentLang]
+                || this.tGet('cover_image_url')
+                || this.previewImage;
+        },
+
+        get usingOwnCover() {
+            return this.isTranslating && !!(this.translationCoverPreviews[this.contentLang]
+                || this.tGet('cover_image_url'));
+        },
+
+        clearTranslationCover() {
+            delete this.translationCovers[this.contentLang];
+            delete this.translationCoverPreviews[this.contentLang];
+            this.tSet('cover_image_url', '');
+        },
+
+        // --- What the translation editor edits ---------------------------------
+        // The manifest addresses fields by where they live on the SERVER
+        // ('event_location', 'details.postPurchaseInstructions'). This editor keeps
+        // some of them somewhere else ('eventDetails.link', and post-purchase
+        // instructions under eventDetails). These four hooks are the whole of that
+        // mapping — everything else in the mixin is shape-agnostic.
+
+        _scalarTarget(path) {
+            const ea = this.editableAsset;
+            if (path === 'event_location') {
+                if (!ea.eventDetails) ea.eventDetails = {};
+                return [ea.eventDetails, 'link'];
+            }
+            if (path === 'details.postPurchaseInstructions') {
+                if (!ea.eventDetails) ea.eventDetails = {};
+                return [ea.eventDetails, 'postPurchaseInstructions'];
+            }
+            if (path.startsWith('details.')) {
+                if (!ea.details) ea.details = {};
+                return [ea.details, path.slice('details.'.length)];
+            }
+            return [ea, path];
+        },
+
+        translationRows(collectionPath) {
+            const ea = this.editableAsset;
+            if (collectionPath === 'custom_fields') return ea.customFields || [];
+            if (collectionPath === 'details.recurrence.slots') {
+                return (ea.eventDetails && ea.eventDetails.recurrence
+                    && ea.eventDetails.recurrence.slots) || [];
+            }
+            if (collectionPath.startsWith('details.')) {
+                return (ea.details || {})[collectionPath.slice('details.'.length)] || [];
+            }
+            return [];
+        },
+
+        translationRowId(spec, row) {
+            return String((spec.id_key === 'key' ? row.key : row.id) || '');
+        },
+
+        translationBase(path) {
+            // A row inside a collection: '<collection>.<id>.<field>'
+            for (const spec of this.translatableCollections) {
+                const prefix = spec.path + '.';
+                if (!path.startsWith(prefix)) continue;
+                const rest = path.slice(prefix.length).split('.');
+                const row = this.translationRows(spec.path)
+                    .find(r => this.translationRowId(spec, r) === rest[0]);
+                return row ? row[rest[1]] : '';
+            }
+            const [obj, key] = this._scalarTarget(path);
+            return obj ? obj[key] : '';
+        },
+
+        translationBaseSet(path, value) {
+            for (const spec of this.translatableCollections) {
+                const prefix = spec.path + '.';
+                if (!path.startsWith(prefix)) continue;
+                const rest = path.slice(prefix.length).split('.');
+                const row = this.translationRows(spec.path)
+                    .find(r => this.translationRowId(spec, r) === rest[0]);
+                if (row) row[rest[1]] = value;
+                return;
+            }
+            const [obj, key] = this._scalarTarget(path);
+            if (obj) obj[key] = value;
         },
 
         get publicUrl() {
@@ -1998,7 +2399,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         addPricingTier() {
-            this.editableAsset.details.subscription_tiers.push({ name: '', price: null, interval: 'monthly', description: '' });
+            this.editableAsset.details.subscription_tiers.push({ id: newTierId(), name: '', price: null, interval: 'monthly', description: '' });
         },
 
         removePricingTier(index) {
@@ -2065,7 +2466,13 @@ document.addEventListener('alpine:init', () => {
                     title: f.title,
                     link: f.link,
                     description: desc,
-                    type: f.type || 'upload'
+                    type: f.type || 'upload',
+                    // These rows are rebuilt from scratch on every save, so a
+                    // content item's translation only survives by riding along.
+                    // The [Date:]/[Expiry:] markers above are deliberately NOT
+                    // applied here — they are parsed off the canonical
+                    // description only, and duplicating them would double them.
+                    translations: f.translations || null
                 };
             });
 
@@ -2075,7 +2482,10 @@ document.addEventListener('alpine:init', () => {
                 const out = {
                     type: f.type || 'text',
                     question: f.question || '',
-                    required: !!f.required
+                    required: !!f.required,
+                    // The handle this question's translation is filed under. The
+                    // question text stays the answer-storage key; this is separate.
+                    key: f.key || ''
                 };
                 if (f.type === 'select') {
                     out.options = (f._optionsRaw || (Array.isArray(f.options) ? f.options.join(', ') : ''))
@@ -2135,6 +2545,10 @@ document.addEventListener('alpine:init', () => {
                     benefits: this.editableAsset.details?.benefits || ''
                 },
                 labels: this.editableAsset.details?.labels || {},
+                // The other language, exactly as the boxes hold it. The server
+                // validates it against the same manifest the boxes were drawn from.
+                translations: this.translations,
+                primary_language: this.primaryLang,
                 donation: donation,
                 variations: (this.editableAsset.details?.variations || [])
                     .map(v => ({
@@ -2161,6 +2575,11 @@ document.addEventListener('alpine:init', () => {
             if (this.editableAsset.newCoverImage) {
                 formData.append('cover_image', this.editableAsset.newCoverImage);
             }
+
+            // A per-language cover, for a design with words baked into it.
+            Object.entries(this.translationCovers).forEach(([lang, file]) => {
+                if (file) formData.append(`cover_image_${lang}`, file);
+            });
 
             // Append files
             (this.editableAsset.files || []).forEach((f, index) => {
@@ -2211,7 +2630,7 @@ document.addEventListener('alpine:init', () => {
         hideNotification() {
             this.notification.show = false;
         }
-    })));
+    }))));
 
     Alpine.data('checkout', (asset, currencySymbol, paymentUrl) => ({
         isOpen: false,
@@ -2219,6 +2638,7 @@ document.addEventListener('alpine:init', () => {
         currency: currencySymbol,
         paymentUrl: paymentUrl,
         renewalTierName: null,
+        renewalTierId: null,
         autoOpenRenew: false,
         // Holds the national part only ("712 345 678") — the +255 lives in the UI.
         phoneNumber: NyotaPhone.display(localStorage.getItem('nyota_phone') || ''),
@@ -2328,6 +2748,7 @@ document.addEventListener('alpine:init', () => {
                     const parsed = JSON.parse(rd.textContent);
                     if (parsed) {
                         this.renewalTierName = parsed.tier_name || null;
+                        this.renewalTierId = parsed.tier_id || null;
                         this.autoOpenRenew = !!parsed.auto_open;
                     }
                 }
@@ -2415,9 +2836,12 @@ document.addEventListener('alpine:init', () => {
             this.tiers = this.asset.details?.subscription_tiers || [];
             // On renewal, pre-select the plan the customer was previously on (by name);
             // otherwise default to the first tier.
-            const priorTier = this.renewalTierName
-                ? this.tiers.find(t => t.name === this.renewalTierName)
-                : null;
+            const priorTier = (this.renewalTierId
+                    ? this.tiers.find(t => String(t.id || '') === String(this.renewalTierId))
+                    : null)
+                || (this.renewalTierName
+                    ? this.tiers.find(t => t.name === this.renewalTierName)
+                    : null);
             this.selectedTier = priorTier || (this.tiers.length > 0 ? this.tiers[0] : null);
 
             // Physical products have no tiers — the choice is the variation the buyer

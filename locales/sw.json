@@ -308,5 +308,17 @@
     "meta_cta_suffix": "Pata papo hapo kupitia {{ store }}.",
     "meta_store_tagline": "Nunua na upate papo hapo kwenye simu yako.",
     "meta_items_count": "Bidhaa {{ count }} zinapatikana sasa.",
-    "search_results_for": "Matokeo ya"
+    "search_results_for": "Matokeo ya",
+    "recover_title": "Rejesha Ufikiaji Wako",
+    "recover_subtitle": "Umepoteza kipindi chako? Thibitisha ununuzi wako ili urejeshe ufikiaji.",
+    "recover_throttled": "Kwa usalama, tafadhali subiri kabla ya kujaribu tena.",
+    "recover_phone_label": "Tarakimu 4 za Mwisho za Namba ya Simu",
+    "recover_phone_hint": "Namba ya simu uliyotumia kununua",
+    "recover_date_label": "Tarehe ya Ununuzi",
+    "recover_date_hint": "Tarehe uliyofanya ununuzi wako",
+    "recover_waiting": "Tafadhali Subiri...",
+    "recover_submit": "Thibitisha na Urejeshe Ufikiaji",
+    "recover_help": "Unahitaji msaada? Wasiliana na",
+    "recover_support": "msaada",
+    "back_to_store_link": "Rudi Dukani"
 }

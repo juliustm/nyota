@@ -9,15 +9,12 @@ import json
 from datetime import timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from flask import Flask, g, session, request
-from flask_babel import Babel
 import mistune
 from flask_compress import Compress
 
 from config import Config
 from models.nyota import db, migrate
 from routes import main_bp, admin_bp
-
-babel = Babel()
 
 # --- Jinja2 Custom Filters ---
 
@@ -27,24 +24,25 @@ def format_currency(value, symbol='$'):
     return f"{symbol} {float(value):,.2f}"
 
 from utils.translator import translate
+from utils.i18n import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES, normalize_lang, pick_localized
 
-# --- Language Selection for Babel ---
+# --- Language Selection ---
 
 def get_locale():
     if 'language' in session:
         return session['language']
-    
+
     # Check headers for country code (Cloudflare, App Engine, or Generic)
     country = request.headers.get('CF-IPCountry') or \
               request.headers.get('X-AppEngine-Country') or \
               request.headers.get('X-Country-Code')
-    
+
     # If a country is detected and it is NOT Tanzania, default to English
     if country and country.upper() != 'TZ':
         return 'en'
-        
+
     # Default to Swahili for Tanzania and all unknown locations
-    return 'sw'
+    return DEFAULT_LANGUAGE
 
 
 # --- Application Factory Function ---
@@ -61,7 +59,6 @@ def create_app(config_class=Config):
     # --- Initialize Flask Extensions ---
     db.init_app(app)
     migrate.init_app(app, db)
-    babel.init_app(app, locale_selector=get_locale)
     Compress(app)
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year cache for static files
 
@@ -125,6 +122,13 @@ def create_app(config_class=Config):
     def before_request_tasks():
         session.permanent = True
         app.permanent_session_lifetime = timedelta(days=30)
+        # ?lang= lets a link carry its own language: a storefront link shared into
+        # a Swahili WhatsApp group opens in Swahili even for a first-time visitor
+        # whose browser says otherwise. It sticks, so the rest of the visit
+        # follows. get_locale() stays a pure selector and never writes state.
+        requested = normalize_lang(request.args.get('lang'))
+        if requested and session.get('language') != requested:
+            session['language'] = requested
         g.language = get_locale()
 
     # --- Context Processors ---
@@ -135,6 +139,11 @@ def create_app(config_class=Config):
             store_name="Nyota ✨",
             currency_symbol=get_currency_symbol(),
             translate=translate,
+            # One fallback ladder for the creator-written label pairs, shared
+            # with utils/pricing.py so a half-filled pair reads the same way on
+            # a card, on the asset page and in the button that takes the money.
+            pick_localized=pick_localized,
+            supported_languages=SUPPORTED_LANGUAGES,
             # Every surface that quotes a price resolves it through the same
             # helper, so a card, an asset page and the JSON-LD can't disagree.
             asset_pricing=asset_pricing,

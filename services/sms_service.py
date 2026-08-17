@@ -144,7 +144,10 @@ class OnSMSProvider(SMSProvider):
         is_physical = getattr(getattr(asset, 'asset_type', None), 'name', '') == 'PHYSICAL'
         tpl = self._get_tpl(cr, 'purchase_physical' if is_physical else 'purchase', lang)
         try:
-            message = tpl.format(asset_title=asset.title, link=link, ref=ref)
+            # The buyer's own language — the same words they read on the page they
+            # bought from. Passed explicitly: this can run from the background
+            # worker, where there is no request to read a language off.
+            message = tpl.format(asset_title=asset.localized('title', lang), link=link, ref=ref)
         except KeyError:
             message = tpl
 
@@ -189,7 +192,7 @@ class OnSMSProvider(SMSProvider):
 
         tpl = self._get_tpl(creator, f'reminder_{bucket}', lang)
         try:
-            message = tpl.format(asset_title=asset.title, days=days_left, link=link)
+            message = tpl.format(asset_title=asset.localized('title', lang), days=days_left, link=link)
         except KeyError:
             message = tpl
 

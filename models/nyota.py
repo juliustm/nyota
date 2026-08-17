@@ -24,6 +24,7 @@ from utils.recurrence import (
     next_occurrence,
     occurrences,
 )
+from utils import i18n
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -383,7 +384,26 @@ class DigitalAsset(db.Model):
     max_attendees = db.Column(db.Integer, nullable=True)
     custom_fields = db.Column(JSON)
     details = db.Column(JSON, nullable=True)
-    
+
+    # --- The second language -------------------------------------------------
+    # Everything above holds the creator's PRIMARY language — whatever they typed
+    # when they made the asset. `translations` holds the other one, and only the
+    # other one, so an asset made before this existed needs no backfill and reads
+    # exactly as it always did.
+    #
+    #   {"en": {"title": ..., "description": ..., "cover_image_url": ...,
+    #           "details": {"welcomeContent": ...,
+    #                       "variations": {"<id>": {"name": ...}}},
+    #           "custom_fields": {"<key>": {"question": ...}}}}
+    #
+    # Nested rows are keyed by their own stable id, never their position. See
+    # utils/i18n.TRANSLATABLE_* for the manifest of what may appear here.
+    translations = db.Column(JSON, nullable=True)
+    # Which language the columns above are written in. Read ONLY by the admin
+    # editor, to label its language switch — resolution never consults it, so a
+    # wrong or missing value can never show a visitor the wrong words.
+    primary_language = db.Column(db.String(5), nullable=True)
+
     # Performance & Future-proofing
     total_sales = db.Column(db.Integer, default=0)
     total_revenue = db.Column(db.Numeric(10, 2), default=0.0)
@@ -419,6 +439,114 @@ class DigitalAsset(db.Model):
         except Exception:
             return 'Africa/Nairobi', ZoneInfo('Africa/Nairobi')
 
+    # --- Localisation --------------------------------------------------------
+    # Localisation is a PROJECTION, applied when an asset is rendered or
+    # serialized for a visitor. The attributes themselves — title, description,
+    # details, custom_fields — are always canonical, because they are also read
+    # by things that write: checkout prices an order from `details`, the order
+    # snapshot and the payment gateway's product line take `title`, and the CSV
+    # export has to say the same words every time. Ask for the localised value
+    # explicitly, at the point where a person is about to read it.
+
+    @property
+    def primary_lang(self):
+        """The language the base columns are written in."""
+        if self.primary_language:
+            return self.primary_language
+        try:
+            if self.creator:
+                setting = self.creator.get_setting('content_primary_language')
+                if setting in i18n.SUPPORTED_LANGUAGES:
+                    return setting
+        except Exception:
+            pass
+        return i18n.DEFAULT_LANGUAGE
+
+    def _base_value(self, path):
+        """The canonical value at a dotted path ('title', 'details.benefits')."""
+        parts = path.split('.')
+        value = getattr(self, parts[0], None)
+        for part in parts[1:]:
+            if not isinstance(value, dict):
+                return None
+            value = value.get(part)
+        return value
+
+    def localized(self, path, lang=None):
+        """One field in the reader's language, falling back to the original."""
+        lang = lang or i18n.current_lang()
+        base = self._base_value(path)
+        if lang == self.primary_lang:
+            return base
+        return i18n.resolve(self.translations, lang, path, base)
+
+    @staticmethod
+    def _with_stable_ids(rows, spec):
+        """Copies of `rows`, each carrying the id its translation is filed under.
+
+        The save route mints these, but the editor needs one the moment a row is
+        drawn — including for an asset that hasn't been saved since translations
+        existed. Publishing the same id the server would compute keeps the two
+        sides agreeing about which row a translation belongs to.
+        """
+        if not isinstance(rows, list):
+            return rows
+        out = []
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                out.append(row)
+                continue
+            row = dict(row)
+            if spec['id_key'] == 'key':
+                row['key'] = i18n.custom_field_key(row, index)
+            elif not row.get('id'):
+                row['id'] = f'{spec["path"].rsplit(".", 1)[-1][:1]}{index}'
+            out.append(row)
+        return out
+
+    def _localize_rows(self, rows, spec, lang):
+        """Localise a list of repeating rows (variations, tiers, slots) in place.
+
+        `rows` must already be a private copy — this mutates it.
+        """
+        slot = ((self.translations or {}).get(lang) or {})
+        for part in spec['path'].split('.'):
+            if not isinstance(slot, dict):
+                return
+            slot = slot.get(part)
+        if not isinstance(slot, dict):
+            return
+        id_key = spec['id_key']
+        for i, row in enumerate(rows):
+            if not isinstance(row, dict):
+                continue
+            row_id = (i18n.custom_field_key(row, i) if id_key == 'key'
+                      else str(row.get(id_key) or ''))
+            entry = slot.get(row_id)
+            if not isinstance(entry, dict):
+                continue
+            for field in spec['fields']:
+                value = entry.get(field['key'])
+                if field['widget'] == 'list':
+                    # Choices are index-aligned with the canonical list; a short
+                    # or ragged translation falls back per position, never
+                    # shifting a label onto the wrong choice.
+                    canonical = row.get(field['key'])
+                    if not isinstance(canonical, list) or not isinstance(value, list):
+                        continue
+                    row[field['key'] + '_display'] = [
+                        str(value[j]).strip() if j < len(value) and str(value[j] or '').strip()
+                        else canonical[j]
+                        for j in range(len(canonical))
+                    ]
+                elif value is not None and str(value).strip():
+                    if id_key == 'key':
+                        # The question string is a storage key — never overwrite
+                        # it, publish the reader's version beside it.
+                        row[field['key'] + '_display'] = str(value).strip()
+                    else:
+                        row[field['key']] = str(value).strip()
+
     def event_recurrence(self):
         """The normalized repeating schedule, or None when this is a one-off event."""
         return normalize_recurrence((self.details or {}).get('recurrence'))
@@ -434,14 +562,38 @@ class DigitalAsset(db.Model):
         _, tz = self.creator_timezone()
         return next_occurrence(recurrence, tz, now=now)
 
-    def to_dict(self):
-        """Serializes the asset object to a dictionary for JSON conversion."""
+    def to_dict(self, lang=None, include_translations=False):
+        """Serializes the asset object to a dictionary for JSON conversion.
+
+        `lang=None` is the canonical payload — the creator's own words, byte for
+        byte what this returned before translations existed. That is what the
+        admin editor, the CSV exports and anything that writes an order want.
+
+        Pass `lang` to get the payload a visitor should read: every creator-written
+        string resolved into that language, with the original standing in wherever
+        they haven't translated yet. The SHAPE is identical either way, so a
+        template can render one without knowing which it was handed.
+
+        `include_translations` adds the raw blob and the primary language, for the
+        one caller that edits them.
+        """
+        localize = bool(lang) and lang != self.primary_lang
 
         # A repeating event ("every Thursday") has no fixed event_date — the date
         # shown everywhere is the NEXT occurrence, recomputed on each render. It is
         # published through the same eventDetails keys as a one-off, so the asset
         # page, countdown, calendar files and QR all roll forward untouched.
         recurrence = self.event_recurrence()
+        # Localise the schedule HERE, before anything reads it. normalize_recurrence
+        # hands back a fresh dict, so mutating it can't touch stored data — and
+        # doing it now means the occurrences computed below carry the translated
+        # session names, and `details` and `eventDetails` go on sharing one set of
+        # slot objects. That sharing is load-bearing: the asset route redacts a
+        # private per-session join link once and expects both copies covered.
+        if localize and recurrence:
+            for spec in i18n.translatable_collections(self.asset_type):
+                if spec['path'] == 'details.recurrence.slots':
+                    self._localize_rows(recurrence['slots'], spec, lang)
         occurrence = None
         upcoming = []
         tz_name, tz = (None, None)
@@ -493,6 +645,12 @@ class DigitalAsset(db.Model):
         # A slot may override the join link / venue for its own day (e.g. a
         # Thursday Zoom room and a Saturday studio address).
         event_link = self.event_location
+        # Only a real venue is worth translating. When the location IS the private
+        # join URL, leave it exactly as stored: `isOnline` below is derived from
+        # this string and drives whether the route redacts it, and a translated
+        # URL would be both meaningless and a needless way to get that wrong.
+        if localize and not str(event_link or '').startswith('http'):
+            event_link = self.localized('event_location', lang) or event_link
         if occurrence and occurrence['slot'].get('link'):
             event_link = occurrence['slot']['link']
 
@@ -508,11 +666,55 @@ class DigitalAsset(db.Model):
             else:
                 details_out.pop('recurrence')
 
+        # Repeating rows go out carrying the id their translation is filed under,
+        # in BOTH modes: the editor needs it to address a row, and the reader needs
+        # it to have been the same id when the translation was written.
+        custom_fields_out = self.custom_fields or []
+        for spec in i18n.translatable_collections(self.asset_type):
+            if spec['path'] == 'custom_fields':
+                custom_fields_out = self._with_stable_ids(custom_fields_out, spec)
+            elif spec['path'].startswith('details.') and spec['path'] != 'details.recurrence.slots':
+                key = spec['path'].split('.', 1)[1]
+                if isinstance(details_out.get(key), list):
+                    details_out[key] = self._with_stable_ids(details_out[key], spec)
+
+        if localize:
+            # Single-value fields that live inside details (welcome message,
+            # after-purchase instructions, ...).
+            for spec in i18n.translatable_fields(self.asset_type):
+                path = spec['path']
+                if not path.startswith('details.'):
+                    continue
+                key = path.split('.', 1)[1]
+                value = self.localized(path, lang)
+                if value is not None:
+                    details_out[key] = value
+
+            # Repeating rows. Each list is copied before it is touched, so the
+            # model's own JSON is never mutated. The schedule is skipped — it was
+            # localised above and must keep sharing its slots with eventDetails.
+            for spec in i18n.translatable_collections(self.asset_type):
+                path = spec['path']
+                if path == 'details.recurrence.slots':
+                    continue
+                if path.startswith('details.'):
+                    key = path.split('.', 1)[1]
+                    rows = details_out.get(key)
+                    if isinstance(rows, list):
+                        rows = [dict(r) if isinstance(r, dict) else r for r in rows]
+                        self._localize_rows(rows, spec, lang)
+                        details_out[key] = rows
+                elif path == 'custom_fields' and isinstance(custom_fields_out, list):
+                    custom_fields_out = [
+                        dict(f) if isinstance(f, dict) else f for f in custom_fields_out
+                    ]
+                    self._localize_rows(custom_fields_out, spec, lang)
+
         asset_data = {
             'id': self.id,
-            'title': self.title,
-            'description': self.description,
-            'story': self.story,
+            'title': self.localized('title', lang) if localize else self.title,
+            'description': self.localized('description', lang) if localize else self.description,
+            'story': self.localized('story', lang) if localize else self.story,
             'slug': self.slug,
             'price': float(self.price or 0.0),
             'status': self.status.value if self.status else None,
@@ -520,17 +722,18 @@ class DigitalAsset(db.Model):
             'is_subscription': self.is_subscription,
             'subscription_interval': self.subscription_interval.name if self.subscription_interval else None,
             'allow_download': self.allow_download,
-            'cover_image_url': self.cover_image_url,
+            'cover_image_url': (self.localized('cover_image_url', lang) if localize
+                                else self.cover_image_url),
             'total_sales': self.total_sales or 0,
             'total_revenue': float(self.total_revenue or 0.0),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'display_order': self.display_order or 0,
             'is_pinned': self.is_pinned or False,
-            'custom_fields': self.custom_fields or [],
+            'custom_fields': custom_fields_out,
             'uza_product_id': (self.details or {}).get('uza_product_id', ''),
-            
+
             # Use the to_dict method from AssetFile for clean serialization
-            'files': [f.to_dict() for f in self.files.all()],
+            'files': [f.to_dict(lang if localize else None) for f in self.files.all()],
             # This will be an array of review dictionaries
             'reviews': [r.to_dict() for r in self.ratings],
             # Create nested objects that the frontend component expects
@@ -581,6 +784,11 @@ class DigitalAsset(db.Model):
             # Provide a default empty dict to prevent frontend errors.
             'details': details_out
         }
+        if include_translations:
+            # The editor needs the raw other-language blob to put in its boxes,
+            # and needs to know which side its language switch calls "original".
+            asset_data['translations'] = self.translations or {}
+            asset_data['primary_language'] = self.primary_lang
         return asset_data
         
     def __repr__(self):
@@ -613,8 +821,19 @@ class AssetFile(db.Model):
     storage_path = db.Column(db.String(1024), nullable=False)
     file_type = db.Column(db.String(50), nullable=True)
     position = db.Column(db.Integer, default=0)
+    # {"en": {"title": ..., "description": ...}} — same contract as the asset's:
+    # only the non-primary language, the columns hold the original.
+    translations = db.Column(JSON, nullable=True)
     asset = db.relationship('DigitalAsset', back_populates='files')
-    def to_dict(self):
+
+    def localized(self, field, lang=None):
+        """Title or description in the reader's language, else the original."""
+        base = getattr(self, field, None)
+        if not lang:
+            return base
+        return i18n.resolve(self.translations, lang, field, base)
+
+    def to_dict(self, lang=None):
         link = self.storage_path
         if link and link.startswith('secure_uploads/'):
             link = f"/content/{self.id}"
@@ -635,10 +854,10 @@ class AssetFile(db.Model):
             else:
                 file_type = 'other'
             
-        return { 
-            'id': self.id, 
-            'title': self.title, 
-            'description': self.description, 
+        return {
+            'id': self.id,
+            'title': self.localized('title', lang),
+            'description': self.localized('description', lang),
             'link': link,
             'file_type': file_type or 'other',
             'storage_path': self.storage_path

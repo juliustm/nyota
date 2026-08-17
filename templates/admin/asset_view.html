@@ -3,7 +3,10 @@
 {% block title %}Manage: {{ asset.title }}{% endblock %}
 
 {% block content %}
-<div x-data='assetView({{ asset.to_dict()|tojson|safe }}, {{ statuses|tojson|safe }})' class="space-y-8" x-cloak>
+{% import 'admin/partials/tfield.html' as t %}
+{# include_translations gives the editor the raw other-language blob to put in
+   its boxes; the canonical values stay exactly as they were. #}
+<div x-data='assetView({{ asset.to_dict(include_translations=True)|tojson|safe }}, {{ statuses|tojson|safe }})' class="space-y-8" x-cloak>
 
     <!-- Header: Back Link, Title & Live View Button -->
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -116,6 +119,12 @@
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <!-- Left Column: Main Tabs for Editing -->
         <div class="lg:col-span-8 space-y-6">
+            <!-- Content language. Above the tabs on purpose: it governs every tab,
+                 and is not a property of whichever one happens to be open. -->
+            <div class="bg-white dark:bg-gray-800 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                {% include 'admin/partials/content_lang_switch.html' %}
+            </div>
+
             <!-- Tab Navigation -->
             <div class="border-b border-gray-200 dark:border-gray-700">
                 <nav class="-mb-px flex space-x-8" aria-label="Tabs">
@@ -193,7 +202,7 @@
                             <div class="flex items-center gap-4">
                                 <div
                                     class="flex-shrink-0 w-24 h-24 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 flex items-center justify-center overflow-hidden relative group">
-                                    <template x-if="!previewImage">
+                                    <template x-if="!activeCover">
                                         <div class="text-center p-2">
                                             <svg class="w-6 h-6 text-gray-400 mx-auto" fill="none" viewBox="0 0 24 24"
                                                 stroke="currentColor">
@@ -202,8 +211,8 @@
                                             </svg>
                                         </div>
                                     </template>
-                                    <template x-if="previewImage">
-                                        <img :src="previewImage" alt="Cover preview" class="w-full h-full object-cover">
+                                    <template x-if="activeCover">
+                                        <img :src="activeCover" alt="Cover preview" class="w-full h-full object-cover">
                                     </template>
                                 </div>
                                 <div class="flex-1">
@@ -212,14 +221,27 @@
                                         class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-900/30 dark:file:text-indigo-300 transition-colors">
                                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Recommended: 1200×630px,
                                         JPG or PNG. Click Save to apply changes.</p>
+                                    {# Most covers work in both languages. One with words
+                                       designed into it does not, so a language can have its
+                                       own — and say plainly when it is borrowing. #}
+                                    <p x-show="isTranslating && !usingOwnCover" x-cloak
+                                        class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        Using the <span class="font-medium" x-text="languageLabel(primaryLang)"></span>
+                                        cover. Upload one here to give
+                                        <span class="font-medium" x-text="languageLabel(contentLang)"></span> its own.
+                                    </p>
+                                    <button type="button" x-show="isTranslating && usingOwnCover" x-cloak
+                                        @click="clearTranslationCover()"
+                                        class="mt-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+                                        Use the <span x-text="languageLabel(primaryLang)"></span> cover instead
+                                    </button>
                                 </div>
                             </div>
                         </div>
 
                         <div>
                             <label for="title" class="input-label">Asset Title</label>
-                            <input type="text" id="title" x-model="editableAsset.title"
-                                class="input-field text-lg font-medium" placeholder="Enter a catchy title...">
+                            {{ t.t_input('title', 'title', 'Enter a catchy title...', classes='input-field text-lg font-medium', maxlength=200) }}
                         </div>
 
                         <!-- URL / Slug -->
@@ -255,8 +277,9 @@
                             </div>
                             <p class="text-xs text-gray-500 mb-2">Shown on listing cards, social previews, and as the
                                 opening paragraph on the public page.</p>
-                            <textarea id="description" rows="3" x-model="editableAsset.description" class="input-field"
+                            <textarea id="description" rows="3" class="input-field"
                                 placeholder="Briefly describe what this is..."></textarea>
+                            {{ t.t_hint('description') }}
                         </div>
 
                         <!-- Custom Labels -->
@@ -291,11 +314,35 @@
                             <p class="text-xs text-gray-500 mb-2">The main content shown to users before they purchase.
                                 Use headings, lists and bold text to break it up — the preview button shows it exactly
                                 as buyers will see it.</p>
-                            <textarea id="story" rows="12" x-model="editableAsset.story" class="input-field"
+                            <textarea id="story" rows="12" class="input-field"
                                 placeholder="# About this asset..."></textarea>
+                            {{ t.t_hint('story') }}
                         </div>
 
                         <div>
+                        <!-- What a visitor actually reads, in every language at once.
+                             The same idea as the CTA picker's preview: a creator
+                             should never have to guess what the other half of their
+                             audience sees, or open the public page twice to find out. -->
+                        <div class="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 p-3">
+                            <p class="text-[10px] uppercase tracking-wide font-bold text-gray-400 dark:text-gray-500 mb-2">
+                                Visitors see</p>
+                            <div class="space-y-2">
+                                <template x-for="l in contentLanguages" :key="l.code">
+                                    <div class="flex items-start gap-2">
+                                        <span class="mt-0.5 shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 uppercase"
+                                            x-text="l.code"></span>
+                                        <div class="min-w-0">
+                                            <p class="text-sm font-semibold text-gray-900 dark:text-white truncate"
+                                                x-text="previewFor(l.code, 'title') || 'Untitled'"></p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400 line-clamp-2"
+                                                x-text="previewFor(l.code, 'description')"></p>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
                             <label for="uza_product_id" class="input-label">UZA Product ID
                                 <span class="text-xs font-normal text-gray-500">(Optional)</span>
                             </label>
@@ -334,9 +381,12 @@
                                     class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div class="md:col-span-3">
                                         <label for="event_location" class="input-label">Location / Link</label>
-                                        <input type="text" id="event_location" x-model="editableAsset.eventDetails.link"
-                                            class="input-field" placeholder="e.g., Zoom Link or Physical Address">
+                                        {{ t.t_input('event_location', 'event_location', 'e.g., Zoom Link or Physical Address', maxlength=512) }}
                                         <p class="input-hint">Used for every session unless a repeating day overrides it below.</p>
+                                        <p x-show="isTranslating" x-cloak class="input-hint">
+                                            A venue name is worth translating; a join link is not — leave a URL alone
+                                            and every language keeps the same working link.
+                                        </p>
                                     </div>
                                     <!-- One-off date/time. Hidden once the event repeats — the schedule below owns the dates then. -->
                                     <template x-if="!recurrence.enabled">
@@ -379,9 +429,8 @@
                                 <div
                                     class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
                                     <label class="input-label">Instructions for Attendees</label>
-                                    <textarea x-model="editableAsset.eventDetails.postPurchaseInstructions" rows="4"
-                                        class="input-field"
-                                        placeholder="e.g., Join this WhatsApp group for updates..."></textarea>
+                                    {{ t.t_textarea('details.postPurchaseInstructions', None,
+                                        'e.g., Join this WhatsApp group for updates...', rows=4) }}
                                     <p class="input-hint">Shown only to people who have purchased a ticket.</p>
                                 </div>
                             </div>
@@ -447,8 +496,8 @@
                                             <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pl-9">
                                                 <div>
                                                     <label class="input-label-sm">Tier Name</label>
-                                                    <input type="text" x-model="tier.name" class="input-field"
-                                                        placeholder="e.g., Monthly">
+                                                    {{ t.t_row_input("'details.subscription_tiers.' + tier.id + '.name'",
+                                                        'e.g., Monthly', maxlength=120) }}
                                                 </div>
                                                 <div>
                                                     <label class="input-label-sm">Price</label>
@@ -469,8 +518,8 @@
                                                 </div>
                                                 <div class="md:col-span-3">
                                                     <label class="input-label-sm">Benefits / Description</label>
-                                                    <input type="text" x-model="tier.description" class="input-field"
-                                                        placeholder="What do they get?">
+                                                    {{ t.t_row_input("'details.subscription_tiers.' + tier.id + '.description'",
+                                                        'What do they get?', maxlength=500) }}
                                                 </div>
                                                 <div class="md:col-span-3">
                                                     <label class="input-label-sm">
@@ -512,16 +561,15 @@
                                     class="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 space-y-4">
                                     <div>
                                         <label class="input-label">Welcome Message</label>
-                                        <textarea x-model="editableAsset.details.welcomeContent" rows="3"
-                                            class="input-field"
-                                            placeholder="Thank you for subscribing! Here's what you can expect..."></textarea>
+                                        {{ t.t_textarea('details.welcomeContent', None,
+                                            "Thank you for subscribing! Here's what you can expect...", rows=3) }}
                                         <p class="input-hint">Sent immediately after subscription confirmation.</p>
                                     </div>
 
                                     <div>
                                         <label class="input-label">Ongoing Benefits</label>
-                                        <textarea x-model="editableAsset.details.benefits" rows="3" class="input-field"
-                                            placeholder="Weekly exclusive content, early access to new products, community access..."></textarea>
+                                        {{ t.t_textarea('details.benefits', None,
+                                            'Weekly exclusive content, early access to new products, community access...', rows=3) }}
                                         <p class="input-hint">What subscribers receive on a regular basis.</p>
                                     </div>
                                 </div>
@@ -580,8 +628,8 @@
                                             <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
                                                 <div>
                                                     <label class="input-label-sm">Name</label>
-                                                    <input type="text" x-model="variation.name" class="input-field"
-                                                        placeholder="e.g., Red - Large">
+                                                    {{ t.t_row_input("'details.variations.' + variation.id + '.name'",
+                                                        'e.g., Red - Large', maxlength=120) }}
                                                 </div>
                                                 <div>
                                                     <label class="input-label-sm">Price
@@ -695,9 +743,12 @@
                                         x-text="index + 1"></span>
 
                                     <!-- Title Input (inline) -->
-                                    <input type="text" x-model="file.title"
+                                    <input type="text"
+                                        :value="fGet(file, 'title')" @input="fSet(file, 'title', $event.target.value)"
                                         class="flex-1 min-w-0 px-2 py-1 text-sm font-medium text-gray-900 dark:text-white bg-transparent border-0 focus:ring-0 focus:outline-none placeholder-gray-400"
-                                        :placeholder="asset.asset_type === 'SUBSCRIPTION' ? 'Post title...' : 'Item title...'">
+                                        :placeholder="isTranslating
+                                            ? (fBase(file, 'title') || 'Item title...')
+                                            : (asset.asset_type === 'SUBSCRIPTION' ? 'Post title...' : 'Item title...')">
 
                                     <!-- Type Toggle (pill) -->
                                     <div
@@ -830,10 +881,11 @@
                                             </div>
                                         </div>
                                         <!-- Description -->
-                                        <textarea x-model="file.description" rows="1"
+                                        <textarea rows="1"
+                                            :value="fGet(file, 'description')"
                                             class="w-full px-2.5 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400 resize-none"
-                                            placeholder="Add a description or notes..."
-                                            @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"></textarea>
+                                            :placeholder="isTranslating ? (fBase(file, 'description') || 'Add a description or notes...') : 'Add a description or notes...'"
+                                            @input="fSet(file, 'description', $event.target.value); $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"></textarea>
                                     </div>
                                 </div>
                             </div>
@@ -911,9 +963,14 @@
                                 <div class="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 space-y-2.5">
                                     <div class="flex items-center gap-3">
                                         <span class="flex items-center justify-center w-6 h-6 rounded-md bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 text-xs font-bold shrink-0" x-text="index + 1"></span>
-                                        <input type="text" x-model="field.question"
-                                            class="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                                            placeholder="Enter your question...">
+                                        {# The question TEXT is the key every answer is stored
+                                           under, so translating it must never change it. In the
+                                           original language this edits the question itself; in any
+                                           other it only writes the wording a buyer reads. #}
+                                        {{ t.t_row_input("'custom_fields.' + field.key + '.question'",
+                                            'Enter your question...',
+                                            classes='flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm',
+                                            maxlength=200) }}
                                         <select x-model="field.type"
                                             class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white shrink-0">
                                             <option value="text">Short text</option>
@@ -937,10 +994,21 @@
                                     </div>
                                     <!-- Options for dropdown -->
                                     <div x-show="field.type === 'select'" class="pl-9">
-                                        <input type="text" x-model="field._optionsRaw"
+                                        <input x-show="!isTranslating" type="text" x-model="field._optionsRaw"
                                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                                             placeholder="Comma-separated options, e.g. Small, Medium, Large">
+                                        {# Translated choices stay lined up with the originals: the
+                                           VALUE submitted is always the original, only the label
+                                           changes, so an answer means the same thing either way. #}
+                                        <input x-show="isTranslating" x-cloak type="text"
+                                            :value="(tGet('custom_fields.' + field.key + '.options') || []).join(', ')"
+                                            @input="tSetOptions(field, $event.target.value)"
+                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                                            :placeholder="optionsBase(field)">
                                         <p class="text-[11px] text-gray-400 mt-1">Separate each choice with a comma.</p>
+                                        <p x-show="isTranslating" x-cloak class="text-[11px] text-gray-400 mt-1">
+                                            Keep them in the same order as the original — they are matched by position.
+                                        </p>
                                     </div>
                                     <!-- File upload config -->
                                     <div x-show="field.type === 'file'" class="pl-9 mt-1 grid grid-cols-2 gap-3">

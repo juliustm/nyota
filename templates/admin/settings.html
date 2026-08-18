@@ -255,8 +255,23 @@
             <!-- Store Preferences -->
             <div class="bg-white dark:bg-gray-800 shadow-sm rounded-xl border border-gray-200 dark:border-gray-700 p-6 md:p-8">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">Store Preferences</h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Controls how dates and times are displayed across your admin panel.</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Controls how dates and times are displayed across your admin panel, and which language you write in.</p>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <label for="content_primary_language" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Language you write in</label>
+                        <select id="content_primary_language" name="content_primary_language"
+                            class="form-select block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700/50 text-gray-900 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm h-10 px-3">
+                            {% for code in supported_languages %}
+                            <option value="{{ code }}" :selected="settings.content_primary_language === '{{ code }}'">
+                                {{ 'Kiswahili' if code == 'sw' else 'English' }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            New assets start in this language. You add the other one later, per asset,
+                            from the editor — visitors always see their own language where you've
+                            written it, and this one where you haven't.
+                        </p>
+                    </div>
                     <div>
                         <label for="creator_timezone" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Timezone</label>
                         <select id="creator_timezone" name="creator_timezone"

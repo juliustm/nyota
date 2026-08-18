@@ -77,11 +77,8 @@ CTA_MAX_LEN = 28
 
 def _lang():
     """Current request language, or Swahili when there is no request."""
-    try:
-        from flask import g
-        return getattr(g, 'language', None) or 'sw'
-    except Exception:
-        return 'sw'
+    from utils.i18n import current_lang
+    return current_lang()
 
 
 def preset_choices():
@@ -105,14 +102,13 @@ def contribution_voice(asset):
         return None
 
     from utils.translator import translate
+    from utils.i18n import pick_localized
 
     lang = _lang()
-    custom = cfg.get('cta_custom')
-    custom = custom if isinstance(custom, dict) else {}
     # Same fallback ladder as details['labels']: this language, then whichever
     # side the creator actually filled in. A creator who wrote one label meant
     # it to be read, not to disappear for half their visitors.
-    label = (custom.get(lang) or custom.get('en') or custom.get('sw') or '').strip()
+    label = pick_localized(cfg.get('cta_custom'), lang)
     preset = cfg.get('cta') if cfg.get('cta') in CTA_PRESET_MAP else DEFAULT_CTA_PRESET
 
     if label:

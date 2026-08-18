@@ -504,15 +504,19 @@ def build_catalog_schema(assets, currency):
             item_url = url_for('main.asset_detail', slug=asset.slug, _external=True)
         except RuntimeError:
             continue
+        # The catalogue a crawler reads has to quote the same words the page it
+        # was served shows, so this resolves in the request's own language.
+        name = asset.localized('title')
+        description = asset.localized('description')
         product = {
             '@type': 'Product',
-            'name': asset.title,
+            'name': name,
             'url': item_url,
             'offers': offer_schema(asset, currency, url=item_url),
         }
-        if asset.description:
-            product['description'] = _clean(asset.description)[:300]
-        image = _absolute(asset.cover_image_url)
+        if description:
+            product['description'] = _clean(description)[:300]
+        image = _absolute(asset.localized('cover_image_url'))
         if image:
             product['image'] = image
         elements.append({

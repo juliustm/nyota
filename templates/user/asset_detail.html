@@ -22,19 +22,19 @@ else (translate('cta_free_' ~ asset_type_key) if pricing.is_free else translate(
    option on the page, so every price on it is the price of a real chosen thing,
    rendered live from $store.order. #}
 
-{% block title %}{{ asset_obj.title }} | {{ store_name }}{% endblock %}
+{% block title %}{{ asset_obj.localized('title') }} | {{ store_name }}{% endblock %}
 
 {# The route composes the description (summary + resolved price + CTA, localised)
    and an absolute image URL. Re-deriving them here published "None" whenever an
    asset had no description, and a relative cover URL social platforms can't fetch. #}
 {% block meta_description %}{{ meta_description }}{% endblock %}
 
-{% block og_title %}{{ asset_obj.title }}{% endblock %}
+{% block og_title %}{{ asset_obj.localized('title') }}{% endblock %}
 {% block og_description %}{{ meta_description }}{% endblock %}
 {% block og_image %}{{ meta_image }}{% endblock %}
 {% block og_type %}product{% endblock %}
 
-{% block twitter_title %}{{ asset_obj.title }}{% endblock %}
+{% block twitter_title %}{{ asset_obj.localized('title') }}{% endblock %}
 {% block twitter_description %}{{ meta_description }}{% endblock %}
 {% block twitter_image %}{{ meta_image }}{% endblock %}
 
@@ -140,7 +140,7 @@ else (translate('cta_free_' ~ asset_type_key) if pricing.is_free else translate(
    arrived via the "Renew" button, ?renew) open the checkout automatically. #}
 <script type="application/json" id="renewal-data">
 {%- if subscription_expired -%}
-{{ {'tier_name': renewal_tier_name, 'auto_open': (request.args.get('renew') is not none)}|tojson|safe }}
+{{ {'tier_name': renewal_tier_name, 'tier_id': renewal_tier_id, 'auto_open': (request.args.get('renew') is not none)}|tojson|safe }}
 {%- else -%}
 null
 {%- endif -%}
@@ -215,12 +215,10 @@ null
     <div x-data="assetPageController" x-init="init()">
 
         <!-- Back Nav + Label Row -->
-        {% set current_lang = g.language %}
-        {% set custom_labels = asset_obj.details.get('labels', {}) if asset_obj.details else {} %}
-        {% set custom_label = custom_labels.get(current_lang) %}
-        {% if not custom_label %}
-        {% set custom_label = custom_labels.get('en') or custom_labels.get('sw') %}
-        {% endif %}
+        {# The creator's own word for what this is ("Masterclass"), in the visitor's
+           language, falling back to whichever side they filled in. Same ladder as
+           the storefront card and the donation button — see utils/i18n.py. #}
+        {% set custom_label = pick_localized(asset_obj.details.get('labels') if asset_obj.details else None) %}
         <nav class="py-2 md:py-3 fade-in flex items-center justify-between gap-3">
             <a href="{{ url_for('main.landing_page') }}"
                 class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-all group">
@@ -364,10 +362,10 @@ null
                             </div>
                             <div class="p-5 md:p-6">
                                 <div class="flex items-center gap-4">
-                                    <img src="{{ _vphoto or asset_obj.cover_image_url }}" alt=""
+                                    <img src="{{ _vphoto or asset_obj.localized('cover_image_url') }}" alt=""
                                         class="w-16 h-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700 shrink-0">
                                     <div class="min-w-0 flex-1">
-                                        <p class="font-semibold text-gray-900 dark:text-white truncate">{{ asset_obj.title }}</p>
+                                        <p class="font-semibold text-gray-900 dark:text-white truncate">{{ asset_obj.localized('title') }}</p>
                                         <p class="text-sm text-gray-500 dark:text-gray-400">
                                             {% if _ovar.get('name') %}{{ translate('variation') }}: <span class="font-medium text-gray-700 dark:text-gray-300">{{ _ovar.get('name') }}</span> · {% endif %}
                                             {{ translate('quantity') }}: <span class="font-medium text-gray-700 dark:text-gray-300">{{ _oqty }}</span>
@@ -818,7 +816,7 @@ null
                                 <dl class="space-y-3">
                                     <template x-for="(field, index) in fields" :key="index">
                                         <div class="flex flex-col sm:flex-row sm:gap-4 pb-3 border-b border-gray-100 dark:border-gray-700 last:border-0 last:pb-0">
-                                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 sm:w-2/5 shrink-0" x-text="field.question"></dt>
+                                            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400 sm:w-2/5 shrink-0" x-text="field.question_display || field.question"></dt>
                                             <dd class="text-sm text-gray-900 dark:text-white sm:w-3/5 break-words" x-text="displayValue(field)"></dd>
                                         </div>
                                     </template>
@@ -862,7 +860,7 @@ null
                                         :key="index">
                                         <div>
                                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                                <span x-text="field.question"></span><span x-show="field.required" class="text-red-500 ml-0.5">*</span>
+                                                <span x-text="field.question_display || field.question"></span><span x-show="field.required" class="text-red-500 ml-0.5">*</span>
                                             </label>
 
                                             <template x-if="['text', 'email', 'phone'].includes(field.type) || !field.type">
@@ -880,8 +878,8 @@ null
                                                 <select x-model="formData[field.question]" :required="field.required"
                                                     class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500">
                                                     <option value="">Select an option</option>
-                                                    <template x-for="opt in (field.options || [])" :key="opt">
-                                                        <option :value="opt" x-text="opt"></option>
+                                                    <template x-for="(opt, oi) in (field.options || [])" :key="opt">
+                                                        <option :value="opt" x-text="(field.options_display || [])[oi] || opt"></option>
                                                     </template>
                                                 </select>
                                             </template>

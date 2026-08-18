@@ -57,8 +57,12 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                         <label class="input-label">Session name <span class="font-normal text-gray-400">(optional)</span></label>
-                        <input type="text" x-model="slot.label" class="input-field"
-                            placeholder="e.g., Digital Masterclass">
+                        <input type="text" class="input-field"
+                            :value="tGet('details.recurrence.slots.' + slot.id + '.label')"
+                            @input="tSet('details.recurrence.slots.' + slot.id + '.label', $event.target.value)"
+                            :placeholder="isTranslating
+                                ? (tBase('details.recurrence.slots.' + slot.id + '.label') || 'e.g., Digital Masterclass')
+                                : 'e.g., Digital Masterclass'">
                     </div>
                     <div>
                         <label class="input-label">Link / venue for this day <span class="font-normal text-gray-400">(optional)</span></label>
@@ -68,8 +72,12 @@
                 </div>
                 <div>
                     <label class="input-label">Note for this day <span class="font-normal text-gray-400">(optional)</span></label>
-                    <input type="text" x-model="slot.note" class="input-field"
-                        placeholder="e.g., Bring your laptop — we build live">
+                    <input type="text" class="input-field"
+                        :value="tGet('details.recurrence.slots.' + slot.id + '.note')"
+                        @input="tSet('details.recurrence.slots.' + slot.id + '.note', $event.target.value)"
+                        :placeholder="isTranslating
+                            ? (tBase('details.recurrence.slots.' + slot.id + '.note') || 'e.g., Bring your laptop — we build live')
+                            : 'e.g., Bring your laptop — we build live'">
                 </div>
             </div>
         </template>

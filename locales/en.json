@@ -308,5 +308,17 @@
     "meta_cta_suffix": "Get instant access at {{ store }}.",
     "meta_store_tagline": "Buy and get instant access on your phone.",
     "meta_items_count": "{{ count }} items available now.",
-    "search_results_for": "Results for"
+    "search_results_for": "Results for",
+    "recover_title": "Recover Your Access",
+    "recover_subtitle": "Lost your session? Prove your purchase to regain access.",
+    "recover_throttled": "For security, please wait before trying again.",
+    "recover_phone_label": "Last 4 Digits of Phone Number",
+    "recover_phone_hint": "The phone number you used to purchase",
+    "recover_date_label": "Purchase Date",
+    "recover_date_hint": "The date when you made your purchase",
+    "recover_waiting": "Please Wait...",
+    "recover_submit": "Verify & Restore Access",
+    "recover_help": "Need help? Contact",
+    "recover_support": "support",
+    "back_to_store_link": "Back to Store"
 }

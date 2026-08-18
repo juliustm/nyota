@@ -1,0 +1,56 @@
+{# Which language this editor is writing in.
+
+   The alternative was two boxes per field — two titles, two 340px markdown
+   editors, two of everything across four tabs. That doubles the page for every
+   creator, including the majority who will only ever write one language. This
+   swaps what the existing fields point at instead: the form never grows, nothing
+   moves, and a creator who never touches this control sees the page they always
+   saw.
+
+   Mixed in from `contentI18n` (static/js/main.js), which owns the state and the
+   dotted-path reads and writes. #}
+<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Content language</span>
+
+    <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-gray-50 dark:bg-gray-900/40">
+        <template x-for="l in contentLanguages" :key="l.code">
+            <button type="button" @click="setContentLang(l.code)"
+                :class="contentLang === l.code
+                    ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+                class="px-3 py-1.5 rounded-[6px] text-xs font-semibold transition-colors flex items-center gap-1.5">
+                <span x-text="l.label"></span>
+                {# The original needs no progress; the other language shows how
+                   much of this asset has actually been written. #}
+                <span x-show="l.code === primaryLang"
+                    class="text-[10px] font-normal opacity-60">original</span>
+                <template x-if="l.code !== primaryLang">
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                        :class="tProgressFor(l.code).done === 0
+                            ? 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-300'
+                            : (tProgressFor(l.code).done >= tProgressFor(l.code).total
+                                ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300')"
+                        x-text="tProgressFor(l.code).done + '/' + tProgressFor(l.code).total"></span>
+                </template>
+            </button>
+        </template>
+    </div>
+</div>
+
+{# One line, only while translating, so the fallback is never a surprise: a
+   creator should not have to guess what a Swahili visitor sees where they left a
+   box empty. #}
+<div x-show="isTranslating" x-cloak
+    class="mt-3 flex items-start gap-2 rounded-lg border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2">
+    <svg class="w-4 h-4 mt-0.5 shrink-0 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24"
+        stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round"
+            d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+    </svg>
+    <p class="text-[11px] leading-relaxed text-indigo-800 dark:text-indigo-200">
+        You're writing the <span class="font-semibold" x-text="languageLabel(contentLang)"></span> version.
+        Anything you leave blank shows the <span class="font-semibold" x-text="languageLabel(primaryLang)"></span>
+        text instead — you don't have to translate everything.
+    </p>
+</div>

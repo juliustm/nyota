@@ -85,6 +85,66 @@ def asset(creator):
     return make_asset(creator)
 
 
+def set_lang(client, code):
+    """Put a visitor into a language the way the switcher does."""
+    with client.session_transaction() as session:
+        session['language'] = code
+
+
+@pytest.fixture
+def bilingual_asset(creator):
+    """Written in English, translated into Swahili — but not completely.
+
+    `story` is deliberately left untranslated: the fallback has to work per
+    FIELD, not per asset, or a creator who translates the title and stops has
+    published a page that is half blank.
+    """
+    return make_asset(
+        creator,
+        title='Coffee Masterclass',
+        slug='coffee-masterclass',
+        description='Learn to roast at home',
+        story='# About this course',
+        cover_image_url='/media/covers/en.webp',
+        price=15000,
+        primary_language='en',
+        custom_fields=[
+            {'type': 'text', 'question': 'Your name', 'required': True},
+            {'type': 'select', 'question': 'Size', 'options': ['Small', 'Large']},
+        ],
+        translations={
+            'sw': {
+                'title': 'Darasa Kuu la Kahawa',
+                'description': 'Jifunze kuchoma kahawa nyumbani',
+                'cover_image_url': '/media/covers/sw.webp',
+                'custom_fields': {
+                    'your-name': {'question': 'Jina lako'},
+                    'size': {'options': ['Ndogo', 'Kubwa']},
+                },
+            }
+        },
+    )
+
+
+@pytest.fixture
+def bilingual_physical(creator):
+    """A physical product with two options, only one of them translated."""
+    return make_asset(
+        creator,
+        title='Roasted Beans',
+        slug='roasted-beans',
+        description='Fresh from the farm',
+        asset_type=AssetType.PHYSICAL,
+        price=8000,
+        primary_language='en',
+        details={'variations': [{'id': 'v1', 'name': 'Red'}, {'id': 'v2', 'name': 'Blue'}]},
+        translations={'sw': {
+            'title': 'Kahawa Iliyochomwa',
+            'details': {'variations': {'v1': {'name': 'Nyekundu'}}},
+        }},
+    )
+
+
 @pytest.fixture
 def donation_asset(creator):
     """Pay-what-you-want: free at base, the contribution is the charge."""

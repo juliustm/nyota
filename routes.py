@@ -1,5 +1,6 @@
 # routes.py
 
+import copy
 import json
 import os
 import decimal
@@ -37,6 +38,8 @@ from models.nyota import (
 )
 from utils.security import creator_login_required, generate_totp_secret, get_totp_uri, verify_totp
 from utils.translator import translate
+from utils import i18n as i18n_module
+from utils.i18n import SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, normalize_lang, pick_localized
 from utils.image_utils import optimize_cover_image
 from utils.phone import normalize_phone_number
 from utils.timezones import local_to_utc, utc_to_local, creator_tz_name
@@ -686,6 +689,16 @@ def list_assets():
         current_sort_mode=(g.creator.get_setting('asset_sort_mode') or 'manual')
     )
 
+def _wizard_manifest():
+    """Translation manifest for the create wizard, whose type isn't chosen yet."""
+    primary = None
+    try:
+        primary = g.creator.get_setting('content_primary_language') if g.creator else None
+    except Exception:
+        primary = None
+    return i18n_module.manifest(None, primary)
+
+
 @admin_bp.route('/assets/new', methods=['GET', 'POST'])
 @creator_login_required
 def asset_new():
@@ -699,8 +712,12 @@ def asset_new():
             return redirect(url_for('admin.asset_edit', asset_id=new_asset.id))
         except ValueError as e:
             flash(str(e), 'danger')
-            return render_template('admin/asset_form.html', asset=request.form.get('asset_data', '{}'))
-    return render_template('admin/asset_form.html', asset='{}')
+            return render_template('admin/asset_form.html', asset=request.form.get('asset_data', '{}'),
+                                   translatable_manifest=_wizard_manifest(),
+                                   delivery_defaults=i18n_module.delivery_defaults(_wizard_manifest()['primary']))
+    return render_template('admin/asset_form.html', asset='{}',
+                           translatable_manifest=_wizard_manifest(),
+                           delivery_defaults=i18n_module.delivery_defaults(_wizard_manifest()['primary']))
 
 @admin_bp.route('/assets/<int:asset_id>/edit', methods=['GET'])
 @creator_login_required
@@ -777,6 +794,7 @@ def asset_edit(asset_id):
         responses=responses,
         has_questionnaire=has_questionnaire,
         activity_json=activity_json,
+        translatable_manifest=i18n_module.manifest(asset.asset_type, asset.primary_lang),
     )
 
 def _apply_event_details(asset, event_details):
@@ -1260,6 +1278,219 @@ def _phone_authorized_for_ticket(purchase_id):
         return phone
     return None
 
+# --- Translations -------------------------------------------------------------
+# Everything a creator writes in their second language arrives through the same
+# save as everything else, and is trusted exactly as little. The manifest in
+# utils/i18n decides what may be stored at all; anything not on it is dropped,
+# every string is trimmed and clamped, and empty ones are removed rather than
+# stored blank so the reader falls back to the original instead of seeing a gap.
+
+def _dig(node, path):
+    """Value at a dotted path in nested dicts, or None."""
+    for part in path.split('.'):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(part)
+    return node
+
+
+def _put(node, path, value):
+    """Set a dotted path in nested dicts, creating the levels on the way."""
+    parts = path.split('.')
+    for part in parts[:-1]:
+        node = node.setdefault(part, {})
+    node[parts[-1]] = value
+
+
+def _clean_translation(value, max_len):
+    text = str(value if value is not None else '').strip()
+    return text[:max_len] if text else ''
+
+
+def _ensure_row_ids(rows, prefix):
+    """Give every repeating row a stable id, keeping any it already has.
+
+    Translations are filed under these ids, so they have to survive a reorder.
+    Same shape of id as physical variations already mint.
+    """
+    if not isinstance(rows, list):
+        return
+    seen = set()
+    stamp = int(datetime.now().timestamp())
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        row_id = re.sub(r'[^A-Za-z0-9_-]', '', str(row.get('id') or ''))[:40]
+        if not row_id or row_id in seen:
+            row_id = f"{prefix}{stamp}{i}"
+        seen.add(row_id)
+        row['id'] = row_id
+
+
+def _ensure_custom_field_keys(fields):
+    """Give every questionnaire question a stable key for its translation.
+
+    The question TEXT stays the answer-storage key — this is a second, separate
+    handle used only to file the translated wording. It is derived from the
+    question, so a question written before this feature lands on the same key
+    the first time it is saved.
+    """
+    if not isinstance(fields, list):
+        return
+    seen = set()
+    for i, field in enumerate(fields):
+        if not isinstance(field, dict):
+            continue
+        key = i18n_module.custom_field_key(field, i)
+        while key in seen:
+            key = f'{key}x'
+        seen.add(key)
+        field['key'] = key
+
+
+def _canonical_rows(asset, path):
+    """The asset's own rows for a collection — the only ids we'll accept."""
+    if path == 'custom_fields':
+        rows = asset.custom_fields
+    elif path == 'details.recurrence.slots':
+        # Use the normalized schedule: it is what the reader resolves against,
+        # and it mints ids for slots stored without one.
+        rows = (asset.event_recurrence() or {}).get('slots')
+    elif path.startswith('details.'):
+        rows = _dig(asset.details or {}, path.split('.', 1)[1])
+    else:
+        rows = None
+    return rows if isinstance(rows, list) else []
+
+
+def _row_id(row, spec, index):
+    if spec['id_key'] == 'key':
+        return i18n_module.custom_field_key(row, index)
+    return str(row.get(spec['id_key']) or '')
+
+
+def _sanitize_translation_slot(asset, incoming):
+    """One language's worth of translations, cleaned against the manifest."""
+    out = {}
+    if not isinstance(incoming, dict):
+        return out
+
+    for spec in i18n_module.translatable_fields(asset.asset_type):
+        raw = _dig(incoming, spec['path'])
+        text = _clean_translation(raw, spec['max'])
+        if spec['widget'] == 'image' and text and not text.startswith(('/media/', '/static/')):
+            # Covers are uploaded through this route and served from our own
+            # media paths; anything else is not a cover we produced.
+            text = ''
+        if text:
+            _put(out, spec['path'], text)
+
+    for spec in i18n_module.translatable_collections(asset.asset_type):
+        incoming_rows = _dig(incoming, spec['path'])
+        if not isinstance(incoming_rows, dict):
+            continue
+        kept = {}
+        for index, row in enumerate(_canonical_rows(asset, spec['path'])):
+            if not isinstance(row, dict):
+                continue
+            row_id = _row_id(row, spec, index)
+            entry = incoming_rows.get(row_id)
+            if not row_id or not isinstance(entry, dict):
+                continue
+            cleaned = {}
+            for field in spec['fields']:
+                if field['widget'] == 'list':
+                    canonical = row.get(field['key'])
+                    values = entry.get(field['key'])
+                    if not isinstance(canonical, list) or not isinstance(values, list):
+                        continue
+                    # Index-aligned with the canonical choices and never longer,
+                    # so a translated label can't land on a different choice.
+                    items = [_clean_translation(v, field['max']) for v in values[:len(canonical)]]
+                    items += [''] * (len(canonical) - len(items))
+                    if any(items):
+                        cleaned[field['key']] = items
+                else:
+                    text = _clean_translation(entry.get(field['key']), field['max'])
+                    if text:
+                        cleaned[field['key']] = text
+            if cleaned:
+                kept[row_id] = cleaned
+        if kept:
+            _put(out, spec['path'], kept)
+
+    return out
+
+
+def _sanitize_file_translations(incoming):
+    """Content-item translations, cleaned the same way."""
+    out = {}
+    if not isinstance(incoming, dict):
+        return None
+    for lang in i18n_module.SUPPORTED_LANGUAGES:
+        entry = incoming.get(lang)
+        if not isinstance(entry, dict):
+            continue
+        cleaned = {}
+        for field in i18n_module.FILE_FIELDS:
+            text = _clean_translation(entry.get(field['key']), field['max'])
+            if text:
+                cleaned[field['key']] = text
+        if cleaned:
+            out[lang] = cleaned
+    return out or None
+
+
+def _apply_translations(asset, form_data, req):
+    """Store the creator's other-language copy of this asset."""
+    # The primary language is fixed when the asset is made. Changing it later
+    # would mean swapping the base columns and the translation slot in place,
+    # which is not a thing the editor offers.
+    if not asset.primary_language:
+        chosen = i18n_module.normalize_lang(form_data.get('primary_language'))
+        if not chosen:
+            try:
+                chosen = i18n_module.normalize_lang(
+                    asset.creator.get_setting('content_primary_language') if asset.creator else None
+                )
+            except Exception:
+                chosen = None
+        asset.primary_language = chosen or i18n_module.DEFAULT_LANGUAGE
+
+    incoming = form_data.get('translations')
+    incoming = incoming if isinstance(incoming, dict) else {}
+
+    translations = {}
+    for lang in i18n_module.SUPPORTED_LANGUAGES:
+        # The primary language lives in the columns. Storing it here too would
+        # give the same text two homes and a way for them to disagree.
+        if lang == asset.primary_language:
+            continue
+        slot = _sanitize_translation_slot(asset, incoming.get(lang))
+
+        # A newly uploaded cover for this language, through the same optimizer
+        # the primary cover uses.
+        upload = req.files.get(f'cover_image_{lang}')
+        if upload and upload.filename:
+            upload_path = current_app.config['COVERS_DIR']
+            filename_prefix = f"{asset.id or 'new'}_{lang}_{int(datetime.now().timestamp())}"
+            try:
+                optimized = optimize_cover_image(upload, upload_path, filename_prefix)
+                slot['cover_image_url'] = f'/media/covers/{optimized}'
+            except Exception as e:
+                current_app.logger.warning(f"Cover optimization failed for {lang}, saving original: {e}")
+                fallback_name = f"{filename_prefix}_{secure_filename(upload.filename)}"
+                upload.seek(0)
+                upload.save(os.path.join(upload_path, fallback_name))
+                slot['cover_image_url'] = f'/media/covers/{fallback_name}'
+
+        if slot:
+            translations[lang] = slot
+
+    asset.translations = translations or None
+    flag_modified(asset, 'translations')
+
+
 def save_asset_from_form(asset, req):
     if 'asset_data' not in req.form: raise ValueError("Form submission incomplete. Please try again.")
     form_data = json.loads(req.form['asset_data'])
@@ -1350,7 +1581,7 @@ def save_asset_from_form(asset, req):
         raw_custom = raw_custom if isinstance(raw_custom, dict) else {}
         cta_custom = {
             lang: str(raw_custom.get(lang) or '').strip()[:CTA_MAX_LEN]
-            for lang in ('en', 'sw')
+            for lang in SUPPORTED_LANGUAGES
         }
 
         asset.details['donation'] = {
@@ -1380,10 +1611,17 @@ def save_asset_from_form(asset, req):
                 asset.details['old_slugs'] = old_slugs
                 asset.slug = new_slug
         
-    # Handle Custom Labels
+    # Handle Custom Labels. Sanitized like every other creator-written pair:
+    # known languages only, trimmed, and short enough to sit on a card badge.
     if 'labels' in form_data:
-        asset.details['labels'] = form_data['labels']
-    
+        raw_labels = form_data['labels']
+        raw_labels = raw_labels if isinstance(raw_labels, dict) else {}
+        asset.details['labels'] = {
+            lang: str(raw_labels.get(lang) or '').strip()[:i18n_module.LABEL_MAX_LEN]
+            for lang in SUPPORTED_LANGUAGES
+        }
+
+
     # Handle Subscription Tiers (which may also have UZA Product IDs)
     if asset.is_subscription:
         asset.details['subscription_tiers'] = pricing_data.get('tiers', [])
@@ -1473,9 +1711,20 @@ def save_asset_from_form(asset, req):
             ).scalar() or 0
             asset.display_order = max_order + 1
     
+    # Every repeating row needs a stable id before translations can be filed
+    # against it. Done here, once, rather than in each type's branch, so it holds
+    # whichever branch above did the writing.
+    _ensure_row_ids(asset.details.get('subscription_tiers'), 't')
+    _ensure_custom_field_keys(asset.custom_fields)
+
     # Explicitly flag details as modified to ensure SQLAlchemy saves the JSON changes
     flag_modified(asset, 'details')
-    
+
+    # The second language, sanitized against the manifest and pruned of any row
+    # that no longer exists. Runs after the canonical data is final, because the
+    # ids above are what it files translations under.
+    _apply_translations(asset, form_data, req)
+
     # Preserve existing file paths if not re-uploaded
     existing_files_map = {}
     if asset.id:
@@ -1537,12 +1786,15 @@ def save_asset_from_form(asset, req):
                 file_type = 'other'
         
         db.session.add(AssetFile(
-            asset=asset, 
-            title=item.get('title'), 
-            description=item.get('description'), 
+            asset=asset,
+            title=item.get('title'),
+            description=item.get('description'),
             storage_path=storage_path,
             file_type=file_type,
-            position=i
+            position=i,
+            # These rows are deleted and rebuilt on every save, so a content
+            # item's translation only survives by riding along in the payload.
+            translations=_sanitize_file_translations(item.get('translations'))
         ))
 
     # Status: the editor sends the exact status the creator picked ('Unlisted',
@@ -1598,7 +1850,13 @@ def duplicate_asset(asset_id):
             event_location=original.event_location, 
             max_attendees=original.max_attendees, 
             custom_fields=original.custom_fields, 
-            details=original.details
+            details=original.details,
+            # A copy of a bilingual asset is bilingual too — otherwise duplicating
+            # silently throws away half the work. The copied title only exists in
+            # the primary language, so the other side keeps the original's wording
+            # for the creator to edit.
+            translations=copy.deepcopy(original.translations) if original.translations else None,
+            primary_language=original.primary_language
         )
         db.session.add(new_asset)
         db.session.flush() # Get the ID for the new asset
@@ -1611,7 +1869,8 @@ def duplicate_asset(asset_id):
                 description=file.description,
                 storage_path=file.storage_path,
                 file_type=file.file_type,
-                position=file.position
+                position=file.position,
+                translations=copy.deepcopy(file.translations) if file.translations else None
             ))
             
         db.session.commit()
@@ -2180,7 +2439,7 @@ def manage_settings():
             'marketing_ga_enabled', 'marketing_ga_measurement_id',
 
             # Store Preferences
-            'creator_timezone',
+            'creator_timezone', 'content_primary_language',
             # NOTE: 'asset_sort_mode' is intentionally NOT here — it is managed
             # from the Assets list page via /admin/api/settings/sort-mode so that
             # saving the main Settings form never wipes it.
@@ -3081,21 +3340,30 @@ def landing_page():
     # Base query
     query = DigitalAsset.query.filter_by(status=AssetStatus.PUBLISHED)
 
-    # Apply Search
-    if search_query:
-        query = query.filter(or_(
-            DigitalAsset.title.ilike(f'%{search_query}%'),
-            DigitalAsset.description.ilike(f'%{search_query}%')
-        ))
-
-
-
     # Apply Type Filter
     if filter_type and filter_type in AssetType.__members__:
         query = query.filter(DigitalAsset.asset_type == AssetType[filter_type])
 
     # Fetch all matching assets
     all_assets = query.all()
+
+    # Apply Search. Deliberately in Python rather than SQL: a visitor reading
+    # Swahili types Swahili words, and those live in the translations JSON where
+    # a LIKE on the base columns will never find them. Searching what the visitor
+    # can actually SEE means the storefront can't hide an asset from the person
+    # who typed its name. The whole (single-creator) catalogue is already loaded
+    # here — there is no pagination in the query — so this costs one pass.
+    if search_query:
+        needle = search_query.lower()
+
+        def _matches(asset):
+            return any(
+                needle in (value or '').lower()
+                for value in (asset.localized('title'), asset.localized('description'),
+                              asset.title, asset.description)
+            )
+
+        all_assets = [a for a in all_assets if _matches(a)]
 
     # Dynamic Filters: Find which types actually exist in the DB (for the tabs)
     # We query ALL published assets to determine available tabs, regardless of current search/filter
@@ -3250,8 +3518,8 @@ def landing_page():
     profile_photo = creator.get_setting('store_photo_url')
     if profile_photo:
         meta_image = absolute_media_url(profile_photo)
-    elif sorted_assets and sorted_assets[0].cover_image_url:
-        meta_image = absolute_media_url(sorted_assets[0].cover_image_url)
+    elif sorted_assets and sorted_assets[0].localized('cover_image_url'):
+        meta_image = absolute_media_url(sorted_assets[0].localized('cover_image_url'))
 
     # Keywords in the visitor's language, drawn from what the store actually
     # sells, instead of the hardcoded English list every storefront shipped.
@@ -3265,7 +3533,7 @@ def landing_page():
     }
     keywords = [store_title]
     keywords += [translate(type_labels[t]).lower() for t in available_types if t in type_labels]
-    keywords += [a.title for a in sorted_assets[:8] if a.title]
+    keywords += [t for t in (a.localized('title') for a in sorted_assets[:8]) if t]
     meta_keywords = ', '.join(dict.fromkeys(k for k in keywords if k))
 
     # A search or filter view is a slice of the same catalogue: it must not
@@ -3331,7 +3599,7 @@ def referral_landing(refcode):
 
 @main_bp.route('/set-language/<lang_code>')
 def set_language(lang_code):
-    if lang_code in ['en', 'sw']:
+    if lang_code in SUPPORTED_LANGUAGES:
         session['language'] = lang_code
     return redirect(request.referrer or url_for('main.landing_page'))
 
@@ -3497,12 +3765,16 @@ def asset_detail(slug):
         and not is_entitled
     )
     expiry_date = check_subscription_status(latest_purchase)[1] if subscription_expired else None
-    # The tier the customer was on, so renewal can pre-select the same plan.
+    # The tier the customer was on, so renewal can pre-select the same plan. The
+    # id is what the picker matches on — the stored name is in whatever language
+    # the plan was written in, which need not be the one they are reading now.
     renewal_tier_name = None
+    renewal_tier_id = None
     if subscription_expired:
         _tier = (latest_purchase.ticket_data or {}).get('tier')
         if isinstance(_tier, dict):
             renewal_tier_name = _tier.get('name')
+            renewal_tier_id = _tier.get('id')
 
     # Physical orders: the buyer's reusable delivery snapshot powering the one-tap
     # "use my last details" prefill on the delivery form. Only emitted for a session
@@ -3518,7 +3790,7 @@ def asset_detail(slug):
     # anyone not currently entitled so non-buyers and expired subscribers can never
     # read external-link destinations straight out of the page source. Counts/types
     # for the "what's included" preview come from asset_meta (a separate query).
-    asset_dict = asset_obj.to_dict()
+    asset_dict = asset_obj.to_dict(lang=g.language)
     if not is_entitled:
         for f in asset_dict.get('files', []):
             f['link'] = None
@@ -3570,22 +3842,29 @@ def asset_detail(slug):
             elif clean_type in ['pdf', 'video', 'audio', 'image']:
                 asset_meta['types'].add(clean_type)
 
-    # Metadata Generation
+    # Metadata Generation. What a crawler and a share preview quote has to match
+    # what the page itself says, so these read the same localised values the
+    # payload above was built from.
+    meta_lang = g.language
+    local_title = asset_obj.localized('title', meta_lang)
+    local_description = asset_obj.localized('description', meta_lang)
+    local_cover = asset_obj.localized('cover_image_url', meta_lang)
+
     store_name = creator.store_name if creator else "Creator Store"
-    meta_title = f"{asset_obj.title} | {store_name}"
+    meta_title = f"{local_title} | {store_name}"
     # Ensure the meta image URL is absolute for social previews
-    if asset_obj.cover_image_url:
-        meta_image = absolute_media_url(asset_obj.cover_image_url)
+    if local_cover:
+        meta_image = absolute_media_url(local_cover)
         # Append a short random query string to bust caches on platforms
         import uuid
         meta_image = f"{meta_image}?v={uuid.uuid4().hex[:8]}"
     else:
         meta_image = url_for('static', filename='img/default-og.jpg', _external=True)
-    
+
     # Description with the price and a CTA, in the visitor's language. The price
     # comes from the same resolver as the page's own price block, so the snippet
     # in a search result can't quote a number the page never shows.
-    desc_text = asset_obj.description or ""
+    desc_text = local_description or ""
     if len(desc_text) > 130:
         desc_text = desc_text[:127] + "..."
 
@@ -3620,7 +3899,7 @@ def asset_detail(slug):
         AssetType.SUBSCRIPTION: 'type_subscription',
     }.get(asset_obj.asset_type)
     meta_keywords = ', '.join(dict.fromkeys(k for k in (
-        asset_obj.title,
+        local_title,
         translate(type_label_key).lower() if type_label_key else None,
         store_name,
     ) if k))
@@ -3629,8 +3908,8 @@ def asset_detail(slug):
     product_schema = {
         '@context': 'https://schema.org',
         '@type': 'Product',
-        'name': asset_obj.title,
-        'description': (asset_obj.description or '')[:500],
+        'name': local_title,
+        'description': (local_description or '')[:500],
         'image': meta_image,
         'url': request.url,
         'sku': asset_obj.slug,
@@ -3648,8 +3927,8 @@ def asset_detail(slug):
         event_schema = {
             '@context': 'https://schema.org',
             '@type': 'EventSeries' if recurrence else 'Event',
-            'name': asset_obj.title,
-            'description': (asset_obj.description or '')[:500],
+            'name': local_title,
+            'description': (local_description or '')[:500],
             'image': meta_image,
             'url': request.url,
             'eventAttendanceMode': ('https://schema.org/OnlineEventAttendanceMode'
@@ -3673,8 +3952,9 @@ def asset_detail(slug):
         if ev_data.get('isOnline') or not asset_obj.event_location:
             event_schema['location'] = {'@type': 'VirtualLocation', 'url': request.url}
         else:
-            event_schema['location'] = {'@type': 'Place', 'name': asset_obj.event_location,
-                                        'address': asset_obj.event_location}
+            # The venue as this reader sees it, matching the page's own event block.
+            venue = ev_data.get('link') or asset_obj.event_location
+            event_schema['location'] = {'@type': 'Place', 'name': venue, 'address': venue}
 
     return render_template(
         'user/asset_detail.html',
@@ -3687,6 +3967,7 @@ def asset_detail(slug):
         subscription_expired=subscription_expired,
         expiry_date=expiry_date,
         renewal_tier_name=renewal_tier_name,
+        renewal_tier_id=renewal_tier_id,
         saved_delivery_answers=saved_delivery_answers,
         store_name=store_name,
         creator=creator, # Pass creator for base.html branding
@@ -3713,7 +3994,7 @@ def checkout(slug):
     # The template gets the asset as a plain dict, so the contribution wording is
     # resolved here (off the model) rather than in Jinja.
     from utils.pricing import contribution_voice
-    return render_template('user/checkout.html', asset=asset.to_dict(), channel_id=str(uuid.uuid4()), creator=creator, store_name=creator.store_name if creator else 'Nyota', voice=contribution_voice(asset))
+    return render_template('user/checkout.html', asset=asset.to_dict(lang=g.language), channel_id=str(uuid.uuid4()), creator=creator, store_name=creator.store_name if creator else 'Nyota', voice=contribution_voice(asset))
 
 def _build_uza_refcode(creator, visitor_refcode):
     """Returns final refcode with # prefix, falling back to admin default."""
@@ -3760,21 +4041,17 @@ def initiate_payment():
     asset_id = data.get('asset_id')
     channel_id = data.get('channel_id') # The unique ID for the user's browser tab
     channel_id = data.get('channel_id') # The unique ID for the user's browser tab
-    language = data.get('language')
-    
-    # Logic to detect language if not explicitly 'sw'
-    # If payload is missing or generic 'en', check IP location
-    if not language or language.startswith('en'):
-        country = request.headers.get('CF-IPCountry') or \
-                  request.headers.get('X-AppEngine-Country') or \
-                  request.headers.get('X-Country-Code')
-        if country and country.upper() != 'TZ':
-            language = 'en'
-        else:
-            # Default to Swahili for TZ or unknown
-            language = 'sw'
-    
-    language = language[:5] # Limit length
+    # The language this buyer will be written to in — it decides their SMS, and is
+    # remembered on their Customer record for every later message.
+    #
+    # This is the language the page they are standing on is written in. It used to
+    # be re-derived here from navigator.language plus the IP country, which meant
+    # someone who had deliberately tapped "Kiswahili" on an English phone still got
+    # an English receipt. g.language already resolves the explicit choice first and
+    # falls back to the same country heuristic, so the page and the SMS now agree.
+    language = (normalize_lang(getattr(g, 'language', None))
+                or normalize_lang(data.get('language'))
+                or DEFAULT_LANGUAGE)
 
     # 1. Validate incoming data
     if not all([phone_number, asset_id, channel_id]):
@@ -3795,19 +4072,40 @@ def initiate_payment():
     ticket_data = {}
 
     if tier:
-        # Get tier price and validate it
-        tier_price = tier.get('price')
-        if tier_price is None or tier_price == '' or (isinstance(tier_price, str) and not str(tier_price).strip()):
-            # Fallback to asset price if tier price is invalid
-            amount = asset.price
-        else:
-            try:
-                # Convert to Decimal, handling both string and numeric inputs
-                amount = decimal.Decimal(str(tier_price).strip())
-                ticket_data['tier'] = tier # Only set tier data if price is valid
-            except (decimal.InvalidOperation, ValueError):
-                # If conversion fails, use asset price as fallback
+        # Resolve the buyer's choice against OUR stored tiers, exactly as the
+        # physical-variation path below does. The client tells us WHICH tier was
+        # picked; the name, the price and the billing interval all come from the
+        # asset. That keeps a translated plan name out of the order record — and
+        # means the price charged can never be whatever the payload claimed.
+        stored_tiers = [t for t in ((asset.details or {}).get('subscription_tiers') or [])
+                        if isinstance(t, dict)]
+        chosen = None
+        if isinstance(tier, dict):
+            tier_id = str(tier.get('id') or '')
+            if tier_id:
+                chosen = next((t for t in stored_tiers if str(t.get('id') or '') == tier_id), None)
+            if chosen is None:
+                # Orders placed before tiers carried ids, and any client that
+                # still sends only a name.
+                tier_name = str(tier.get('name') or '').strip()
+                if tier_name:
+                    chosen = next(
+                        (t for t in stored_tiers
+                         if str(t.get('name') or '').strip() == tier_name), None
+                    )
+        if chosen is not None:
+            tier_price = chosen.get('price')
+            if tier_price is None or tier_price == '' or (isinstance(tier_price, str) and not str(tier_price).strip()):
+                # Fallback to asset price if tier price is invalid
                 amount = asset.price
+            else:
+                try:
+                    # Convert to Decimal, handling both string and numeric inputs
+                    amount = decimal.Decimal(str(tier_price).strip())
+                    ticket_data['tier'] = dict(chosen)  # Only set tier data if price is valid
+                except (decimal.InvalidOperation, ValueError):
+                    # If conversion fails, use asset price as fallback
+                    amount = asset.price
 
     # --- Donation / flexible-amount ("pay-what-you-want") resolution ---
     # A donation asset is free at base; the supporter-chosen contribution IS the
@@ -4029,7 +4327,7 @@ def initiate_payment():
 
             magic_url = f"{request.url_root.rstrip('/')}/to/{active_link.token}"
             sms_provider.send_magic_link(
-                phone_number, asset.title, magic_url,
+                phone_number, asset.localized('title', lang), magic_url,
                 language=lang, creator=creator
             )
 
@@ -4858,10 +5156,11 @@ def library():
                     'variation': _var_name,
                     'quantity': _order_qty,
                     'asset': {
-                        'title': purchase.asset.title,
+                        # The buyer's own shelf, so it reads in the buyer's language.
+                        'title': purchase.asset.localized('title'),
                         'slug': purchase.asset.slug,
-                        'cover_image_url': purchase.asset.cover_image_url,
-                        'description': purchase.asset.description,
+                        'cover_image_url': purchase.asset.localized('cover_image_url'),
+                        'description': purchase.asset.localized('description'),
                         'asset_type': purchase.asset.asset_type.name
                     },
                     'subscription': {

@@ -182,7 +182,9 @@ def _process_subscription_reminders(app):
         bucket = 'many' if days_left > 1 else str(days_left)
         tpl = provider._get_tpl(creator, f'reminder_{bucket}', lang)
         try:
-            message = tpl.format(asset_title=asset.title, days=days_left, link=link)
+            # No request context out here in the worker, so the buyer's stored
+            # language is passed in explicitly.
+            message = tpl.format(asset_title=asset.localized('title', lang), days=days_left, link=link)
         except KeyError:
             message = tpl
         if not message:

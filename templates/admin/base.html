@@ -153,6 +153,13 @@
        once so the picker can show a creator what their Swahili visitors read.
        Single source of truth: utils/pricing.CTA_PRESETS. #}
     <script type="application/json" id="cta-presets">{{ cta_presets|tojson }}</script>
+    {# What can be translated on the asset being edited, and under which paths.
+       The same manifest the save route validates against
+       (utils/i18n.TRANSLATABLE_*), so the boxes drawn here and the fields the
+       server will accept cannot drift apart. #}
+    {% if translatable_manifest %}
+    <script type="application/json" id="translatable-fields">{{ translatable_manifest|tojson }}</script>
+    {% endif %}
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts_extra %}{% endblock %}
     <script>
